@@ -3,6 +3,7 @@ import kagglehub
 import re
 import pandas as pd
 from unidecode import unidecode
+import unicodedata
 from rapidfuzz import fuzz
 from rapidfuzz.distance import Levenshtein
 
@@ -239,33 +240,8 @@ def concat(dataset_2017_2025, dataset_2025_2026):
         ignore_index=True,
     )
 
-def normalize_player_name(name):
-    """
-    Normalize a player name before comparison.
 
-    Accents, punctuation, duplicated spaces and character casing are removed.
-
-    Parameters
-    ----------
-    name : object
-        Original player name.
-
-    Returns
-    -------
-    str
-        Normalized player name.
-    """
-    if pd.isna(name):
-        return ""
-
-    name = unidecode(str(name)).lower()
-    name = re.sub(r"[^a-z0-9\s]", " ", name)
-    name = re.sub(r"\s+", " ", name)
-
-    return name.strip()
-
-
-def name_similarity(history_name, fantasy_name):
+def name_similarity(history_name, fanta_name):
     """
     Calculate the similarity between a complete and an abbreviated name.
 
@@ -273,7 +249,7 @@ def name_similarity(history_name, fantasy_name):
     ----------
     history_name : str
         Name from the historical dataset.
-    fantasy_name : str
+    fanta_name : str
         Name from the Fantacalcio dataset.
 
     Returns
@@ -282,36 +258,36 @@ def name_similarity(history_name, fantasy_name):
         Similarity score between 0 and 100.
     """
     history_name = normalize_player_name(history_name)
-    fantasy_name = normalize_player_name(fantasy_name)
+    fanta_name = normalize_player_name(fanta_name)
 
-    if not history_name or not fantasy_name:
+    if not history_name or not fanta_name:
         return 0.0
 
     # Exact match after normalization.
-    if history_name == fantasy_name:
+    if history_name == fanta_name:
         return 100.0
 
     # Automatically accept one or two character differences.
-    if Levenshtein.distance(history_name, fantasy_name) <= 2:
+    if Levenshtein.distance(history_name, fanta_name) <= 2:
         return 99.0
 
     # Useful when the Fantacalcio name contains only the surname.
     history_tokens = set(history_name.split())
-    fantasy_tokens = set(fantasy_name.split())
+    fanta_tokens = set(fanta_name.split())
 
-    if fantasy_tokens.issubset(history_tokens):
+    if fanta_tokens.issubset(history_tokens):
         return 98.0
 
     # Handles different token orders and abbreviated names.
     return max(
-        fuzz.WRatio(history_name, fantasy_name),
-        fuzz.token_set_ratio(history_name, fantasy_name),
+        fuzz.WRatio(history_name, fanta_name),
+        fuzz.token_set_ratio(history_name, fanta_name),
     )
 
 
 def find_best_player_match(
     history_name,
-    fantasy_names,
+    fanta_names,
     minimum_score=85,
 ):
     """
@@ -321,7 +297,7 @@ def find_best_player_match(
     ----------
     history_name : str
         Player name from the historical dataset.
-    fantasy_names : iterable of str
+    fanta_names : iterable of str
         Available names in the Fantacalcio list.
     minimum_score : float, default=85
         Minimum similarity required to accept a match.
@@ -335,11 +311,11 @@ def find_best_player_match(
     best_name = None
     best_score = 0.0
 
-    for fantasy_name in fantasy_names:
-        score = name_similarity(history_name, fantasy_name)
+    for fanta_name in fanta_names:
+        score = name_similarity(history_name, fanta_name)
 
         if score > best_score:
-            best_name = fantasy_name
+            best_name = fanta_name
             best_score = score
 
     if best_score < minimum_score:
@@ -350,9 +326,9 @@ def find_best_player_match(
 
 def filter_history_by_fantacalcio_players(
     history_df,
-    fantasy_df,
-    history_name_column="player",
-    fantasy_name_column="Nome",
+    fanta_df,
+    history_name_col="player",
+    fanta_name_col="Nome",
     minimum_score=85,
 ):
     """
@@ -364,11 +340,11 @@ def filter_history_by_fantacalcio_players(
     ----------
     history_df : pandas.DataFrame
         Historical player dataset.
-    fantasy_df : pandas.DataFrame
+    fanta_df : pandas.DataFrame
         Current Fantacalcio player list.
-    history_name_column : str, default='player'
+    history_name_col : str, default='player'
         Player-name column in the historical dataset.
-    fantasy_name_column : str, default='Nome'
+    fanta_name_col : str, default='Nome'
         Player-name column in the Fantacalcio dataset.
     minimum_score : float, default=85
         Minimum fuzzy similarity required to accept a match.
@@ -380,32 +356,31 @@ def filter_history_by_fantacalcio_players(
     matches : pandas.DataFrame
         Matching table containing names and similarity scores.
     """
-    fantasy_names = (
-        fantasy_df[fantasy_name_column]
+    fanta_names = (
+        fanta_df[fanta_name_col]
         .dropna()
         .astype(str)
         .unique()
     )
 
     historical_names = (
-        history_df[history_name_column]
+        history_df[history_name_col]
         .dropna()
         .astype(str)
         .unique()
     )
 
     matches = []
-
     for history_name in historical_names:
         matched_name, score = find_best_player_match(
             history_name,
-            fantasy_names,
+            fanta_names,
             minimum_score,
         )
 
         matches.append({
             "history_player": history_name,
-            "fantasy_player": matched_name,
+            "fanta_player": matched_name,
             "match_score": round(score, 2),
             "matched": matched_name is not None,
         })
@@ -418,16 +393,224 @@ def filter_history_by_fantacalcio_players(
     ]
 
     filtered_history = history_df[
-        history_df[history_name_column].isin(valid_names)
+        history_df[history_name_col].isin(valid_names)
     ].copy()
 
     # Add the corresponding Fantacalcio name.
     name_mapping = matches.set_index(
         "history_player"
-    )["fantasy_player"]
+    )["fanta_player"]
 
-    filtered_history["fantasy_player"] = (
-        filtered_history[history_name_column].map(name_mapping)
+    filtered_history["fanta_player"] = (
+        filtered_history[history_name_col].map(name_mapping)
     )
 
     return filtered_history, matches
+
+def normalize_player_name(name):
+    """
+    Normalize a player name for matching.
+
+    The function removes accents, duplicated spaces, case differences and
+    punctuation, while preserving periods used in abbreviated names.
+
+    Parameters
+    ----------
+    name : object
+        Original player name.
+
+    Returns
+    -------
+    str
+        Normalized player name.
+    """
+
+    special_chars_map = {
+        "ı": "i",
+        "ł": "l",
+        "ø": "o",
+        "á": "a",
+        "ó": "o",
+        "ž": "z",
+        "ć": "c",
+        "-": " ",
+    }
+
+    name = unidecode(str(name)).lower().strip()
+    name = "".join(char for char in unicodedata.normalize("NFD", name) if unicodedata.category(char) != "Mn")
+    name = "".join(special_chars_map.get(char, char) for char in name)
+
+    # Preserve periods because they identify abbreviated names
+    name = re.sub(r"[^a-z0-9.\s]", " ", name)
+    name = re.sub(r"\s+", " ", name)
+
+    return name.strip()
+
+
+def filter_history_exact_matches(
+    history_df,
+    fanta_df,
+    history_name_col="player",
+    fanta_name_col="Nome",
+):
+    """
+    Filter the historical dataset using exact or abbreviated name matches.
+
+    Exact normalized names are matched directly. Fantacalcio names written as
+    "Surname N." are matched when the surname appears as a complete sequence
+    of words in the historical player name.
+
+    Multiple historical players may be retained for an abbreviated name. The
+    user can subsequently resolve ambiguous matches through the interface.
+
+    Parameters
+    ----------
+    history_df : pandas.DataFrame
+        Historical player dataset.
+    fanta_df : pandas.DataFrame
+        Current Fantacalcio player list.
+    history_name_col : str, default='player'
+        Player-name column in the historical dataset.
+    fanta_name_col : str, default='Nome'
+        Player-name column in the Fantacalcio dataset.
+
+    Returns
+    -------
+    filtered_history : pandas.DataFrame
+        Historical rows belonging to matched players.
+    unmatched : pandas.DataFrame
+        Fantacalcio players for which no historical match was found.
+    """
+    history = history_df.copy()
+    fanta = fanta_df.copy()
+
+    history["normalized_name"] = history[history_name_col].apply(normalize_player_name)
+    fanta["normalized_name"] = fanta[fanta_name_col].apply(normalize_player_name)
+
+    history_names = set(history["normalized_name"])
+    valid_history_names = set()
+    matched_positions = []
+
+    for _, fanta_row in fanta.iterrows():
+        original_name = str(fanta_row[fanta_name_col]).strip()
+        normalized_name = fanta_row["normalized_name"]
+        row_matches = set()
+
+        # Standard exact normalized-name match.
+        if normalized_name in history_names:
+            row_matches.add(normalized_name)
+
+        matched_positions.append(bool(row_matches))
+        valid_history_names.update(row_matches)
+
+    matched_mask = pd.Series(matched_positions, index=fanta.index)
+
+    unmatched = fanta.loc[~matched_mask].copy()
+    filtered_history = history[history["normalized_name"].isin(valid_history_names)].copy()
+
+    filtered_history.drop(columns="normalized_name", inplace=True)
+    unmatched.drop(columns="normalized_name", inplace=True)
+
+    return filtered_history, unmatched
+
+
+def filter_history_relaxed_matches(
+    history_df,
+    fanta_df,
+    history_name_col="player",
+    fanta_name_col="Nome",
+):
+    """
+    Add a normalized join key to the historical and Fantacalcio datasets.
+
+    Exact normalized names are matched directly. Fantacalcio names written as
+    "Surname N." are matched when the surname appears as a complete sequence
+    of words in a historical player name.
+
+    When an abbreviated name matches multiple historical players, the
+    Fantacalcio row is duplicated once for each possible match.
+
+    Parameters
+    ----------
+    history_df : pandas.DataFrame
+        Historical player dataset.
+    fanta_df : pandas.DataFrame
+        Current Fantacalcio player list.
+    history_name_col : str, default='player'
+        Player-name column in the historical dataset.
+    fanta_name_col : str, default='Nome'
+        Player-name column in the Fantacalcio dataset.
+
+    Returns
+    -------
+    history_normalized_df : pandas.DataFrame
+        Complete historical dataset with the normalized_name column.
+    fanta_normalized_df : pandas.DataFrame
+        Complete Fantacalcio dataset with normalized_name containing the
+        corresponding historical join key.
+    """
+
+    history_normalized_df = history_df.copy()
+    fanta_normalized_df = fanta_df.copy()
+
+    # Add the common "normalized_name" field
+    history_normalized_df["normalized_name"] = (
+        history_normalized_df[history_name_col]
+        .fillna("")
+        .apply(normalize_player_name)
+    )
+    fanta_normalized_df["normalized_name"] = (
+        fanta_normalized_df[fanta_name_col]
+        .fillna("")
+        .apply(normalize_player_name)
+    )
+
+    history_names = {name for name in history_normalized_df["normalized_name"] if name}
+
+    def relaxed_matching_rules(normalized_name):
+        # Match exact normalized names.
+        if normalized_name in history_names:
+            return {normalized_name}
+
+        # Match names written as "Surname N.".
+        if "." in normalized_name:
+            # Every token before the final initial belongs to the surname.
+            surname = " ".join(normalized_name.split()[:-1])
+            return {
+                history_name
+                for history_name in history_names
+                if surname and f" {surname} " in f" {history_name} "
+            }
+        
+        # Match names containing only the surname.
+        return {
+            history_name
+            for history_name in history_names
+            if normalized_name
+            and f" {normalized_name} " in f" {history_name} "
+        }
+
+    matched_records = []
+    matched_indices = []
+
+    for index, fanta_row in fanta_normalized_df.iterrows():
+        normalized_name = fanta_row["normalized_name"]
+        row_matches = relaxed_matching_rules(normalized_name)
+
+        if row_matches:
+            # Create one row for every possible historical join key.
+            for matched_name in sorted(row_matches):
+                matched_row = fanta_row.copy()
+                matched_row["normalized_name"] = matched_name
+                matched_records.append(matched_row)
+                matched_indices.append(index)
+        else:
+            # Preserve unmatched players in the returned dataset.
+            matched_records.append(fanta_row.copy())
+            matched_indices.append(index)
+
+    if matched_records:
+        fanta_normalized_df = pd.DataFrame(matched_records, index=matched_indices)
+        fanta_normalized_df.index.name = fanta_df.index.name
+
+    return history_normalized_df, fanta_normalized_df
