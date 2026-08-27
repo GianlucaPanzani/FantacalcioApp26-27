@@ -1,6 +1,10 @@
 import streamlit as st
 import pandas as pd
-import lib.streamlit_api as myst
+from lib.streamlit_api import (
+    load_dataset,
+    sync_filter,
+    plot_player_history
+)
 
 
 st.set_page_config(
@@ -113,7 +117,7 @@ def player_filter(players: pd.DataFrame) -> pd.DataFrame:
             options=names,
             placeholder="Select one or more players...",
             key="player_widget_key",
-            on_change=myst.sync_filter,
+            on_change=sync_filter,
             args=("player_key", "player_widget_key"),
         )
     with cols[2]:
@@ -123,7 +127,7 @@ def player_filter(players: pd.DataFrame) -> pd.DataFrame:
             index=None,
             placeholder="Select a team...",
             key="team_widget_key",
-            on_change=myst.sync_filter,
+            on_change=sync_filter,
             args=("team_key", "team_widget_key"),
         )
     with cols[4]:
@@ -133,7 +137,7 @@ def player_filter(players: pd.DataFrame) -> pd.DataFrame:
             index=None,
             placeholder="Select a season...",
             key="season_widget_key",
-            on_change=myst.sync_filter,
+            on_change=sync_filter,
             args=("season_key", "season_widget_key"),
         )
     with cols[6]:
@@ -143,7 +147,7 @@ def player_filter(players: pd.DataFrame) -> pd.DataFrame:
             index=None,
             placeholder="Select a competition...",
             key="competition_widget_key",
-            on_change=myst.sync_filter,
+            on_change=sync_filter,
             args=("competition_key", "competition_widget_key"),
         )
 
@@ -164,7 +168,7 @@ def player_filter(players: pd.DataFrame) -> pd.DataFrame:
             max_value=max_goals,
             step=0.01,
             key="goals_per90_widget_key",
-            on_change=myst.sync_filter,
+            on_change=sync_filter,
             args=("goals_per90_key", "goals_per90_widget_key"),
         )
     with cols[6]:
@@ -174,7 +178,7 @@ def player_filter(players: pd.DataFrame) -> pd.DataFrame:
             max_value=max_nineties,
             step=0.01,
             key="nineties_widget_key",
-            on_change=myst.sync_filter,
+            on_change=sync_filter,
             args=("nineties_key", "nineties_widget_key"),
         )
 
@@ -234,7 +238,7 @@ def create_sidebar_settings():
 st.title("📊 Statistics")
 st.subheader("Players Filter")
 
-history_players = myst.load_dataset("data/filtered_history_players.csv")
+history_players = load_dataset("data/filtered_history_players.csv")
 filtered_players = player_filter(history_players)
 
 st.session_state["filtered_players"] = filtered_players
@@ -265,4 +269,4 @@ st.subheader("Graphics")
 if filtered_players["season"].nunique() == 1 and (st.session_state["season_widget_key"] or st.session_state["team_widget_key"]):
     st.warning("You have selected 1 specific season or a specific team: deselect it to see the statistics accross years.")
 
-myst.plot_player_history(filtered_players)
+plot_player_history(filtered_players)

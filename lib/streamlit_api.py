@@ -2,6 +2,14 @@ import pandas as pd
 import streamlit as st
 
 
+role_limits_dict = {
+    "P": st.session_state.get("fantacalcio_goalkeepers_limit_key", 3),
+    "D": st.session_state.get("fantacalcio_defenders_limit_key", 8),
+    "C": st.session_state.get("fantacalcio_midfielders_limit_key", 8),
+    "A": st.session_state.get("fantacalcio_attackers_limit_key", 6),
+}
+
+
 def config_page(page_title="Football Dataset Explorer", page_icon="⚽", layout="wide", initial_sidebar_state="expanded"):
     st.set_page_config(
         page_title=page_title,
@@ -82,15 +90,11 @@ def plot_player_history(filtered_players: pd.DataFrame) -> None:
     }
 
     # Remove fields not present in the current dataset.
-    available_fields = {
-        field: label
-        for field, label in chart_fields.items()
-        if field in filtered_players.columns
-    }
+    available_fields = {field: label for field, label in chart_fields.items() if field in filtered_players.columns}
 
     # Fields selection
     selected_fields = st.multiselect(
-        "Select statistics",
+        label="Select statistics",
         options=list(available_fields),
         default=[
             field for field in [

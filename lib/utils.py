@@ -8,15 +8,21 @@ import unicodedata
 def normalize_name(name: str) -> str:
     """Normalize a player name for fuzzy comparison."""
     name = unicodedata.normalize("NFD", str(name))
-
-    name = "".join(
-        char for char in name
-        if unicodedata.category(char) != "Mn"
-    )
-
+    name = "".join(char for char in name if unicodedata.category(char) != "Mn")
     name = re.sub(r"[^\w\s.]", " ", name.lower())
     return re.sub(r"\s+", " ", name).strip()
 
+def save_bought_players(path: str, df: pd.DataFrame):
+    """Save the bought players dataframe to a CSV file."""
+    df.to_csv(path, index=False)
+    return
+
+def restore_df_from(path: str) -> pd.DataFrame:
+    """Restore bought players from a CSV file."""
+    try:
+        return pd.read_csv(path)
+    except (FileNotFoundError, pd.errors.EmptyDataError):
+        return pd.DataFrame()
 
 def generate_name_variants(full_name: str) -> list[str]:
     """
@@ -138,17 +144,12 @@ def json_converter(value):
     """Convert NumPy and pandas values into JSON-compatible Python values."""
     if isinstance(value, np.integer):
         return int(value)
-
     if isinstance(value, np.floating):
         return None if np.isnan(value) else float(value)
-
     if isinstance(value, np.ndarray):
         return value.tolist()
-
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
-
     if pd.isna(value):
         return None
-
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
