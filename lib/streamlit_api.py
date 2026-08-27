@@ -1,24 +1,56 @@
 from pathlib import Path
 from numbers import Integral, Real
-
+from pathlib import Path
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
 import streamlit as st
 
+# Session state keys of which value has to persist between sessions
+persistent_session_keys = [
+    "my_fanta_manager_key",
+    "fanta_managers_key",
+    "fantacalcio_budget_key",
+    "fantacalcio_goalkeepers_budget_limit_key",
+    "fantacalcio_defenders_budget_limit_key",
+    "fantacalcio_midfielders_budget_limit_key",
+    "fantacalcio_attackers_budget_limit_key",
+    "fantacalcio_goalkeepers_limit_key",
+    "fantacalcio_defenders_limit_key",
+    "fantacalcio_midfielders_limit_key",
+    "fantacalcio_attackers_limit_key",
+    "ai_enabled_key",
+    "bought_players_df_key",
+]
 
-role_limits_dict = {
-    "P": st.session_state.get("fantacalcio_goalkeepers_limit_key", 3),
-    "D": st.session_state.get("fantacalcio_defenders_limit_key", 8),
-    "C": st.session_state.get("fantacalcio_midfielders_limit_key", 8),
-    "A": st.session_state.get("fantacalcio_attackers_limit_key", 6),
-}
-
-
-def config_page(page_title="Football Dataset Explorer", page_icon="⚽", layout="wide", initial_sidebar_state="expanded"):
+def config_page(page_title="Fantacalcio tool", page_icon="⚽", layout="wide", initial_sidebar_state="expanded"):
     st.set_page_config(
         page_title=page_title,
         page_icon=page_icon,
         layout=layout,
         initial_sidebar_state=initial_sidebar_state,
+    )
+
+def highlight_bought_rows(row, fanta_managers):
+    '''Highlight players bought by the user or by another fanta manager'''
+    if row["bought"] == st.session_state["my_fanta_manager_key"]:
+        row_style = "background-color: rgba(40, 167, 69, 0.25)"
+    elif row["bought"] in fanta_managers:
+        row_style = "background-color: rgba(220, 53, 69, 0.25)"
+    else:
+        row_style = ""
+    return [row_style] * len(row)
+
+def sidebar_navigation_size(font_size=1.15, font_weight=600):
+    return st.html(
+        f"""
+        <style>
+        [data-testid="stSidebarNavLink"] span {{
+            font-size: {font_size}rem;
+            font-weight: {font_weight};
+        }}
+        </style>
+        """
     )
 
 def thick_divider(height=4, border="none", background_color="#808080", border_radius=4, margin=20):
@@ -33,6 +65,48 @@ def thick_divider(height=4, border="none", background_color="#808080", border_ra
         ">
         """
     )
+
+def get_role_limits() -> dict:
+    return {
+        "P": st.session_state.get("fantacalcio_goalkeepers_limit_key", 3),
+        "D": st.session_state.get("fantacalcio_defenders_limit_key", 8),
+        "C": st.session_state.get("fantacalcio_midfielders_limit_key", 8),
+        "A": st.session_state.get("fantacalcio_attackers_limit_key", 6),
+    }
+
+
+def get_role_budget_limits() -> dict:
+    return {
+        "P": st.session_state.get("fantacalcio_goalkeepers_budget_limit_key", 50),
+        "D": st.session_state.get("fantacalcio_defenders_budget_limit_key", 100),
+        "C": st.session_state.get("fantacalcio_midfielders_budget_limit_key", 200),
+        "A": st.session_state.get("fantacalcio_attackers_budget_limit_key", 150),
+    }
+
+def get_fanta_manager_players_dict() -> dict:
+    # Case of rebuild of the bought players dict by restoring from csv
+    if "fanta_manager_players_dict_key" not in st.session_state:
+        fanta_manager_players_dict = {}
+
+        # Restore data from csv
+        restored_players = st.session_state.get("bought_players_df_key", pd.DataFrame())
+
+        # Rebuilt of the bought players dict
+        if not restored_players.empty and "manager" in restored_players.columns:
+            for fanta_manager, bought_players in restored_players.groupby("manager"):
+                fanta_manager_players_dict[fanta_manager] = bought_players.reset_index(drop=True)
+
+        # Preserve Fanta Managers without bought players
+        if "fanta_managers_key" in st.session_state:
+            fanta_managers = st.session_state["fanta_managers_key"]
+            for fanta_manager in fanta_managers:
+                fanta_manager_players_dict.setdefault(fanta_manager, pd.DataFrame())
+
+        st.session_state["fanta_manager_players_dict_key"] = fanta_manager_players_dict
+
+    # Case of data already present in session_state
+    fanta_manager_players_dict = st.session_state["fanta_manager_players_dict_key"]
+    return fanta_manager_players_dict
 
 def get_from_session_state(key: str):
     if key in st.session_state:
@@ -281,3 +355,86 @@ def plot_player_history(filtered_players: pd.DataFrame) -> None:
                 y_label=available_fields[field],
                 use_container_width=True,
             )
+
+
+def has_full_team(fanta_manager: str) -> bool:
+    """Return True when the Fanta Manager has filled every role."""
+    fanta_manager_players_dict = st.session_state.get("fanta_manager_players_dict_key", {})
+    bought_players = fanta_manager_players_dict.get(fanta_manager, pd.DataFrame())
+    role_limit_keys_dict = {
+        "P": "fantacalcio_goalkeepers_limit_key",
+        "D": "fantacalcio_defenders_limit_key",
+        "C": "fantacalcio_midfielders_limit_key",
+        "A": "fantacalcio_attackers_limit_key",
+    }
+
+    if not isinstance(bought_players, pd.DataFrame) or "role" not in bought_players.columns:
+        return False
+
+    role_limits_dict = get_role_limits()
+    role_counts = bought_players["role"].value_counts()
+    for role, role_limit_key in role_limit_keys_dict.items():
+        role_limit = st.session_state.get(role_limit_key, role_limits_dict[role])
+        if role_counts.get(role, 0) != role_limit:
+            return False
+
+    return True
+
+
+def generate_pdf_with_bought_players(path: str = "fantacalcio_teams.pdf") -> bool:
+    """Generate a PDF containing every Fanta Manager's completed team."""
+    fanta_manager_players_dict = st.session_state.get("fanta_manager_players_dict_key", {})
+    budget = st.session_state.get("fantacalcio_budget_key", 500)
+
+    if not fanta_manager_players_dict:
+        return False
+
+    try:
+        output_path = Path(path)
+        must_have_columns = ["id", "player", "team", "role", "mantra_role", "mln"]
+        column_names = ["ID", "Player", "Team", "Role", "Mantra Role", "Mln"]
+
+        with PdfPages(output_path) as pdf:
+            for fanta_manager, bought_players in fanta_manager_players_dict.items():
+                players_df = bought_players.copy()
+                for column in must_have_columns:
+                    if column not in players_df.columns:
+                        players_df[column] = ""
+
+                players_df["mln"] = pd.to_numeric(players_df["mln"], errors="coerce").fillna(0).astype(int)
+                total_spent = int(players_df["mln"].sum())
+                available_budget = int(budget - total_spent)
+
+                role_order = {"P": 0, "D": 1, "C": 2, "A": 3}
+                players_df["role_order"] = players_df["role"].map(role_order).fillna(4)
+                players_df = players_df.sort_values(["role_order", "player"])[must_have_columns].fillna("")
+
+                figure, axis = plt.subplots(figsize=(11.69, 8.27))
+                axis.axis("off")
+                axis.set_title(f"Fantacalcio team - {fanta_manager}", fontsize=18, fontweight="bold", pad=24)
+                axis.text(0.02, 0.93, f"Total spent: {total_spent} mln", fontsize=11, transform=axis.transAxes)
+                axis.text(0.98, 0.93, f"Available budget: {available_budget} mln", fontsize=11, ha="right", transform=axis.transAxes)
+                
+                table = axis.table(
+                    cellText=players_df.astype(str).values,
+                    colLabels=column_names,
+                    colWidths=[0.08, 0.28, 0.20, 0.08, 0.18, 0.08],
+                    cellLoc="center",
+                    bbox=[0.02, 0.03, 0.96, 0.84],
+                )
+                table.auto_set_font_size(False)
+                table.set_fontsize(8)
+                for (row, _), cell in table.get_celld().items():
+                    if row == 0:
+                        cell.set_facecolor("#4C78A8")
+                        cell.set_text_props(color="white", fontweight="bold")
+                    elif row % 2 == 0:
+                        cell.set_facecolor("#EAF2F8")
+
+                pdf.savefig(figure, bbox_inches="tight")
+                plt.close(figure)
+
+        return True
+    except Exception as e:
+        st.error(f"Something went wrong saving the results of the aucting:\n\n{e}\n")
+        return False

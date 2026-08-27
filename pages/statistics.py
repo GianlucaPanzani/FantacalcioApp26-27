@@ -1,9 +1,15 @@
 import streamlit as st
 import pandas as pd
 from lib.streamlit_api import (
-    load_dataset,
+    persistent_session_keys,
+    role_limits_dict,
+    role_budget_limits_dict,
+    thick_divider,
+    get_fanta_manager_players_dict,
     sync_filter,
-    plot_player_history
+    load_dataset,
+    load_env,
+    store_env
 )
 
 
@@ -237,6 +243,8 @@ def create_sidebar_settings():
 
 st.title("📊 Statistics")
 st.subheader("Players Filter")
+
+load_env(keys=persistent_session_keys, path=".env")
 
 history_players = load_dataset("data/filtered_history_players.csv")
 filtered_players = player_filter(history_players)

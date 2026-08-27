@@ -11,6 +11,7 @@ def normalize_name(name: str) -> str:
     name = "".join(char for char in name if unicodedata.category(char) != "Mn")
     name = re.sub(r"[^\w\s.]", " ", name.lower())
     return re.sub(r"\s+", " ", name).strip()
+    
 
 def generate_name_variants(full_name: str) -> list[str]:
     """
