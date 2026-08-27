@@ -1,4 +1,12 @@
-# Descrizione dei campi selezionati
+# Perché scaricare quest'app
+
+...
+
+# Descrizione app
+
+...
+
+# Descrizione del Dataset
 
 Il dataset contiene una riga per ogni combinazione **giocatore–stagione–squadra**. Le statistiche con suffisso `_per90` sono normalizzate rispetto alle frazioni da 90 minuti giocate e permettono confronti più corretti tra calciatori con minutaggi differenti.
 

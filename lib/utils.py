@@ -12,18 +12,6 @@ def normalize_name(name: str) -> str:
     name = re.sub(r"[^\w\s.]", " ", name.lower())
     return re.sub(r"\s+", " ", name).strip()
 
-def save_bought_players(path: str, df: pd.DataFrame):
-    """Save the bought players dataframe to a CSV file."""
-    df.to_csv(path, index=False)
-    return
-
-def restore_df_from(path: str) -> pd.DataFrame:
-    """Restore bought players from a CSV file."""
-    try:
-        return pd.read_csv(path)
-    except (FileNotFoundError, pd.errors.EmptyDataError):
-        return pd.DataFrame()
-
 def generate_name_variants(full_name: str) -> list[str]:
     """
     Generate common full-name and abbreviated-name representations.

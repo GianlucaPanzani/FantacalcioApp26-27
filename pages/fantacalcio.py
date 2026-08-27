@@ -1,14 +1,13 @@
 import streamlit as st
 import pandas as pd
 import lib.ollama_api as llm
-from lib.utils import (
-    save_bought_players,
-    restore_df_from
-)
 from lib.streamlit_api import (
     role_limits_dict,
+    thick_divider,
     sync_filter,
     load_dataset,
+    load_env,
+    store_env
 )
 
 
@@ -18,31 +17,54 @@ st.set_page_config(
     layout="wide",
 )
 
+# Session State values persisted between sessions
+persistent_session_keys = [
+    "my_fanta_manager_key",
+    "fanta_managers_key",
+    "fantacalcio_budget_key",
+    "fantacalcio_goalkeepers_limit_key",
+    "fantacalcio_defenders_limit_key",
+    "fantacalcio_midfielders_limit_key",
+    "fantacalcio_attackers_limit_key",
+    "ai_enabled_key",
+    "bought_players_df_key",
+]
 
+# Load stored persistent values before initializing Session State defaults
+load_env(keys=persistent_session_keys, path=".env",)
 
-# Fanta Manager name of the user
+# Initialize by default values not available in the environment file
 st.session_state.setdefault("my_fanta_manager_key", "Me")
+st.session_state.setdefault("fanta_managers_key", [st.session_state["my_fanta_manager_key"]])
 
-# Restore bought players when a new Streamlit session starts
+# Reorder the Fanta Managers with my Fanta Manager as first item
+my_fanta_manager = st.session_state["my_fanta_manager_key"]
+fanta_managers = st.session_state["fanta_managers_key"]
+fanta_managers = [my_fanta_manager] + [manager for manager in fanta_managers if manager != my_fanta_manager]
+st.session_state["fanta_managers_key"] = fanta_managers
+
+# Case of rebuild of the bought players dict by restoring from csv
 if "fanta_manager_players_dict_key" not in st.session_state:
-    restored_players = restore_df_from("data/bought_players.csv")
-
-    # Recreate the dictionary
     fanta_manager_players_dict = {}
-    if not restored_players.empty:
+
+    # Restore data from csv
+    restored_players = st.session_state.get("bought_players_df_key", pd.DataFrame())
+
+    # Rebuilt of the bought players dict
+    if not restored_players.empty and "manager" in restored_players.columns:
         for fanta_manager, bought_players in restored_players.groupby("manager"):
             fanta_manager_players_dict[fanta_manager] = bought_players.reset_index(drop=True)
 
-    # Restore my Fanta Manager name
-    my_fanta_manager = st.session_state["my_fanta_manager_key"]
-    fanta_manager_players_dict.setdefault(my_fanta_manager, pd.DataFrame())
+    # Preserve Fanta Managers without bought players
+    fanta_managers = st.session_state["fanta_managers_key"]
+    for fanta_manager in fanta_managers:
+        fanta_manager_players_dict.setdefault(fanta_manager, pd.DataFrame())
+
     st.session_state["fanta_manager_players_dict_key"] = fanta_manager_players_dict
 
-# Fanta Managers with the bought players
+# Case of data already present in session_state
 fanta_manager_players_dict = st.session_state["fanta_manager_players_dict_key"]
 
-# Fanta Manager names
-st.session_state.setdefault("fanta_managers_key", list(fanta_manager_players_dict.keys()))
 
 # =============================================================================
 # ============================== FUNCTIONS ====================================
@@ -55,10 +77,11 @@ def create_sidebar_settings():
 
         with st.container(border=True):
 
-            st.markdown("## ⚙️ Settings")
+            st.markdown("## ⚙️ **Settings**")
             st.caption("Customize the Fantacalcio values.")
 
-            st.markdown("### Fanta managers")
+            thick_divider(height=2, border_radius=2, margin=3)
+            st.markdown("### **Username**")
 
             fanta_managers = st.session_state["fanta_managers_key"]
 
@@ -84,10 +107,45 @@ def create_sidebar_settings():
                         bought_players["manager"] = my_new_fanta_manager
                     fanta_manager_players_dict[my_new_fanta_manager] = bought_players
                     fanta_managers.remove(current_fanta_manager)
-                    fanta_managers.append(my_new_fanta_manager)
+                    fanta_managers.insert(0, my_new_fanta_manager)
                     st.session_state["fanta_managers_key"] = fanta_managers
                     st.session_state["my_fanta_manager_key"] = my_new_fanta_manager
                     st.session_state["fanta_manager_players_dict_key"] = fanta_manager_players_dict
+
+            thick_divider(height=2, border_radius=2, margin=3)
+            st.markdown("### **Set budget limits per role**")
+            
+            goalkeepers_budget_limit = st.number_input(
+                "Goalkeepers",
+                min_value=0,
+                value=3,
+                step=1,
+                key="fantacalcio_goalkeepers_budget_limit_key",
+            )
+            defenders_budget_limit = st.number_input(
+                "Defenders",
+                min_value=0,
+                value=8,
+                step=1,
+                key="fantacalcio_defenders_budget_limit_key",
+            )
+            midfielders_budget_limit = st.number_input(
+                "Midfielders",
+                min_value=0,
+                value=8,
+                step=1,
+                key="fantacalcio_midfielders_budget_limit_key",
+            )
+            attackers_budget_limit = st.number_input(
+                "Attackers",
+                min_value=0,
+                value=6,
+                step=1,
+                key="fantacalcio_attackers_budget_limit_key",
+            )
+
+            thick_divider(height=2, border_radius=2, margin=3)
+            st.markdown("### **Fanta Managers**")
 
             new_fanta_manager = st.text_input(
                 label="Add a new Fanta Manager",
@@ -116,7 +174,8 @@ def create_sidebar_settings():
             if update_fanta_manager_button and not is_warning:
                 st.success("Fanta Manager updated successfully")
             
-            st.markdown("### Auction settings")
+            thick_divider(height=2, border_radius=2, margin=3)
+            st.markdown("### **Auction settings**")
 
             budget = st.number_input(
                 "Available budget",
@@ -125,7 +184,6 @@ def create_sidebar_settings():
                 step=50,
                 key="fantacalcio_budget_key",
             )
-
             goalkeepers_limit = st.number_input(
                 "Goalkeepers",
                 min_value=0,
@@ -133,7 +191,6 @@ def create_sidebar_settings():
                 step=1,
                 key="fantacalcio_goalkeepers_limit_key",
             )
-
             defenders_limit = st.number_input(
                 "Defenders",
                 min_value=0,
@@ -141,7 +198,6 @@ def create_sidebar_settings():
                 step=1,
                 key="fantacalcio_defenders_limit_key",
             )
-
             midfielders_limit = st.number_input(
                 "Midfielders",
                 min_value=0,
@@ -149,7 +205,6 @@ def create_sidebar_settings():
                 step=1,
                 key="fantacalcio_midfielders_limit_key",
             )
-
             attackers_limit = st.number_input(
                 "Attackers",
                 min_value=0,
@@ -158,7 +213,8 @@ def create_sidebar_settings():
                 key="fantacalcio_attackers_limit_key",
             )
 
-            st.markdown("### AI settings")
+            thick_divider(height=2, border_radius=2, margin=3)
+            st.markdown("### **AI settings**")
 
             ai_enabled = st.toggle(
                 "Activate AI to help you",
@@ -252,7 +308,7 @@ def player_filter(fanta_players: pd.DataFrame) -> pd.DataFrame:
     with cols[6]:
         selected_fanta_manager = st.selectbox(
             "Select a Fanta Manager",
-            options=st.session_state["fanta_managers_key"],
+            options=["Free"] + st.session_state["fanta_managers_key"],
             index=None,
             placeholder="Select a manager...",
             key="fanta_managers_widget_key",
@@ -270,7 +326,13 @@ def player_filter(fanta_players: pd.DataFrame) -> pd.DataFrame:
         filtered_df = filtered_df[filtered_df["team"] == selected_team]
     if selected_role:
         filtered_df = filtered_df[filtered_df["fanta_role"] == selected_role]
-    if selected_fanta_manager:
+    if selected_fanta_manager == "Free":
+        bought_player_ids = set()
+        for bought_players in fanta_manager_players_dict.values():
+            if "id" in bought_players.columns:
+                bought_player_ids.update(bought_players["id"].astype(str))
+        filtered_df = filtered_df[~filtered_df["id"].astype(str).isin(bought_player_ids)]
+    elif selected_fanta_manager:
         bought_players = fanta_manager_players_dict.get(selected_fanta_manager, pd.DataFrame())
         bought_player_ids = bought_players["id"] if "id" in bought_players.columns else []
         filtered_df = filtered_df[filtered_df["id"].isin(bought_player_ids)]
@@ -354,6 +416,8 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
     # Create the players dataframe to be shown
     bought_players_by_id = {}
     for fanta_manager, bought_players in fanta_manager_players_dict.items():
+        if not isinstance(bought_players, pd.DataFrame):
+            continue
         for _, bought_player in bought_players.iterrows():
             bought_player_data = bought_player.to_dict()
             bought_player_data["manager"] = fanta_manager
@@ -467,6 +531,15 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
 
     # Store the updated auction state
     st.session_state["fanta_manager_players_dict_key"] = fanta_manager_players_dict
+
+    # Store bought players
+    bought_players_dataframes = [bought_players for bought_players in fanta_manager_players_dict.values() if not bought_players.empty]
+    if bought_players_dataframes:
+        bought_players_df = pd.concat(bought_players_dataframes, ignore_index=True)
+    else:
+        bought_players_df = pd.DataFrame(columns=["id", "player", "team", "role", "mantra_role", "manager", "mln"])
+    st.session_state["bought_players_df_key"] = bought_players_df
+
     return
 
 
@@ -539,8 +612,8 @@ def create_current_purchases(fanta_manager_players_dict: dict, fanta_manager=Non
 
     # Compute some budget metric
     starting_budget = st.session_state.get("fantacalcio_budget_key", 500)
-    total_spent = bought_players_df["mln"].sum()
-    available_budget = starting_budget - total_spent
+    tot_spent = bought_players_df["mln"].sum()
+    available_budget = starting_budget - tot_spent
 
     # Create columns
     budget_col, _, p_col, _, d_col, _, c_col, _, a_col = st.columns([10,1,9,1,9,1,9,1,9])
@@ -556,8 +629,9 @@ def create_current_purchases(fanta_manager_players_dict: dict, fanta_manager=Non
     with budget_col:
         st.metric(
             label=f"Available for :blue[**{fanta_manager}**]",
-            value=f":green[{available_budget}] mln",
-            delta=f"-{total_spent} mln spent",
+            value=f":green[+{available_budget}] mln",
+            delta=f"-{tot_spent} mln" if tot_spent > 0 else "",
+            delta_color="blue" if tot_spent > 0 else "gray",
             icon="💰",
             border=True
         )
@@ -570,32 +644,45 @@ def create_current_purchases(fanta_manager_players_dict: dict, fanta_manager=Non
 
         # Players bought with the role "role"
         bought_players_role = bought_players_df.loc[bought_players_df["role"] == role]
+        tot_spent_for_role = bought_players_role['mln'].sum()
         st.session_state[f"{fanta_manager}_num_of_bought_{role}_key"] = len(bought_players_role)
 
         with col:
-            with st.container(border=True):
+            with st.container(border=True, width="stretch", height="stretch"):
                 st.metric(
                     label=f"{role_label} ({role})",
                     value=f"{len(bought_players_role)}/{role_limit}",
-                    delta=f"-{bought_players_role['mln'].sum()} mln"
+                    delta=f"-{tot_spent_for_role} mln" if tot_spent_for_role > 0 else "0 mln",
+                    delta_color="red" if tot_spent_for_role > 0 else "gray",
                 )
 
+                st.divider()
+
                 if len(bought_players_role) > role_limit:
-                    st.error("Role limit exceeded")
+                    st.session_state[f"{fanta_manager}_{role}_limit_exceeded"] = True
+                    st.error("Role limit exceeded: remove the last purchase.")
+                else:
+                    st.session_state[f"{fanta_manager}_{role}_limit_exceeded"] = False
 
                 # Case of no player bought for this role
                 if bought_players_role.empty:
                     st.caption("No players purchased")
                     continue
-
-                st.divider()
                 
                 # List the bought players
                 for _, player_row in bought_players_role.iterrows():
-                    st.markdown(
-                        f"- #### **{player_row['player']}**\n"
-                        f"  {player_row['team']} · {player_row['mln']} mln"
-                    )
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.session_state[f"{fanta_manager}_{role}_limit_exceeded"]:
+                            st.markdown(f"- :red[**{player_row['player']}**]")
+                        else:
+                            st.markdown(f"- **{player_row['player']}**")
+                    with col2:
+                        st.markdown(
+                            f":small[:grey[{player_row['mln']} mln]]  \n"
+                            f":small[:grey[{player_row['team']}]]",
+                            text_alignment="right"
+                        )
 
     return
 
@@ -608,31 +695,33 @@ fanta_managers = create_sidebar_settings()
 
 st.title("⚽ Fantacalcio 26-27 - Create your own team")
 
+thick_divider()
+
+# Filters + players table
+st.header("Fanta List")
+st.caption(
+    "Search or reduce the players in the table using the following filters.\n"
+    "Select the Fanta Manager on the first column if someone has bought a player and set the millions spent to update the teams."
+)
 fanta_players = load_dataset("data/filtered_history_players.csv", filter_by_current_year=True)
-
-st.divider()
-st.subheader("Add a player to your team")
-
-# Handling data players
 filtered_players = player_filter(fanta_players)
-
-# Create the editable table
-st.markdown("#### Fanta list")
 create_editor_dataframe(filtered_players, fanta_manager_players_dict)
 
-# Case of AI enabled to responde
+# Case of AI enabled
 if st.session_state["ai_enabled_key"] and filtered_players.shape[0] == 1:
     generate_ai_response(fanta_manager_players_dict)
 
-st.divider()
-st.subheader("Current teams")
-for fanta_manager in fanta_manager_players_dict.keys():
-    create_current_purchases(fanta_manager_players_dict, fanta_manager)
+thick_divider()
 
-# Save bought players
-bought_players_dataframes = [bought_players for bought_players in fanta_manager_players_dict.values() if not bought_players.empty]
-if bought_players_dataframes:
-    to_save_df = pd.concat(bought_players_dataframes, ignore_index=True)
-else:
-    to_save_df = pd.DataFrame(columns=["id", "player", "team", "role", "mantra_role", "manager", "mln"])
-save_bought_players(path="data/bought_players.csv", df=to_save_df)
+# Teams of the Fanta Managers
+st.header("Teams & Billing")
+st.divider()
+for fanta_manager in st.session_state["fanta_managers_key"]:
+    create_current_purchases(fanta_manager_players_dict, fanta_manager)
+    st.divider()
+
+# Store only persistent Session State values
+store_env(
+    data_dict={key: st.session_state[key] for key in persistent_session_keys if key in st.session_state},
+    path=".env",
+)

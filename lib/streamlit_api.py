@@ -1,3 +1,6 @@
+from pathlib import Path
+from numbers import Integral, Real
+
 import pandas as pd
 import streamlit as st
 
@@ -18,10 +21,150 @@ def config_page(page_title="Football Dataset Explorer", page_icon="⚽", layout=
         initial_sidebar_state=initial_sidebar_state,
     )
 
+def thick_divider(height=4, border="none", background_color="#808080", border_radius=4, margin=20):
+    return st.html(
+        f"""
+        <hr style="
+            height: {str(height)}px;
+            border: {str(border)};
+            background-color: {str(background_color)};
+            border-radius: {border_radius}px;
+            margin: {str(margin)}px 0;
+        ">
+        """
+    )
+
 def get_from_session_state(key: str):
     if key in st.session_state:
         return st.session_state[key]
     return None
+
+
+def load_env(keys: list[str], path: str = ".env") -> dict:
+    """Load selected values from an environment file into Session State."""
+    env_path = Path(path)
+    if not env_path.exists():
+        return {}
+
+    # Read the environment file into a dictionary.
+    env_values = {}
+    with env_path.open(encoding="utf-8") as env_file:
+        for line in env_file:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+
+            env_key, env_value = line.split("=", 1)
+            env_values[env_key.strip()] = env_value.strip().strip('"').strip("'")
+
+    loaded_values = {}
+    for key in keys:
+        # Keep values already initialized during the current session.
+        if key in st.session_state or key not in env_values:
+            continue
+
+        raw_value = env_values[key]
+        value_type = env_values.get(f"{key}_type", "str")
+
+        match value_type:
+            case "str":
+                value = raw_value
+            case "int":
+                value = int(raw_value)
+            case "float":
+                value = float(raw_value)
+            case "bool":
+                normalized_value = raw_value.lower()
+                if normalized_value not in {"true", "false"}:
+                    raise ValueError(f"Invalid bool value for '{key}': {raw_value}")
+                value = normalized_value == "true"
+            case "list":
+                value = [item.strip() for item in raw_value.split(",") if item.strip()]
+            case "tuple":
+                value = tuple(item.strip() for item in raw_value.split(",") if item.strip())
+            case "None" | "NoneType":
+                value = None
+            case "pd.DataFrame":
+                csv_path = Path(raw_value)
+                if not csv_path.is_absolute():
+                    csv_path = env_path.parent / csv_path
+                value = pd.read_csv(csv_path, low_memory=False)
+            case _:
+                raise ValueError(f"Unsupported type for '{key}': {value_type}")
+
+        st.session_state[key] = value
+        loaded_values[key] = value
+
+    return loaded_values
+
+
+def store_env(data_dict: dict, path: str = ".env") -> dict:
+    """Store supported values in an environment file."""
+    env_path = Path(path)
+
+    # Preserve values already stored in the environment file.
+    env_values = {}
+    if env_path.exists():
+        with env_path.open(encoding="utf-8") as env_file:
+            for line in env_file:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+
+                env_key, env_value = line.split("=", 1)
+                env_values[env_key.strip()] = env_value.strip().strip('"').strip("'")
+
+    stored_values = {}
+    for key, value in data_dict.items():
+        if key.endswith("_type"):
+            continue
+
+        if isinstance(value, pd.DataFrame):
+            value_type = "pd.DataFrame"
+            default_name = key.removesuffix("_df_key")
+            csv_value = f"data/{default_name}.csv"
+            if env_values.get(f"{key}_type") == "pd.DataFrame":
+                csv_value = env_values[key]
+            csv_path = Path(csv_value)
+            if not csv_path.is_absolute():
+                csv_path = env_path.parent / csv_path
+            csv_path.parent.mkdir(parents=True, exist_ok=True)
+            value.to_csv(csv_path, index=False)
+            stored_value = csv_value
+        elif isinstance(value, str):
+            value_type = "str"
+            stored_value = value
+        elif isinstance(value, bool):
+            value_type = "bool"
+            stored_value = str(value).lower()
+        elif isinstance(value, Integral):
+            value_type = "int"
+            stored_value = str(value)
+        elif isinstance(value, Real):
+            value_type = "float"
+            stored_value = str(value)
+        elif isinstance(value, list):
+            value_type = "list"
+            stored_value = ",".join(str(item) for item in value)
+        elif isinstance(value, tuple):
+            value_type = "tuple"
+            stored_value = ",".join(str(item) for item in value)
+        elif value is None:
+            value_type = "NoneType"
+            stored_value = ""
+        else:
+            continue
+
+        env_values[key] = stored_value
+        env_values[f"{key}_type"] = value_type
+        stored_values[key] = value
+
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_content = "\n".join(f"{key}={value}" for key, value in env_values.items())
+    env_path.write_text(f"{env_content}\n", encoding="utf-8")
+
+    return stored_values
+
 
 @st.cache_data(show_spinner=False)
 def load_dataset(path: str, filter_by_current_year: bool = False, current_season: str = "2026-27") -> pd.DataFrame:

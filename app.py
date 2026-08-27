@@ -7,7 +7,6 @@ pages = {
     "Pages": [
         st.Page("pages/statistics.py", title="Statistics", icon="📊"),
         st.Page("pages/fantacalcio.py", title="Fantacalcio", icon="⚽"),
-        st.Page("pages/auction.py", title="Auction", icon="🔨"),
     ]
 }
 navigation = st.navigation(pages, position="sidebar", expanded=True)
