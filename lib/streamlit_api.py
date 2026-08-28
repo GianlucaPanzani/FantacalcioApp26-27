@@ -1,4 +1,5 @@
-from pathlib import Path
+from io import BytesIO
+import time
 from numbers import Integral, Real
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -381,20 +382,20 @@ def has_full_team(fanta_manager: str) -> bool:
     return True
 
 
-def generate_pdf_with_bought_players(path: str = "fantacalcio_teams.pdf") -> bool:
-    """Generate a PDF containing every Fanta Manager's completed team."""
+def generate_pdf_with_bought_players(default_file_name: str = "fantacalcio_teams.pdf"):
+    """Generate the teams PDF and display its download controls in the sidebar."""
     fanta_manager_players_dict = st.session_state.get("fanta_manager_players_dict_key", {})
     budget = st.session_state.get("fantacalcio_budget_key", 500)
 
     if not fanta_manager_players_dict:
-        return False
+        return
 
     try:
-        output_path = Path(path)
+        pdf_buffer = BytesIO()
         must_have_columns = ["id", "player", "team", "role", "mantra_role", "mln"]
         column_names = ["ID", "Player", "Team", "Role", "Mantra Role", "Mln"]
 
-        with PdfPages(output_path) as pdf:
+        with PdfPages(pdf_buffer) as pdf:
             for fanta_manager, bought_players in fanta_manager_players_dict.items():
                 players_df = bought_players.copy()
                 for column in must_have_columns:
@@ -434,7 +435,85 @@ def generate_pdf_with_bought_players(path: str = "fantacalcio_teams.pdf") -> boo
                 pdf.savefig(figure, bbox_inches="tight")
                 plt.close(figure)
 
-        return True
+        pdf_data = pdf_buffer.getvalue()
+
+        st.sidebar.subheader("Auction PDF")
+        st.sidebar.caption("The completed teams are ready to download.")
+        file_name = st.sidebar.text_input(
+            "File name",
+            value=default_file_name,
+            key="auction_pdf_file_name_key",
+        ).strip()
+
+        file_name = Path(file_name).name if file_name else default_file_name
+        if not file_name.lower().endswith(".pdf"):
+            file_name = f"{file_name}.pdf"
+
+        def balloons():
+            st.balloons()
+            st.session_state["show_auction_reset_confirmation_key"] = True
+
+        st.sidebar.download_button(
+            label="Save PDF",
+            data=pdf_data,
+            file_name=file_name,
+            mime="application/pdf",
+            icon=":material/save:",
+            type="primary",
+            width="stretch",
+            on_click=balloons,
+        )
+
+        
+        if st.session_state.get("show_auction_reset_confirmation_key", False):
+            
+            with st.sidebar:
+                st.divider()
+
+                st.warning(
+                    "To do another auction is needed the reset of the purchase players. Do you want to do it? "
+                    "The downloaded PDF will not be deleted."
+                )
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    reset_players = st.button(
+                        "Reset",
+                        icon=":material/restart_alt:",
+                        type="primary",
+                        width="stretch",
+                        key="reset_auction_players_key",
+                    )
+                with col2:
+                    keep_players = st.button(
+                        "keep",
+                        width="stretch",
+                        key="keep_auction_players_key",
+                    )
+
+                if reset_players:
+                    bought_player_columns = ["id", "player", "team", "role", "mantra_role", "manager", "mln"]
+                    empty_bought_players = pd.DataFrame(columns=bought_player_columns)
+                    fanta_managers = st.session_state.get("fanta_managers_key", [])
+
+                    st.session_state["fanta_manager_players_dict_key"] = {
+                        fanta_manager: empty_bought_players.copy()
+                        for fanta_manager in fanta_managers
+                    }
+                    st.session_state["bought_players_df_key"] = empty_bought_players
+
+                    for key in list(st.session_state):
+                        if str(key).startswith("purchase_editor_"):
+                            del st.session_state[key]
+
+                    st.session_state.pop("show_auction_reset_confirmation_key", None)
+                    st.rerun()
+
+                if keep_players:
+                    st.session_state.pop("show_auction_reset_confirmation_key", None)
+                    st.rerun()
+
+        return
     except Exception as e:
-        st.error(f"Something went wrong saving the results of the aucting:\n\n{e}\n")
-        return False
+        st.error(f"Something went wrong saving the results of the auction:\n\n{e}\n")
+        return

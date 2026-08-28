@@ -527,8 +527,6 @@ for fanta_manager in fanta_manager_players_dict:
     if not has_full_team(fanta_manager):
         auction_completed = False
 if auction_completed:
-    if generate_pdf_with_bought_players():
-        st.balloons()
-        st.success("Fantacalcio's Auction completed!")
-        st.info("You can find the PDF with the teams inside the main directory.")
+    with st.spinner("Building the teams file..."):
+        generate_pdf_with_bought_players()
     

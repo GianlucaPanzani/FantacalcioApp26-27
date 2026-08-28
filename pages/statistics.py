@@ -2,14 +2,12 @@ import streamlit as st
 import pandas as pd
 from lib.streamlit_api import (
     persistent_session_keys,
-    role_limits_dict,
-    role_budget_limits_dict,
     thick_divider,
-    get_fanta_manager_players_dict,
     sync_filter,
     load_dataset,
     load_env,
-    store_env
+    store_env,
+    plot_player_history
 )
 
 
@@ -115,7 +113,7 @@ def player_filter(players: pd.DataFrame) -> pd.DataFrame:
         else None
     )
 
-    # Create widgets
+    # Create filters
     cols = st.columns([9,1,9,1,9,1,9,1])
     with cols[0]:
         selected_players = st.multiselect(
