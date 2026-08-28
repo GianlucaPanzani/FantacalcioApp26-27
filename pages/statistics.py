@@ -275,4 +275,20 @@ st.subheader("Graphics")
 if filtered_players["season"].nunique() == 1 and (st.session_state["season_widget_key"] or st.session_state["team_widget_key"]):
     st.warning("You have selected 1 specific season or a specific team: deselect it to see the statistics accross years.")
 
-plot_player_history(filtered_players)
+fanta_role_graphical_keys_dict = {
+    "P": "golkeeper_graphical_cols_key",
+    "D": "defender_graphical_cols_key",
+    "C": "midfielder_graphical_cols_key",
+    "A": "attacker_graphical_cols_key",
+}
+
+player_roles = filtered_players["fanta_role"].dropna()
+if player_roles.empty:
+    st.warning("The selected player has no role.")
+    st.stop()
+
+player_role = player_roles.iloc[0]
+selected_cols_key = fanta_role_graphical_keys_dict.get(player_role)
+selected_cols = st.session_state.get(selected_cols_key, []) if selected_cols_key else []
+
+plot_player_history(filtered_players, selected_cols)

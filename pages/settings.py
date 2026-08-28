@@ -6,8 +6,10 @@ import lib.ollama_api as llm
 from lib.streamlit_api import (
     persistent_session_keys,
     thick_divider,
+    toast_css_format,
     get_user_view_of_column,
     get_fanta_manager_players_dict,
+    get_roles_list,
     sync_filter,
     load_dataset,
     load_env,
@@ -38,13 +40,18 @@ fanta_managers = [my_fanta_manager] + [manager for manager in fanta_managers if 
 st.session_state["fanta_managers_key"] = fanta_managers
 
 fanta_manager_players_dict = get_fanta_manager_players_dict()
+roles_list = get_roles_list()
+roles_with_aka_list = get_roles_list(enable_aka=True)
 history_players = load_dataset("data/filtered_history_players.csv")
+
+# Set toast format for this page
+toast_css_format()
 
 
 # Fanta Managers settings
 with st.container(border=True):
 
-    cols = st.columns([10,2,8,1,8,1,8,1,8])
+    cols = st.columns([8,2,8,1,8,1,8,1,8])
 
     with cols[0]:
         st.markdown("#### **Fanta Managers**")
@@ -166,180 +173,151 @@ with st.container(border=True):
 # Auction settings
 with st.container(border=True):
 
-    cols = st.columns([10,2,8,1,8,1,8,1,8])
+    cols = st.columns([8,2,8,1,8,1,8,1,8])
 
     with cols[0]:
         st.markdown("#### **Players per role**")
 
-    with cols[2]:
-        goalkeepers_limit = st.number_input(
-            "Number of Goalkeepers (P)",
-            min_value=0,
-            value=3,
-            step=1,
-            key="fantacalcio_goalkeepers_limit_key",
-        )
-    with cols[4]:
-        defenders_limit = st.number_input(
-            "Number of Defenders (D)",
-            min_value=0,
-            value=8,
-            step=1,
-            key="fantacalcio_defenders_limit_key",
-        )
-    with cols[6]:
-        midfielders_limit = st.number_input(
-            "Number of Midfielders (C)",
-            min_value=0,
-            value=8,
-            step=1,
-            key="fantacalcio_midfielders_limit_key",
-        )
-    with cols[8]:
-        attackers_limit = st.number_input(
-            "Number of Attackers (A)",
-            min_value=0,
-            value=6,
-            step=1,
-            key="fantacalcio_attackers_limit_key",
-        )
+    for i, role, role_with_aka, value in zip(range(2,9,2), roles_list, roles_with_aka_list, [3,8,8,6]):
+        with cols[i]:
+            goalkeepers_limit = st.number_input(
+                f"Number of {str(role).capitalize()} {str(role_with_aka).split(' ')[1]}",
+                min_value=0,
+                value=value,
+                step=1,
+                key=f"fantacalcio_{role}_limit_key",
+            )
 
 # Budget limits settings
 with st.container(border=True):
 
-    cols = st.columns([10,2,8,1,8,1,8,1,8])
+    upper_cols = st.columns([8,2,8,1,8,1,8,1,8])
 
-    with cols[0]:
+    with upper_cols[0]:
         st.markdown("#### **Budget limits per role**")
 
-    with cols[2]:
+    with upper_cols[2]:
         budget = st.number_input(
-            "Available budget (mln)",
+            "Total Budget",
             min_value=0,
             value=500,
             step=50,
             key="fantacalcio_budget_key",
         )
 
-    cols = st.columns([10,2,8,1,8,1,8,1,8])
+    cols = st.columns([8,2,8,1,8,1,8,1,8])
 
-    with cols[2]:
-        goalkeepers_budget_limit = st.number_input(
-            "Budget for Goalkeepers (P)",
-            min_value=0,
-            max_value=500,
-            value=50,
-            step=5,
-            key="fantacalcio_goalkeepers_budget_limit_key",
-        )
-    with cols[4]:
-        defenders_budget_limit = st.number_input(
-            "Budget for Defenders (D)",
-            min_value=0,
-            max_value=500,
-            value=100,
-            step=5,
-            key="fantacalcio_defenders_budget_limit_key",
-        )
-    with cols[6]:
-        midfielders_budget_limit = st.number_input(
-            "Budget for Midfielders (C)",
-            min_value=0,
-            max_value=500,
-            value=200,
-            step=5,
-            key="fantacalcio_midfielders_budget_limit_key",
-        )
-    with cols[8]:
-        attackers_budget_limit = st.number_input(
-            "Budget for Attackers (A)",
-            min_value=0,
-            max_value=500,
-            value=150,
-            step=5,
-            key="fantacalcio_attackers_budget_limit_key",
-        )
-    
-    cols = st.columns([10,3,36,1])
-    
-    with cols[2]:
-        budget_limit_sum = goalkeepers_budget_limit + defenders_budget_limit + midfielders_budget_limit + attackers_budget_limit
-        if "fantacalcio_budget_key" in st.session_state and budget_limit_sum > st.session_state["fantacalcio_budget_key"]:
-            st.error(f"Budget limit exceeded: {budget_limit_sum}/{st.session_state['fantacalcio_budget_key']}.")
-        if "fantacalcio_budget_key" in st.session_state and budget_limit_sum < st.session_state["fantacalcio_budget_key"]:
-            st.info(f"You can still use {int(st.session_state['fantacalcio_budget_key']) - budget_limit_sum} mln.")
+    budget_limits = []
+    for i, role, role_with_aka, value in zip(range(2,9,2), roles_list, roles_with_aka_list, [50,100,200,150]):
+        with cols[i]:
+            budget_limits.append(
+                st.number_input(
+                    f"Budget for {str(role).capitalize()}s",
+                    min_value=0,
+                    max_value=500,
+                    value=value,
+                    step=5,
+                    key=f"fantacalcio_{role}_budget_limit_key",
+                )
+            )
 
-# Graphics settinga
+    budget_limit_sum = sum(budget_limits)
+    tot_budget = int(st.session_state['fantacalcio_budget_key'])
+    available_budget = tot_budget - budget_limit_sum
+    available_budget_color = "green" if available_budget > 0 else "red"
+    left_or_exceed = "left" if available_budget > 0 else "exceed"
+
+    with upper_cols[8]:
+        st.html("""
+        <style>
+        .st-key-available-budget-metric
+        [data-testid="stMetricValue"] span[style*="font-size"] {
+            font-size: 1.2rem !important;
+        }
+        </style>
+        """)
+        if available_budget != 0:
+            available_budget = -available_budget if available_budget < 0 else available_budget
+            st.metric(
+                label=f"Available mln",
+                value=f":{available_budget_color}[{available_budget}] mln {left_or_exceed}",
+                icon="💰",
+                border=True
+            )
+        else:
+            st.metric(
+                label=f"Available mln",
+                value=f":green[✓] 0 mln left",
+                icon="💰",
+                border=True
+            )
+
+# Graphics settings
 with st.container(border=True):
 
-    cols = st.columns([10,2,8,1,8,1,8,1,8])
+    cols = st.columns([8,2,8,1,8,1,8,1,8])
 
     with cols[0]:
         st.markdown("#### **Graphics per role**")
-    
-    with cols[2]:
-        st.markdown("- **Golkeeper (P)**")
 
-        st.session_state.setdefault("golkeeper_graphical_cols_key", [])
-        for column in st.session_state['golkeeper_graphical_cols_key']:
-            with st.container(border=True):
-                st.markdown(f"{get_user_view_of_column(column)}")
+    for i, role in zip(range(2,9,2), roles_list):
+        with cols[i]:
+            st.markdown(f"**{str(role).capitalize()} statistics**")
 
-        numeric_columns = history_players.select_dtypes(include="number").columns.tolist()
-        selected_columns = st.session_state["golkeeper_graphical_cols_key"] + ["add"]
+            st.session_state.setdefault(f"{role}_graphical_cols_key", [])
+            for column_idx, column in enumerate(st.session_state[f"{role}_graphical_cols_key"]):
+                with st.container(border=True):
+                    col1, col2 = st.columns([8,2], vertical_alignment="center")
+                    with col1:
+                        st.markdown(f"{get_user_view_of_column(column)}")
+                    with col2:
+                        remove_graphical_col_button = st.button(
+                            "",
+                            icon=":material/delete:",
+                            type="tertiary",
+                            help="Remove this statistic",
+                            width="stretch",
+                            key=f"remove_{role}_graphical_col_{column_idx}_key"
+                        )
+                if remove_graphical_col_button:
+                    st.session_state[f"{role}_graphical_cols_key"].remove(column)
+                    st.rerun()
 
-        selected_graphical_col = st.selectbox(
-            "Select a field to use for statistics",
-            options=numeric_columns,
-            index=None,
-            placeholder="Select a column...",
-            format_func=get_user_view_of_column,
-            key="add_golkeeper_graphical_col_widget_key",
-        )
 
-        add_graphical_col = st.button(
-            "Add",
-            width="stretch",
-            key="add_button_golkeeper_graphical_col_key"
-        )
-        if add_graphical_col:
-            st.session_state["golkeeper_graphical_cols_key"].append(selected_graphical_col)
-            st.rerun()
-    
-    with cols[4]:
-        st.markdown("- **Defender (D)**")
+    cols = st.columns([8,2,8,1,8,1,8,1,8])
+    for i, role in zip(range(2,9,2), roles_list):
 
-        st.session_state.setdefault("defender_graphical_cols_key", [])
-        for column in st.session_state['defender_graphical_cols_key']:
-            with st.container(border=True):
-                st.markdown(f"{get_user_view_of_column(column)}")
+        numeric_columns = [
+            column for column in history_players.select_dtypes(include="number").columns.tolist()
+            if column not in st.session_state[f"{role}_graphical_cols_key"]
+        ]
 
-        numeric_columns = history_players.select_dtypes(include="number").columns.tolist()
-        selected_columns = st.session_state["defender_graphical_cols_key"] + ["add"]
+        with cols[i]:
+            st.divider()
 
-        selected_graphical_col = st.selectbox(
-            "Select a field to use for statistics",
-            options=numeric_columns,
-            index=None,
-            placeholder="Select a column...",
-            format_func=get_user_view_of_column,
-            key="add_defender_graphical_col_widget_key",
-        )
+            selected_graphical_col = st.selectbox(
+                "Select a field to use for statistics",
+                options=numeric_columns,
+                index=None,
+                placeholder="Select a column...",
+                format_func=get_user_view_of_column,
+                key=f"add_{role}_graphical_col_widget_key",
+            )
 
-        add_graphical_col = st.button(
-            "Add",
-            width="stretch",
-            key="add_button_defender_graphical_col_key"
-        )
-        if add_graphical_col:
-            st.session_state["defender_graphical_cols_key"].append(selected_graphical_col)
-            st.rerun()
-
+            add_graphical_col_button = st.button(
+                "Add",
+                width="stretch",
+                disabled=selected_graphical_col is None,
+                key=f"add_button_{role}_graphical_col_key"
+            )
+            if add_graphical_col_button and selected_graphical_col is not None:
+                st.session_state[f"{role}_graphical_cols_key"].append(selected_graphical_col)
+                st.rerun()
 
 # AI settings
 with st.container(border=True):
 
-    cols = st.columns([10,2,8,1,8,1,8,1,8])
+    cols = st.columns([8,2,8,1,8,1,8,1,8])
 
     with cols[0]:
         st.markdown("#### **AI settings**")

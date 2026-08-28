@@ -20,6 +20,10 @@ persistent_session_keys = [
     "fantacalcio_defenders_limit_key",
     "fantacalcio_midfielders_limit_key",
     "fantacalcio_attackers_limit_key",
+    "golkeeper_graphical_cols_key",
+    "defender_graphical_cols_key",
+    "midfielder_graphical_cols_key",
+    "attacker_graphical_cols_key",
     "ai_enabled_key",
     "bought_players_df_key",
 ]
@@ -123,6 +127,23 @@ def thick_divider(height=4, border="none", background_color="#808080", border_ra
         """
     )
 
+def toast_css_format(background_color="#47BEF1", border_color="#FFFFFF", border_size=2):
+    return st.html(
+        f"""
+        <style>
+        [data-testid="stToast"] {{
+            background-color: {background_color};
+            border: {border_size}px solid {border_color};
+            box-shadow: 0 4px 14px rgba(255, 179, 0, 0.35);
+        }}
+
+        [data-testid="stToast"] * {{
+            color: #664D03 !important;
+        }}
+        </style>
+        """
+    )
+
 def get_user_view_of_column(col: str):
     return columns_to_user_view_dict[col]
 
@@ -140,6 +161,13 @@ def get_role_limits() -> dict:
         "A": st.session_state.get("fantacalcio_attackers_limit_key", 6),
     }
 
+def get_roles_list(enable_aka=False) -> list:
+    return [
+        f"golkeeper  {'(P)' if enable_aka else ''}".strip(),
+        f"defender {'(D)' if enable_aka else ''}".strip(),
+        f"midfielder {'(C)' if enable_aka else ''}".strip(), 
+        f"attacker {'(A)' if enable_aka else ''}".strip()
+    ]
 
 def get_role_budget_limits() -> dict:
     return {
@@ -316,9 +344,9 @@ def sync_filter(filter_key: str, widget_key: str) -> None:
     """Copy a widget value into its persistent filter state."""
     st.session_state[filter_key] = st.session_state.get(widget_key)
 
-def plot_player_history(filtered_players: pd.DataFrame) -> None:
+def plot_player_history(filtered_players: pd.DataFrame, selected_cols: list[str]) -> None:
     """
-    Display selectable historical statistics for a single player.
+    Display the selected historical statistics for a single player.
 
     Each chart represents the evolution of one statistic across seasons.
     Charts are arranged alternately in two columns.
@@ -327,71 +355,14 @@ def plot_player_history(filtered_players: pd.DataFrame) -> None:
     ----------
     filtered_players:
         DataFrame containing the historical records of one player.
+    selected_cols:
+        Columns selected in the settings for the player's role.
     """
-
-    chart_fields = {
-        # General statistics
-        "age": "Age",
-        "appearances": "Appearances",
-        "starts": "Starts",
-        "minutes": "Minutes",
-        "nineties": "90-minute periods",
-
-        # Attacking statistics
-        "goals_per90": "Goals per 90",
-        "assists_per90": "Assists per 90",
-        "goals_assists_per90": "Goals + assists per 90",
-        "non_penalty_goals_per90": "Non-penalty goals per 90",
-        "non_penalty_goals_assists_per90": "Non-penalty goals + assists per 90",
-        "penalty_attempts_per90": "Penalty attempts per 90",
-        "shots_on_target_pct": "Shots on target %",
-        "shots_per90": "Shots per 90",
-        "shots_on_target_per90": "Shots on target per 90",
-        "goals_per_shot": "Goals per shot",
-        "goals_per_shot_on_target": "Goals per shot on target",
-
-        # Defensive statistics
-        "interceptions_per90": "Interceptions per 90",
-        "tackles_won_per90": "Tackles won per 90",
-        "yellow_cards_per90": "Yellow cards per 90",
-        "red_cards_per90": "Red cards per 90",
-
-        # Goalkeeper statistics
-        "goals_against_per90": "Goals against per 90",
-        "shots_on_target_against_per90": "Shots on target against per 90",
-        "saves_per90": "Saves per 90",
-        "save_pct": "Save percentage",
-        "wins_per90": "Wins per 90",
-        "draws_per90": "Draws per 90",
-        "losses_per90": "Losses per 90",
-        "clean_sheets_per90": "Clean sheets per 90",
-        "clean_sheet_pct": "Clean sheet percentage",
-        "keeper_penalty_attempts_per90": "Penalties faced per 90",
-        "penalties_allowed_per90": "Penalties allowed per 90",
-        "penalties_saved_per90": "Penalties saved per 90",
-        "penalties_missed_per90": "Penalties missed per 90",
-    }
-
-    # Remove fields not present in the current dataset.
-    available_cols = {field: label for field, label in chart_fields.items() if field in filtered_players.columns}
-
-    # Columns selection
-    selected_cols = st.multiselect(
-        label="Select statistics",
-        options=list(available_cols),
-        default=[
-            col for col in [
-                "minutes",
-                "goals_per90",
-                "assists_per90",
-            ] if col in available_cols
-        ],
-        format_func=lambda col: available_cols[col],
-    )
+    selected_cols = [col for col in selected_cols if col in filtered_players.columns]
 
     # Case of no fields selected
     if not selected_cols:
-        st.info("Select at least one statistic.")
+        st.info("Select at least one statistic for this role in Settings.")
         return
 
     # Convert selected statistics to numeric values.
@@ -405,10 +376,11 @@ def plot_player_history(filtered_players: pd.DataFrame) -> None:
     for index, col in enumerate(selected_cols):
         container = col1 if index % 2 == 0 else col2
         data = chart_df[["season", col]].dropna()
+        user_view_col = get_user_view_of_column(col)
 
         with container:
             st.markdown(
-                f"<h4 style='text-align: center;'>{available_cols[col]}</h4>",
+                f"<h4 style='text-align: center;'>{user_view_col}</h4>",
                 unsafe_allow_html=True
             )
             st.line_chart(
@@ -416,8 +388,8 @@ def plot_player_history(filtered_players: pd.DataFrame) -> None:
                 x="season",
                 y=col,
                 x_label="Season",
-                y_label=available_cols[col],
-                use_container_width=True,
+                y_label=user_view_col,
+                width="stretch",
             )
 
 
