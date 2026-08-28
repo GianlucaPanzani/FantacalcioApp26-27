@@ -191,12 +191,12 @@ with st.container(border=True):
 # Budget limits settings
 with st.container(border=True):
 
-    upper_cols = st.columns([8,2,8,1,8,1,8,1,8])
+    cols = st.columns([8,1,6,1,6,1,6,1,6,1,6])
 
-    with upper_cols[0]:
+    with cols[0]:
         st.markdown("#### **Budget limits per role**")
 
-    with upper_cols[2]:
+    with cols[2]:
         budget = st.number_input(
             "Total Budget",
             min_value=0,
@@ -205,7 +205,7 @@ with st.container(border=True):
             key="fantacalcio_budget_key",
         )
 
-    cols = st.columns([8,2,8,1,8,1,8,1,8])
+    cols = st.columns([8,1,6,1,6,1,6,1,6,1,6], vertical_alignment="center")
 
     budget_limits = []
     for i, role, role_with_aka, value in zip(range(2,9,2), roles_list, roles_with_aka_list, [50,100,200,150]):
@@ -227,27 +227,19 @@ with st.container(border=True):
     available_budget_color = "green" if available_budget > 0 else "red"
     left_or_exceed = "left" if available_budget > 0 else "exceed"
 
-    with upper_cols[8]:
-        st.html("""
-        <style>
-        .st-key-available-budget-metric
-        [data-testid="stMetricValue"] span[style*="font-size"] {
-            font-size: 1.2rem !important;
-        }
-        </style>
-        """)
+    with cols[10]:
         if available_budget != 0:
-            available_budget = -available_budget if available_budget < 0 else available_budget
+            available_budget_str = f"-{available_budget}" if available_budget < 0 else f"+{available_budget}"
             st.metric(
                 label=f"Available mln",
-                value=f":{available_budget_color}[{available_budget}] mln {left_or_exceed}",
+                value=f":{available_budget_color}[{available_budget_str}] mln",
                 icon="💰",
                 border=True
             )
         else:
             st.metric(
                 label=f"Available mln",
-                value=f":green[✓] 0 mln left",
+                value=f":green[✓] 0 mln",
                 icon="💰",
                 border=True
             )
