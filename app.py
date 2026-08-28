@@ -10,6 +10,7 @@ pages = {
     "Pages": [
         st.Page("pages/statistics.py", title="Statistics", icon="📊"),
         st.Page("pages/fantacalcio.py", title="Fantacalcio", icon="⚽"),
+        st.Page("pages/selection.py", title="Players Selection", icon=":material/group_add:"),
         st.Page("pages/settings.py", title="Settings", icon="⚙️"),
     ]
 }
