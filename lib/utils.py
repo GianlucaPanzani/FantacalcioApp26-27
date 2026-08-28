@@ -3,6 +3,13 @@ import numpy as np
 from rapidfuzz import fuzz
 import re
 import unicodedata
+from pandas.api.types import (
+    is_bool_dtype,
+    is_integer_dtype,
+    is_float_dtype,
+    is_string_dtype,
+    is_datetime64_any_dtype,
+)
 
 
 def normalize_name(name: str) -> str:
@@ -11,7 +18,44 @@ def normalize_name(name: str) -> str:
     name = "".join(char for char in name if unicodedata.category(char) != "Mn")
     name = re.sub(r"[^\w\s.]", " ", name.lower())
     return re.sub(r"\s+", " ", name).strip()
-    
+
+def get_condition_by(df: pd.DataFrame, column: str, selected_values, compare_op: str):
+    """Return the appropriate filtering condition."""
+    if isinstance(selected_values, (list, tuple, set)):
+        return df[column].isin(selected_values)
+    if compare_op == "eq":
+        return df[column] == selected_values
+    elif compare_op == "geq":
+        return df[column] >= selected_values
+    elif compare_op == "leq":
+        return df[column] <= selected_values
+    return df[column] == selected_values
+
+def get_default_value(column: pd.Series):
+    if is_bool_dtype(column):
+        return False
+    if is_integer_dtype(column):
+        return 0
+    if is_float_dtype(column):
+        return 0.0
+    if is_datetime64_any_dtype(column):
+        return pd.NaT
+    if is_string_dtype(column):
+        return ""
+
+    # Object columns may contain lists, dictionaries or other Python objects.
+    values = column.dropna()
+    if not values.empty:
+        sample_value = values.iloc[0]
+
+        if isinstance(sample_value, list):
+            return []
+        if isinstance(sample_value, dict):
+            return {}
+        if isinstance(sample_value, tuple):
+            return ()
+
+    return None
 
 def generate_name_variants(full_name: str) -> list[str]:
     """

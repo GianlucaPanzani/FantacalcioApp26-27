@@ -51,7 +51,7 @@ toast_css_format()
 # Fanta Managers settings
 with st.container(border=True):
 
-    cols = st.columns([8,2,8,1,8,1,8,1,8])
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
 
     with cols[0]:
         st.markdown("#### **Fanta Managers**")
@@ -173,7 +173,7 @@ with st.container(border=True):
 # Auction settings
 with st.container(border=True):
 
-    cols = st.columns([8,2,8,1,8,1,8,1,8])
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
 
     with cols[0]:
         st.markdown("#### **Players per role**")
@@ -247,7 +247,7 @@ with st.container(border=True):
 # Graphics settings
 with st.container(border=True):
 
-    cols = st.columns([8,2,8,1,8,1,8,1,8])
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
 
     with cols[0]:
         st.markdown("#### **Graphics per role**")
@@ -276,7 +276,7 @@ with st.container(border=True):
                     st.rerun()
 
 
-    cols = st.columns([8,2,8,1,8,1,8,1,8])
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
     for i, role in zip(range(2,9,2), roles_list):
 
         numeric_columns = [
@@ -309,7 +309,7 @@ with st.container(border=True):
 # AI settings
 with st.container(border=True):
 
-    cols = st.columns([8,2,8,1,8,1,8,1,8])
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
 
     with cols[0]:
         st.markdown("#### **AI settings**")

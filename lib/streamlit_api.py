@@ -2,6 +2,7 @@ from io import BytesIO
 import time
 from numbers import Integral, Real
 from pathlib import Path
+import altair as alt
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
@@ -168,6 +169,14 @@ def get_roles_list(enable_aka=False) -> list:
         f"midfielder {'(C)' if enable_aka else ''}".strip(), 
         f"attacker {'(A)' if enable_aka else ''}".strip()
     ]
+
+def get_roles_dict() -> dict:
+    return {
+        "P": "golkeeper",
+        "D": "defender",
+        "C": "midfielder",
+        "A": "attacker"
+    }
 
 def get_role_budget_limits() -> dict:
     return {
@@ -344,7 +353,141 @@ def sync_filter(filter_key: str, widget_key: str) -> None:
     """Copy a widget value into its persistent filter state."""
     st.session_state[filter_key] = st.session_state.get(widget_key)
 
-def plot_player_history(filtered_players: pd.DataFrame, selected_cols: list[str]) -> None:
+
+def create_player_history_chart(data: pd.DataFrame, statistic_name: str, y_limits=None):
+    """Create a player history chart with season, team and value tooltips."""
+    y_scale = alt.Scale(zero=False)
+    if y_limits is not None:
+        y_scale = alt.Scale(domain=list(y_limits), zero=False)
+
+    season_order = data["season"].drop_duplicates().tolist()
+    return alt.Chart(data).mark_line(point=True).encode(
+        x=alt.X("season:N", title="Season", sort=season_order),
+        y=alt.Y("value:Q", title=statistic_name, scale=y_scale),
+        tooltip=[
+            alt.Tooltip("season:N", title="Season"),
+            alt.Tooltip("team:N", title="Team"),
+            alt.Tooltip("value:Q", title=statistic_name),
+        ],
+    )
+
+
+def plot_comparison_between_players(filtered_players: pd.DataFrame) -> None:
+    """
+    Compare the historical statistics of two selected players.
+
+    The statistics configured for both player roles are combined and displayed
+    in the same order. The first player is shown on the left and the second one
+    on the right.
+
+    Parameters
+    ----------
+    filtered_players:
+        DataFrame containing the historical records of two players.
+    """
+    available_players = filtered_players["player"].dropna().drop_duplicates().tolist()
+    selected_players = st.session_state.get("player_key", [])
+    player_names = [player for player in selected_players if player in available_players]
+
+    # Add players missing from Session State while preserving DataFrame order.
+    for player in available_players:
+        if player not in player_names:
+            player_names.append(player)
+
+    # Create the cols to plot as the union of the cols of the 2 players
+    columns_to_plot = []
+    for player_name in player_names:
+        player_df = filtered_players[filtered_players["player"] == player_name]
+
+        fanta_role = player_df["fanta_role"].dropna().iloc[0]
+        role_name = get_roles_dict()[fanta_role]
+        columns = st.session_state[f"{role_name}_graphical_cols_key"]
+
+        for col in columns:
+            if col in filtered_players.columns and col not in columns_to_plot:
+                columns_to_plot.append(col)
+
+    # Keep the same readable order in both player columns
+    columns_to_plot = sorted(columns_to_plot, key=lambda col: get_user_view_of_column(col).lower())
+
+    # Calculate the common Y-axis limits for each statistic.
+    y_limits_dict = {}
+    for col in columns_to_plot:
+        player_min_values = []
+        player_max_values = []
+
+        for player_name in player_names:
+            player_values = filtered_players.loc[filtered_players["player"] == player_name, col]
+            player_values = pd.to_numeric(player_values, errors="coerce").dropna()
+
+            if not player_values.empty:
+                player_min_values.append(float(player_values.min()))
+                player_max_values.append(float(player_values.max()))
+
+        if player_min_values and player_max_values:
+            y_min = min(player_min_values)
+            y_max = max(player_max_values)
+
+            # Avoid an empty axis range when every value is the same.
+            if y_min == y_max:
+                padding = max(abs(y_min) * 0.05, 0.01)
+                y_min -= padding
+                y_max += padding
+
+            y_limits_dict[col] = (y_min, y_max)
+
+    col1, _, col2 = st.columns([9,1,9])
+    player_columns = [col1, col2]
+
+    for player_name, player_column in zip(player_names, player_columns):
+        chart_df = filtered_players[filtered_players["player"] == player_name].copy()
+        chart_df = chart_df.sort_values("season")
+
+        for col in columns_to_plot:
+            chart_df[col] = pd.to_numeric(chart_df[col], errors="coerce")
+
+        with player_column:
+
+            # Players header
+            fanta_role = chart_df["fanta_role"].dropna().iloc[0]
+            role_name = get_roles_dict()[fanta_role].capitalize()
+            latest_team = chart_df["team"].dropna().iloc[-1]
+            with st.container(border=True):
+                st.markdown(
+                    f"### :material/person: {player_name}",
+                    text_alignment="center",
+                    anchors=False,
+                )
+                st.markdown(
+                    f":blue-badge[{role_name} ({fanta_role})] :green-badge[{latest_team}]",
+                    text_alignment="center",
+                )
+
+            # Creation of the plots
+            for col in columns_to_plot:
+                data = chart_df[["season", "team", col]].dropna(subset=["season", col])
+                data = data.rename(columns={col: "value"})
+                data["team"] = data["team"].fillna("Unknown team")
+                user_view_col = get_user_view_of_column(col)
+
+                st.markdown(
+                    f"<h4 style='text-align: center;'>{user_view_col}</h4>",
+                    unsafe_allow_html=True
+                )
+
+                if data.empty:
+                    st.info("No data available for this statistic.")
+                    continue
+
+                y_min, y_max = y_limits_dict[col]
+                chart = create_player_history_chart(data, user_view_col, (y_min, y_max))
+
+                st.altair_chart(
+                    chart,
+                    width="stretch",
+                )
+
+def plot_player_history(filtered_players: pd.DataFrame) -> None:
     """
     Display the selected historical statistics for a single player.
 
@@ -355,27 +498,50 @@ def plot_player_history(filtered_players: pd.DataFrame, selected_cols: list[str]
     ----------
     filtered_players:
         DataFrame containing the historical records of one player.
-    selected_cols:
-        Columns selected in the settings for the player's role.
     """
-    selected_cols = [col for col in selected_cols if col in filtered_players.columns]
+    try:
+        fanta_role = filtered_players["fanta_role"].dropna().iloc[0]
+    except:
+        fanta_role = "C"
+
+    columns_to_plot = st.session_state.get(f"{get_roles_dict()[fanta_role]}_graphical_cols_key", [])
+
+    # Select only available columns
+    columns_to_plot = [col for col in columns_to_plot if col in filtered_players.columns]
 
     # Case of no fields selected
-    if not selected_cols:
-        st.info("Select at least one statistic for this role in Settings.")
+    if not columns_to_plot:
+        st.info("Select at least one statistic for this role in the Settings page.")
         return
 
     # Convert selected statistics to numeric values.
     chart_df = filtered_players.copy()
     chart_df = chart_df.sort_values("season")
-    for col in selected_cols:
+    for col in columns_to_plot:
         chart_df[col] = pd.to_numeric(chart_df[col], errors="coerce")
 
-    # Create the graphics in selected_cols in 2 columns
+    # Player header
+    player_name = chart_df["player"].dropna().iloc[0]
+    role_name = get_roles_dict()[fanta_role].capitalize()
+    latest_team = chart_df["team"].dropna().iloc[-1]
+    with st.container(border=True):
+        st.markdown(
+            f"### :material/person: {player_name}",
+            text_alignment="center",
+            anchors=False,
+        )
+        st.markdown(
+            f":blue-badge[{role_name} ({fanta_role})] :green-badge[{latest_team}]",
+            text_alignment="center",
+        )
+
+    # Create the graphics in columns_to_plot in 2 columns
     col1, _, col2 = st.columns([9,1,9])
-    for index, col in enumerate(selected_cols):
+    for index, col in enumerate(columns_to_plot):
         container = col1 if index % 2 == 0 else col2
-        data = chart_df[["season", col]].dropna()
+        data = chart_df[["season", "team", col]].dropna(subset=["season", col])
+        data = data.rename(columns={col: "value"})
+        data["team"] = data["team"].fillna("Unknown team")
         user_view_col = get_user_view_of_column(col)
 
         with container:
@@ -383,12 +549,9 @@ def plot_player_history(filtered_players: pd.DataFrame, selected_cols: list[str]
                 f"<h4 style='text-align: center;'>{user_view_col}</h4>",
                 unsafe_allow_html=True
             )
-            st.line_chart(
-                data,
-                x="season",
-                y=col,
-                x_label="Season",
-                y_label=user_view_col,
+            chart = create_player_history_chart(data, user_view_col)
+            st.altair_chart(
+                chart,
                 width="stretch",
             )
 

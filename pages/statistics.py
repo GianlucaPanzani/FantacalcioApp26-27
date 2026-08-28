@@ -1,12 +1,19 @@
 import streamlit as st
 import pandas as pd
+from lib.utils import (
+    get_default_value,
+    get_condition_by
+)
 from lib.streamlit_api import (
     persistent_session_keys,
+    columns_to_user_view_dict,
     thick_divider,
     sync_filter,
+    get_roles_list,
     load_dataset,
     load_env,
     store_env,
+    plot_comparison_between_players,
     plot_player_history
 )
 
@@ -17,33 +24,44 @@ st.set_page_config(
     layout="wide",
 )
 
+
+columns_to_filter_list = [
+    "player",
+    "fanta_role",
+    "season",
+    "team",
+    "competition",
+    "goals_per90",
+    "nineties",
+]
+
+compare_op_for_columns_to_filter_dict = {
+    "player": None,
+    "fanta_role": "eq",
+    "season": "eq",
+    "team": "eq",
+    "competition": "eq",
+    "goals_per90": "geq",
+    "nineties": "geq",
+}
+
+
 # =============================================================================
 # ============================== FUNCTIONS ====================================
 # =============================================================================
 
-def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
-    """Apply filters currently stored in Streamlit session state."""
+def apply_filters(df: pd.DataFrame, exclude=None) -> pd.DataFrame:
+    """Apply session-state filters, excluding one filter when requested."""
     result = df.copy()
 
-    selected_players = st.session_state.get("player_key", [])
-    selected_season = st.session_state.get("season_key")
-    selected_team = st.session_state.get("team_key")
-    selected_competition = st.session_state.get("competition_key")
-    selected_min_goals = st.session_state.get("goals_per90_key", 0.0)
-    selected_min_nineties = st.session_state.get("nineties_key", 0.0)
+    for column in columns_to_filter_list:
+        selected_values = st.session_state.get(f"{column}_key", get_default_value(result[column]))
+        if exclude == column or not selected_values:
+            continue
+        result = result[
+            get_condition_by(result, column, selected_values, compare_op_for_columns_to_filter_dict[column])
+        ]
 
-    if selected_players:
-        result = result[result["player"].isin(selected_players)]
-    if selected_season is not None:
-        result = result[result["season"] == selected_season]
-    if selected_team:
-        result = result[result["team"] == selected_team]
-    if selected_competition:
-        result = result[result["competition"] == selected_competition]
-    if selected_min_goals > 0:
-        result = result[result["goals_per90"] >= selected_min_goals]
-    if selected_min_nineties > 0:
-        result = result[result["nineties"] >= selected_min_nineties]
     return result
 
 def get_safe_slider_max(df, column_name, state_key, minimum_max=0.01):
@@ -57,180 +75,85 @@ def get_safe_slider_max(df, column_name, state_key, minimum_max=0.01):
     st.session_state[state_key] = current_value
     return max(data_max, current_value, minimum_max)
 
-def player_filter(players: pd.DataFrame) -> pd.DataFrame:
-    """
-    Display a Streamlit UI for filtering historical player records.
 
-    Existing filters are applied before creating the widgets, so every widget
-    shows values compatible with the current selection.
+def create_multiselect_filters(players: pd.DataFrame, columns=["player", "fanta_role", "season", "team", "competition"]) -> pd.DataFrame:
+    """Display the player filters vertically in the sidebar."""
 
-    Parameters
-    ----------
-    players:
-        DataFrame containing historical player data.
+    # Initialize multiselect values using the inferred column defaults.
+    for column in columns:
+        default_value = get_default_value(players[column])
+        default_value = default_value if isinstance(default_value, list) else []
+        st.session_state.setdefault(f"{column}_key", default_value)
 
-    Returns
-    -------
-    pd.DataFrame
-        Filtered player DataFrame.
-    """
+        # Convert values previously stored by selectboxes to lists.
+        selected_values = st.session_state[f"{column}_key"]
+        if not isinstance(selected_values, list):
+            selected_values = [] if selected_values in (None, "") else [selected_values]
+            st.session_state[f"{column}_key"] = selected_values
 
-    # Initialize default filter values
-    st.session_state.setdefault("player_key", [])
-    st.session_state.setdefault("season_key", None)
-    st.session_state.setdefault("team_key", None)
-    st.session_state.setdefault("competition_key", None)
-    st.session_state.setdefault("goals_per90_key", 0.0)
-    st.session_state.setdefault("nineties_key", 0.0)
+    # Each column receives the DataFrame filtered by all the other fields.
+    col_name_df_dict = {}
+    for column in columns:
+        col_name_df_dict[column] = apply_filters(players, exclude=column)
 
-    # Apply previous selections before generating widget options.
-    options_df = apply_filters(players)
+    # Create the multiselect widgets
+    for column in columns:
+        options = sorted(col_name_df_dict[column][column].dropna().unique(), key=str)
+        selected_values = [value for value in st.session_state[f"{column}_key"] if value in options]
+        st.session_state[f"{column}_key"] = selected_values
+        st.session_state[f"{column}_widget_key"] = selected_values
 
-    names = sorted(options_df["player"].dropna().astype(str).unique())
-    seasons = sorted(options_df["season"].dropna().unique(), key=str, reverse=True)
-    teams = sorted(options_df["team"].dropna().astype(str).unique())
-    competitions = sorted(options_df["competition"].dropna().astype(str).unique())
-
-    # Restore widget values after their options change.
-    st.session_state["player_widget_key"] = [
-        player
-        for player in st.session_state["player_key"]
-        if player in names
-    ]
-    st.session_state["season_widget_key"] = (
-        st.session_state["season_key"]
-        if st.session_state["season_key"] in seasons
-        else None
-    )
-    st.session_state["team_widget_key"] = (
-        st.session_state["team_key"]
-        if st.session_state["team_key"] in teams
-        else None
-    )
-    st.session_state["competition_widget_key"] = (
-        st.session_state["competition_key"]
-        if st.session_state["competition_key"] in competitions
-        else None
-    )
-
-    # Create filters
-    cols = st.columns([9,1,9,1,9,1,9,1])
-    with cols[0]:
-        selected_players = st.multiselect(
-            "Search players",
-            options=names,
-            placeholder="Select one or more players...",
-            key="player_widget_key",
+        st.multiselect(
+            f"Select {column.replace('_', ' ')}",
+            options=options,
+            placeholder=f"Select one or more elements...",
+            key=f"{column}_widget_key",
             on_change=sync_filter,
-            args=("player_key", "player_widget_key"),
-        )
-    with cols[2]:
-        selected_team = st.selectbox(
-            "Select team",
-            options=teams,
-            index=None,
-            placeholder="Select a team...",
-            key="team_widget_key",
-            on_change=sync_filter,
-            args=("team_key", "team_widget_key"),
-        )
-    with cols[4]:
-        selected_season = st.selectbox(
-            "Select season",
-            options=seasons,
-            index=None,
-            placeholder="Select a season...",
-            key="season_widget_key",
-            on_change=sync_filter,
-            args=("season_key", "season_widget_key"),
-        )
-    with cols[6]:
-        selected_competition = st.selectbox(
-            "Select competition",
-            options=competitions,
-            index=None,
-            placeholder="Select a competition...",
-            key="competition_widget_key",
-            on_change=sync_filter,
-            args=("competition_key", "competition_widget_key"),
+            args=(f"{column}_key", f"{column}_widget_key"),
         )
 
-    st.divider()
-
-    # Ensure that the current slider value remains valid.
-    max_goals = get_safe_slider_max(options_df, "goals_per90", "goals_per90_key")
-    max_nineties = get_safe_slider_max(options_df, "nineties", "nineties_key")
-
-    st.session_state["goals_per90_widget_key"] = st.session_state["goals_per90_key"]
-    st.session_state["nineties_widget_key"] = st.session_state["nineties_key"]
-
-    cols = st.columns([9,1,9,1,9,1,9,1])
-    with cols[0]:
-        selected_min_goals = st.slider(
-            "Minimum goals per 90",
-            min_value=0.0,
-            max_value=max_goals,
-            step=0.01,
-            key="goals_per90_widget_key",
-            on_change=sync_filter,
-            args=("goals_per90_key", "goals_per90_widget_key"),
-        )
-    with cols[6]:
-        selected_min_90s = st.slider(
-            "Minimum number of 90s played",
-            min_value=0.0,
-            max_value=max_nineties,
-            step=0.01,
-            key="nineties_widget_key",
-            on_change=sync_filter,
-            args=("nineties_key", "nineties_widget_key"),
-        )
-
-    # Apply the values returned by the widgets during the current rerun.
-    filtered_df = players.copy()
-    if selected_players:
-        filtered_df = filtered_df[filtered_df["player"].isin(selected_players)]
-    if selected_season is not None:
-        filtered_df = filtered_df[filtered_df["season"] == selected_season]
-    if selected_team:
-        filtered_df = filtered_df[filtered_df["team"] == selected_team]
-    if selected_competition:
-        filtered_df = filtered_df[filtered_df["competition"] == selected_competition]
-    if selected_min_goals > 0:
-        filtered_df = filtered_df[filtered_df["goals_per90"] >= selected_min_goals]
-    if selected_min_90s > 0:
-        filtered_df = filtered_df[filtered_df["nineties"] >= selected_min_90s]
-
+    # Multiple values from the same field are combined through isin (OR).
+    filtered_df = apply_filters(players)
+    st.session_state["filtered_players"] = filtered_df
     return filtered_df
 
-def create_sidebar_settings():
 
-    with st.sidebar:
-        st.divider()
+def create_sliders_filters(players: pd.DataFrame, columns=["goals_per90", "nineties"]):
+    """Create the statistics sliders dynamically."""
 
-        with st.container(border=True):
-            st.markdown("### ⚙️ Fantacalcio settings")
-            st.caption("Customize Fantacalcio values")
+    for column in columns:
+        options_df = apply_filters(players, exclude=column)
+        st.session_state.setdefault(f"{column}_key", get_default_value(players[column]))
+        st.session_state[f"{column}_widget_key"] = st.session_state[f"{column}_key"]
 
-            budget = st.number_input(
-                "Available budget",
-                min_value=0,
-                value=500,
-                step=10,
-                key="fantacalcio_budget",
-            )
+        st.slider(
+            columns_to_user_view_dict[column],
+            min_value=0.0,
+            max_value=get_safe_slider_max(options_df, column, f"{column}_key"),
+            step=0.01,
+            key=f"{column}_widget_key",
+            on_change=sync_filter,
+            args=(f"{column}_key", f"{column}_widget_key"),
+        )
 
-            scoring_mode = st.selectbox(
-                "Scoring mode",
-                options=["Classic", "Mantra"],
-                key="fantacalcio_scoring_mode",
-            )
+    filtered_df = apply_filters(players)
+    st.session_state["filtered_players"] = filtered_df
+    return filtered_df
 
-            include_unmatched = st.toggle(
-                "Include players without statistics",
-                value=True,
-                key="fantacalcio_include_unmatched",
-            )
+def checks_to_stop(players: pd.DataFrame):
+
+    # Case of NO statistics: more than 2 players selected
+    if players["player"].nunique() > 2:
+        st.stop()
+
+    # Case of NO statistics: the current season hasn't stats
+    if players.shape[0] == 1 and players["season"].iloc[0] == "2026-27":
+        st.stop()
+
+    # Case of NO statistics: one specific season or team selected (no plots possible with this)
+    if players["season"].nunique() == 1 and (st.session_state["season_widget_key"] or st.session_state["team_widget_key"]):
+        st.warning("You have selected 1 specific season or a specific team: deselect it to see the statistics accross years.")
+        st.stop()
     
     return
 
@@ -239,15 +162,16 @@ def create_sidebar_settings():
 # =============================== SCRIPT ======================================
 # =============================================================================
 
-st.title("📊 Statistics")
-st.subheader("Players Filter")
-
 load_env(keys=persistent_session_keys, path=".env")
-
 history_players = load_dataset("data/filtered_history_players.csv")
-filtered_players = player_filter(history_players)
+with st.sidebar:
+    st.markdown("### Filters")
+    filtered_players = create_multiselect_filters(history_players)
+    filtered_players = create_sliders_filters(filtered_players)
 
-st.session_state["filtered_players"] = filtered_players
+
+st.title("📊 Statistics")
+st.subheader("Players")
 
 st.divider()
 
@@ -258,37 +182,17 @@ col5.metric("Players", filtered_players["player"].nunique())
 
 st.dataframe(
     filtered_players,
-    use_container_width=True,
+    width="stretch",
     hide_index=True
 )
 
-# Case of exit: multiple players selected
-if filtered_players["player"].nunique() != 1:
-    st.stop()
-# Case of statistics absent
-if filtered_players.shape[0] == 1 and filtered_players["season"].iloc[0] == "2026-27":
-    st.stop()
+checks_to_stop(filtered_players)
 
 st.divider()
-st.subheader("Graphics")
 
-if filtered_players["season"].nunique() == 1 and (st.session_state["season_widget_key"] or st.session_state["team_widget_key"]):
-    st.warning("You have selected 1 specific season or a specific team: deselect it to see the statistics accross years.")
-
-fanta_role_graphical_keys_dict = {
-    "P": "golkeeper_graphical_cols_key",
-    "D": "defender_graphical_cols_key",
-    "C": "midfielder_graphical_cols_key",
-    "A": "attacker_graphical_cols_key",
-}
-
-player_roles = filtered_players["fanta_role"].dropna()
-if player_roles.empty:
-    st.warning("The selected player has no role.")
+# Case of 2 players
+if filtered_players["player"].nunique() == 2:
+    plot_comparison_between_players(filtered_players)
     st.stop()
 
-player_role = player_roles.iloc[0]
-selected_cols_key = fanta_role_graphical_keys_dict.get(player_role)
-selected_cols = st.session_state.get(selected_cols_key, []) if selected_cols_key else []
-
-plot_player_history(filtered_players, selected_cols)
+plot_player_history(filtered_players)
