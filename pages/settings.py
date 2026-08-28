@@ -6,6 +6,7 @@ import lib.ollama_api as llm
 from lib.streamlit_api import (
     persistent_session_keys,
     thick_divider,
+    get_user_view_of_column,
     get_fanta_manager_players_dict,
     sync_filter,
     load_dataset,
@@ -37,6 +38,7 @@ fanta_managers = [my_fanta_manager] + [manager for manager in fanta_managers if 
 st.session_state["fanta_managers_key"] = fanta_managers
 
 fanta_manager_players_dict = get_fanta_manager_players_dict()
+history_players = load_dataset("data/filtered_history_players.csv")
 
 
 # Fanta Managers settings
@@ -92,7 +94,11 @@ with st.container(border=True):
         elif new_fanta_manager.lower() in managers_list:
             add_warning = "Fanta manager already present"
 
-        add_fanta_manager_button = st.button("Add", width="stretch")
+        add_fanta_manager_button = st.button(
+            "Add",
+            width="stretch",
+            key="add_fanta_manager_button_key"
+        )
         if add_fanta_manager_button and add_warning is None:
             fanta_managers.append(new_fanta_manager)
             fanta_manager_players_dict[new_fanta_manager] = pd.DataFrame()
@@ -117,7 +123,11 @@ with st.container(border=True):
         elif selected_fanta_manager == st.session_state["my_fanta_manager_key"]:
             remove_warning = "You cannot remove your own Fanta Manager"
 
-        remove_fanta_manager_button = st.button("Remove", width="stretch")
+        remove_fanta_manager_button = st.button(
+            "Remove",
+            width="stretch",
+            key="rm_fanta_manager_button_key"
+        )
         if remove_fanta_manager_button and remove_warning is None:
             fanta_managers.remove(selected_fanta_manager)
             fanta_manager_players_dict.pop(selected_fanta_manager, None)
@@ -258,6 +268,73 @@ with st.container(border=True):
             st.error(f"Budget limit exceeded: {budget_limit_sum}/{st.session_state['fantacalcio_budget_key']}.")
         if "fantacalcio_budget_key" in st.session_state and budget_limit_sum < st.session_state["fantacalcio_budget_key"]:
             st.info(f"You can still use {int(st.session_state['fantacalcio_budget_key']) - budget_limit_sum} mln.")
+
+# Graphics settinga
+with st.container(border=True):
+
+    cols = st.columns([10,2,8,1,8,1,8,1,8])
+
+    with cols[0]:
+        st.markdown("#### **Graphics per role**")
+    
+    with cols[2]:
+        st.markdown("- **Golkeeper (P)**")
+
+        st.session_state.setdefault("golkeeper_graphical_cols_key", [])
+        for column in st.session_state['golkeeper_graphical_cols_key']:
+            with st.container(border=True):
+                st.markdown(f"{get_user_view_of_column(column)}")
+
+        numeric_columns = history_players.select_dtypes(include="number").columns.tolist()
+        selected_columns = st.session_state["golkeeper_graphical_cols_key"] + ["add"]
+
+        selected_graphical_col = st.selectbox(
+            "Select a field to use for statistics",
+            options=numeric_columns,
+            index=None,
+            placeholder="Select a column...",
+            format_func=get_user_view_of_column,
+            key="add_golkeeper_graphical_col_widget_key",
+        )
+
+        add_graphical_col = st.button(
+            "Add",
+            width="stretch",
+            key="add_button_golkeeper_graphical_col_key"
+        )
+        if add_graphical_col:
+            st.session_state["golkeeper_graphical_cols_key"].append(selected_graphical_col)
+            st.rerun()
+    
+    with cols[4]:
+        st.markdown("- **Defender (D)**")
+
+        st.session_state.setdefault("defender_graphical_cols_key", [])
+        for column in st.session_state['defender_graphical_cols_key']:
+            with st.container(border=True):
+                st.markdown(f"{get_user_view_of_column(column)}")
+
+        numeric_columns = history_players.select_dtypes(include="number").columns.tolist()
+        selected_columns = st.session_state["defender_graphical_cols_key"] + ["add"]
+
+        selected_graphical_col = st.selectbox(
+            "Select a field to use for statistics",
+            options=numeric_columns,
+            index=None,
+            placeholder="Select a column...",
+            format_func=get_user_view_of_column,
+            key="add_defender_graphical_col_widget_key",
+        )
+
+        add_graphical_col = st.button(
+            "Add",
+            width="stretch",
+            key="add_button_defender_graphical_col_key"
+        )
+        if add_graphical_col:
+            st.session_state["defender_graphical_cols_key"].append(selected_graphical_col)
+            st.rerun()
+
 
 # AI settings
 with st.container(border=True):
