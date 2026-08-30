@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import lib.ollama_api as llm
 from lib.utils import (
-    interest_level_markers,
-    set_format_interest_level
+    interest_markers,
+    set_format_interest
 )
 from lib.streamlit_api import (
     thick_divider,
@@ -181,7 +181,7 @@ def load_player_preferences(path: str) -> dict:
     except (FileNotFoundError, pd.errors.EmptyDataError):
         return {}
 
-    required_columns = {"Id", "mln", "interest_level", "description"}
+    required_columns = {"Id", "mln", "interest", "description"}
     if not required_columns.issubset(preferences_df.columns):
         return {}
 
@@ -195,11 +195,11 @@ def load_player_preferences(path: str) -> dict:
             player_id = int(player_id)
 
         mln_prevision = pd.to_numeric(preference_row["mln"], errors="coerce")
-        interest_level = preference_row["interest_level"]
+        interest = preference_row["interest"]
         description = preference_row["description"]
         preferences[str(player_id)] = {
             "mln_prevision": None if pd.isna(mln_prevision) else int(mln_prevision),
-            "interest_level": None if pd.isna(interest_level) else str(interest_level),
+            "interest": None if pd.isna(interest) else str(interest),
             "description": None if pd.isna(description) else str(description),
         }
 
@@ -380,7 +380,7 @@ def create_editor_dataframe(
     players_editor_df.insert(loc=1, column="mln", value=mln_values)
 
     if player_preferences is not None:
-        for column in ["mln_prevision", "interest_level", "description"]:
+        for column in ["mln_prevision", "interest", "description"]:
             players_editor_df[column] = pd.Series(
                 data=[
                     player_preferences.get(str(player_id), {}).get(column)
@@ -389,8 +389,8 @@ def create_editor_dataframe(
                 index=players_editor_df.index,
                 dtype=object,
             )
-        players_editor_df["interest_level"] = (players_editor_df["interest_level"].map(
-            lambda x: interest_level_markers[x] if x is not None else set_format_interest_level(x)
+        players_editor_df["interest"] = (players_editor_df["interest"].map(
+            lambda x: interest_markers[x] if x is not None else set_format_interest(x)
         ))
 
     # Use a different widget key when the visible players change.
@@ -444,8 +444,8 @@ def create_editor_dataframe(
                     format="%d",
                     alignment="center",
                 ),
-                "interest_level": st.column_config.TextColumn(
-                    "Interest level",
+                "interest": st.column_config.TextColumn(
+                    "Interest",
                     alignment="center",
                 ),
                 "description": st.column_config.TextColumn(
@@ -462,13 +462,13 @@ def create_editor_dataframe(
         column_order += ["mln_prevision"]
     column_order += ["player", "team", "fanta_role", "Qt.I", "Qt.A", "FVM"]
     if player_preferences is not None:
-        column_order += ["interest_level", "description"]
+        column_order += ["interest", "description"]
     
     # Set the editable columns
     editable_columns = {"bought", "mln"}
     if player_preferences is not None:
         editable_columns.add("mln_prevision")
-        editable_columns.add("interest_level")
+        editable_columns.add("interest")
         editable_columns.add("description")
 
     # Create the table
@@ -685,7 +685,7 @@ else:
         create_editor_dataframe(filtered_players, fanta_manager_players_dict, player_preferences)
     with col2:
         if st.session_state[enable_player_preferences_key]:
-            for key, value in interest_level_markers.items():
+            for key, value in interest_markers.items():
                 st.markdown(f"{value} :small[{key}]")
 
 # Case of AI enabled

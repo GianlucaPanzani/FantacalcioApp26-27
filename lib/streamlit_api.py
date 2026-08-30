@@ -16,14 +16,14 @@ from lib.utils import (
 stats_persistent_key_fields = [
     "selected",
     "mln",
-    "interest_level",
+    "interest",
     "description",
 ]
 
 columns_to_user_view_dict = {
     "selected": "Select",
     "mln": "💰 Mln",
-    "interest_level": "Interest level",
+    "interest": "Interest",
     "description": "✍️ Description",
     "Id": "Player ID",
     "R": "Fantacalcio role",

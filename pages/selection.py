@@ -3,8 +3,8 @@ import pandas as pd
 import streamlit as st
 from lib.utils import (
     highlight_player_role,
-    set_format_interest_level,
-    interest_level_markers
+    set_format_interest,
+    interest_markers
 )
 from lib.streamlit_api import (
     sync_filter,
@@ -46,7 +46,7 @@ hidden_selection_columns = [
     "FVM M",
 ]
 
-interest_level_colors_dict = {
+interest_colors_dict = {
     "Da valutare": "#E0E0E0",
     "Bassissimo": "#FFFFFF",
     "Basso": "#FFF59D",
@@ -154,15 +154,15 @@ def load_selected_players(path: str) -> None:
             player_id = int(player_id)
 
         mln_value = pd.to_numeric(player_row["mln"], errors="coerce")
-        interest_level = player_row["interest_level"]
+        interest = player_row["interest"]
         description = player_row["description"]
 
-        if interest_level not in interest_level_colors_dict:
-            interest_level = "Da valutare"
+        if interest not in interest_colors_dict:
+            interest = "Da valutare"
 
         st.session_state[get_stats_player_key("selected", player_id)] = True
         st.session_state[get_stats_player_key("mln", player_id)] = 0 if pd.isna(mln_value) else int(mln_value)
-        st.session_state[get_stats_player_key("interest_level", player_id)] = interest_level
+        st.session_state[get_stats_player_key("interest", player_id)] = interest
         st.session_state[get_stats_player_key("description", player_id)] = "" if pd.isna(description) else str(description)
 
     return
@@ -181,7 +181,7 @@ def store_selected_players(players: pd.DataFrame, path: str) -> None:
         
         # Creation of the keys
         mln_key = get_stats_player_key("mln", player_id)
-        interest_level_key = get_stats_player_key("interest_level", player_id)
+        interest_key = get_stats_player_key("interest", player_id)
         description_key = get_stats_player_key("description", player_id)
 
         # Append of the new row to store
@@ -189,7 +189,7 @@ def store_selected_players(players: pd.DataFrame, path: str) -> None:
             {
                 "Id": player_id,
                 "mln": st.session_state.get(mln_key, 0),
-                "interest_level": st.session_state.get(interest_level_key, "Da valutare"),
+                "interest": st.session_state.get(interest_key, "Da valutare"),
                 "description": st.session_state.get(description_key, ""),
             }
         )
@@ -197,7 +197,7 @@ def store_selected_players(players: pd.DataFrame, path: str) -> None:
     # Write into the file
     selection_players_df = pd.DataFrame(
         selection_players,
-        columns=["Id", "mln", "interest_level", "description"],
+        columns=["Id", "mln", "interest", "description"],
     )
     csv_path = Path(path)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -231,12 +231,12 @@ def get_selection_column_config(columns: list[str]) -> dict:
             format="%d",
             required=True,
         )
-    if "interest_level" in columns:
-        column_config["interest_level"] = st.column_config.SelectboxColumn(
-            get_user_view_of_column("interest_level"),
-            help="Choose your current interest level for this player.",
-            options=list(interest_level_colors_dict),
-            format_func=set_format_interest_level,
+    if "interest" in columns:
+        column_config["interest"] = st.column_config.SelectboxColumn(
+            get_user_view_of_column("interest"),
+            help="Choose your current interest in this player.",
+            options=list(interest_colors_dict),
+            format_func=set_format_interest,
             default="Da valutare",
             required=True,
         )
@@ -300,42 +300,42 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
     selected_players_editor_df = selected_players_editor_df.set_index("Id")[visible_columns].copy()
 
     mln_values = []
-    interest_level_values = []
+    interest_values = []
     description_values = []
 
     for player_id in selected_players_editor_df.index:
         selected_key = get_stats_player_key("selected", player_id)
         mln_key = get_stats_player_key("mln", player_id)
-        interest_level_key = get_stats_player_key("interest_level", player_id)
+        interest_key = get_stats_player_key("interest", player_id)
         description_key = get_stats_player_key("description", player_id)
 
         st.session_state.setdefault(selected_key, True)
         st.session_state.setdefault(mln_key, 0)
-        st.session_state.setdefault(interest_level_key, "Da valutare")
+        st.session_state.setdefault(interest_key, "Da valutare")
         st.session_state.setdefault(description_key, "")
 
         mln_value = pd.to_numeric(st.session_state[mln_key], errors="coerce")
         mln_value = 0 if pd.isna(mln_value) else int(mln_value)
-        interest_level = st.session_state[interest_level_key]
-        if interest_level not in interest_level_colors_dict:
-            interest_level = "Da valutare"
+        interest = st.session_state[interest_key]
+        if interest not in interest_colors_dict:
+            interest = "Da valutare"
         description = st.session_state[description_key]
         description = "" if pd.isna(description) else str(description)
 
         st.session_state[mln_key] = mln_value
-        st.session_state[interest_level_key] = interest_level
+        st.session_state[interest_key] = interest
         st.session_state[description_key] = description
 
         mln_values.append(mln_value)
-        interest_level_values.append(interest_level)
+        interest_values.append(interest)
         description_values.append(description)
 
     selected_players_editor_df.insert(0, "description", description_values)
-    selected_players_editor_df.insert(0, "interest_level", interest_level_values)
+    selected_players_editor_df.insert(0, "interest", interest_values)
     selected_players_editor_df.insert(0, "mln", mln_values)
     selected_players_editor_df.insert(0, "remove", ":material/delete:")
 
-    editable_columns = ["remove", "mln", "interest_level", "description"]
+    editable_columns = ["remove", "mln", "interest", "description"]
     column_order = editable_columns + visible_columns
     column_config = get_selection_column_config(column_order)
     remove_button_key = f"{page_name}_remove_player_button_key"
@@ -369,19 +369,19 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
 
     for player_id, player_row in edited_selected_players.iterrows():
         mln_key = get_stats_player_key("mln", player_id)
-        interest_level_key = get_stats_player_key("interest_level", player_id)
+        interest_key = get_stats_player_key("interest", player_id)
         description_key = get_stats_player_key("description", player_id)
 
-        interest_level = player_row["interest_level"]
-        if interest_level not in interest_level_colors_dict:
-            interest_level = "Da valutare"
+        interest = player_row["interest"]
+        if interest not in interest_colors_dict:
+            interest = "Da valutare"
 
         description = player_row["description"]
         description = "" if pd.isna(description) else str(description)
         mln_value = pd.to_numeric(player_row["mln"], errors="coerce")
 
         st.session_state[mln_key] = 0 if pd.isna(mln_value) else int(mln_value)
-        st.session_state[interest_level_key] = interest_level
+        st.session_state[interest_key] = interest
         st.session_state[description_key] = description
 
 
@@ -399,7 +399,7 @@ st.session_state.setdefault(selection_players_key, "data/selection_players.csv")
 selection_keys_set.add(selection_players_key)
 
 # Load the selected players 
-selection_restored_key = f"{page_name}_selection_players_restored_key"
+selection_restored_key = f"{page_name}_selection_players_restored_v2_key"
 if not st.session_state.get(selection_restored_key, False):
     load_selected_players(st.session_state[selection_players_key])
     st.session_state[selection_restored_key] = True
