@@ -2,15 +2,18 @@ import streamlit as st
 import pandas as pd
 import lib.ollama_api as llm
 from lib.streamlit_api import (
-    persistent_session_keys,
     thick_divider,
     highlight_bought_rows,
     sync_filter,
+    apply_filters,
     load_dataset,
     get_role_limits,
     get_role_budget_limits,
+    get_default_value,
+    get_condition_by,
     load_env,
     store_env,
+    restore_bought_players,
     has_full_team,
     generate_pdf_with_bought_players
 )
@@ -22,172 +25,151 @@ st.set_page_config(
     layout="wide",
 )
 
-# Load stored persistent values before initializing Session State defaults
-load_env(keys=persistent_session_keys, path=".env",)
+page_name = "fantacalcio"
 
-# Initialize by default values not available in the environment file
-st.session_state.setdefault("my_fanta_manager_key", "Me")
-st.session_state.setdefault("fanta_managers_key", [st.session_state["my_fanta_manager_key"]])
+columns_to_filter_list = [
+    "player",
+    "team",
+    "fanta_role",
+]
 
-# Reorder the Fanta Managers with my Fanta Manager as first item
-my_fanta_manager = st.session_state["my_fanta_manager_key"]
-fanta_managers = st.session_state["fanta_managers_key"]
-fanta_managers = [my_fanta_manager] + [manager for manager in fanta_managers if manager != my_fanta_manager]
-st.session_state["fanta_managers_key"] = fanta_managers
-
-# Case of rebuild of the bought players dict by restoring from csv
-if "fanta_manager_players_dict_key" not in st.session_state:
-    fanta_manager_players_dict = {}
-
-    # Restore data from csv
-    restored_players = st.session_state.get("bought_players_df_key", pd.DataFrame())
-
-    # Rebuilt of the bought players dict
-    if not restored_players.empty and "manager" in restored_players.columns:
-        for fanta_manager, bought_players in restored_players.groupby("manager"):
-            fanta_manager_players_dict[fanta_manager] = bought_players.reset_index(drop=True)
-
-    # Preserve Fanta Managers without bought players
-    fanta_managers = st.session_state["fanta_managers_key"]
-    for fanta_manager in fanta_managers:
-        fanta_manager_players_dict.setdefault(fanta_manager, pd.DataFrame())
-
-    st.session_state["fanta_manager_players_dict_key"] = fanta_manager_players_dict
-
-# Case of data already present in session_state
-fanta_manager_players_dict = st.session_state["fanta_manager_players_dict_key"]
+compare_op_for_columns_to_filter_dict = {
+    "player": None,
+    "team": "eq",
+    "fanta_role": "eq",
+}
 
 
 # =============================================================================
 # ============================== FUNCTIONS ====================================
 # =============================================================================
 
-
-def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
-    """Apply filters currently stored in Streamlit session state."""
-    result = df.copy()
-
-    selected_players = st.session_state.get("fanta_player_key", [])
-    selected_team = st.session_state.get("fanta_team_key")
-    selected_role = st.session_state.get("fanta_role_key")
-
-    if selected_players:
-        result = result[result["player"].isin(selected_players)]
-    if selected_team:
-        result = result[result["team"] == selected_team]
-    if selected_role:
-        result = result[result["fanta_role"] == selected_role]
-    return result
-
-
-def player_filter(fanta_players: pd.DataFrame) -> pd.DataFrame:
+def player_filter(fanta_players: pd.DataFrame, columns_list: list, widget_types: list, fanta_manager_players_dict: dict) -> pd.DataFrame:
 
     # Initialize default filter values
-    st.session_state.setdefault("fanta_player_key", [])
-    st.session_state.setdefault("fanta_team_key", "")
-    st.session_state.setdefault("fanta_role_key", "")
-    st.session_state.setdefault("selected_fanta_manager_key", "")
+    for col, widget_type in zip(columns_list, widget_types):
+        key = f"{page_name}_{col}_key"
+        fantacalcio_keys_set.add(key)
+        st.session_state.setdefault(key, get_default_value(fanta_players[col]))
 
-    # Apply previous selections before generating widget options.
-    options_df = apply_filters(fanta_players)
+    cols = st.columns([9,1] * (len(columns_list)+1))
 
-    names = sorted(options_df["player"].dropna().astype(str).unique())
-    teams = sorted(options_df["team"].dropna().astype(str).unique())
-    roles = sorted(options_df["fanta_role"].dropna().astype(str).unique())
-
-    # Restore widget values after their options change.
-    st.session_state["fanta_player_widget_key"] = [
-        player
-        for player in st.session_state["fanta_player_key"]
-        if player in names
-    ]
-    st.session_state["fanta_team_widget_key"] = (
-        st.session_state["fanta_team_key"]
-        if st.session_state["fanta_team_key"] in teams
-        else None
-    )
-    st.session_state["fanta_role_widget_key"] = (
-        st.session_state["fanta_role_key"]
-        if st.session_state["fanta_role_key"] in roles
-        else None
-    )
-    
     # Create widgets
-    cols = st.columns([9,1,9,1,9,1,9,1])
-    with cols[0]:
-        selected_players = st.multiselect(
-            "Search players",
-            options=names,
-            placeholder="Select one or more players...",
-            key="fanta_player_widget_key",
-            on_change=sync_filter,
-            args=("fanta_player_key", "fanta_player_widget_key"),
+    filtered_df = fanta_players.copy()
+    for i, (column, widget_type) in enumerate(zip(columns_list, widget_types)):
+
+        # Apply previous selections before generating widget options.
+        options_df = apply_filters(
+            fanta_players,
+            columns_to_filter_list=columns_list,
+            compare_op_for_columns_to_filter_dict=compare_op_for_columns_to_filter_dict,
+            page=page_name
         )
-    with cols[2]:
-        selected_team = st.selectbox(
-            "Select team",
-            options=teams,
-            index=None,
-            placeholder="Select a team...",
-            key="fanta_team_widget_key",
-            on_change=sync_filter,
-            args=("fanta_team_key", "fanta_team_widget_key"),
-        )
-    with cols[4]:
-        selected_role = st.selectbox(
-            "Select role",
-            options=roles,
-            index=None,
-            placeholder="Select a role...",
-            key="fanta_role_widget_key",
-            on_change=sync_filter,
-            args=("fanta_role_key", "fanta_role_widget_key"),
-        )
-    with cols[6]:
+        options = sorted(options_df[column].dropna().astype(str).unique())
+
+        widget_key = f"{page_name}_{column}_widget_key"
+        filter_key = f"{page_name}_{column}_key"
+
+        # Build the filtered data and restore widget values after their options change.
+        if widget_type == "multiselect":
+            st.session_state[widget_key] = [
+                value
+                for value in st.session_state[filter_key]
+                if value in options
+            ]
+        elif widget_type == "selectbox":
+            st.session_state[widget_key] = (
+                st.session_state[filter_key]
+                if st.session_state[filter_key] in options
+                else None
+            )
+
+        with cols[i*2]:
+            if widget_type == "multiselect":
+                selected_values = st.multiselect(
+                    f"Search {column}",
+                    options=options,
+                    placeholder="Select one or more elements...",
+                    key=widget_key,
+                    on_change=sync_filter,
+                    args=(filter_key, widget_key),
+                )
+            else:
+                selected_values = st.selectbox(
+                    f"Select {column}",
+                    options=options,
+                    index=None,
+                    placeholder="Select an element...",
+                    key=widget_key,
+                    on_change=sync_filter,
+                    args=(filter_key, widget_key),
+                )
+
+        # Apply the value setted in the widget
+        if selected_values:
+            filtered_df = filtered_df[
+                get_condition_by(
+                    df=filtered_df,
+                    column=column,
+                    selected_values=selected_values,
+                    compare_op=compare_op_for_columns_to_filter_dict[column],
+                )
+            ]
+
+    # Create the special filter based on the external purchases dictionary
+    manager_filter_key = f"{page_name}_selected_manager_key"
+    fantacalcio_keys_set.add(manager_filter_key)
+    st.session_state.setdefault(manager_filter_key, "")
+
+    manager_options = ["Free"] + st.session_state["settings_managers_key"]
+
+    manager_widget_key = f"{page_name}_selected_manager_widget_key"
+    st.session_state[manager_widget_key] = (
+        st.session_state[manager_filter_key]
+        if st.session_state[manager_filter_key] in manager_options
+        else None
+    )
+
+    with cols[-2]:
         selected_fanta_manager = st.selectbox(
             "Select a Fanta Manager",
-            options=["Free"] + st.session_state["fanta_managers_key"],
+            options=manager_options,
             index=None,
             placeholder="Select a manager...",
-            key="fanta_managers_widget_key",
+            key=manager_widget_key,
             on_change=sync_filter,
-            args=("selected_fanta_manager_key", "fanta_managers_widget_key"),
+            args=(manager_filter_key, manager_widget_key),
         )
 
-    st.divider()
-
-    # Apply the values returned by the widgets during the current rerun.
-    filtered_df = fanta_players.copy()
-    if selected_players:
-        filtered_df = filtered_df[filtered_df["player"].isin(selected_players)]
-    if selected_team:
-        filtered_df = filtered_df[filtered_df["team"] == selected_team]
-    if selected_role:
-        filtered_df = filtered_df[filtered_df["fanta_role"] == selected_role]
     if selected_fanta_manager == "Free":
         bought_player_ids = set()
         for bought_players in fanta_manager_players_dict.values():
-            if "id" in bought_players.columns:
-                bought_player_ids.update(bought_players["id"].astype(str))
+            if isinstance(bought_players, pd.DataFrame) and "id" in bought_players.columns:
+                bought_player_ids.update(bought_players["id"].dropna().astype(str))
         filtered_df = filtered_df[~filtered_df["id"].astype(str).isin(bought_player_ids)]
     elif selected_fanta_manager:
         bought_players = fanta_manager_players_dict.get(selected_fanta_manager, pd.DataFrame())
-        bought_player_ids = bought_players["id"] if "id" in bought_players.columns else []
-        filtered_df = filtered_df[filtered_df["id"].isin(bought_player_ids)]
+        if "id" in bought_players.columns:
+            bought_player_ids = set(bought_players["id"].dropna().astype(str))
+        else:
+            bought_player_ids = set()
+        filtered_df = filtered_df[filtered_df["id"].astype(str).isin(bought_player_ids)]
+
+    st.divider()
     
     # Store in session_state
-    st.session_state["filtered_players"] = filtered_df
+    st.session_state[f"{page_name}_filtered_players"] = filtered_df
     return filtered_df
 
 
 def generate_ai_response(fanta_manager_players_dict: dict):
     # Data preparation
-    my_players = fanta_manager_players_dict.get(st.session_state["my_fanta_manager_key"], pd.DataFrame()).copy()
+    my_players = fanta_manager_players_dict.get(st.session_state["settings_my_manager_key"], pd.DataFrame()).copy()
     if my_players.empty:
         my_players = pd.DataFrame(columns=["role", "mln"])
     my_players["mln"] = pd.to_numeric(my_players["mln"], errors="coerce").fillna(0).astype(int)
     total_spent = my_players["mln"].sum()
-    available_budget = st.session_state["fantacalcio_budget_key"] - total_spent
+    available_budget = st.session_state["settings_budget_key"] - total_spent
 
     role_counts = {
         role: len(my_players.loc[my_players["role"] == role])
@@ -276,10 +258,10 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
     players_editor_df.insert(loc=1, column="mln", value=mln_values)
 
     # Use a different widget key when the visible players change.
-    fanta_managers = st.session_state["fanta_managers_key"]
+    fanta_managers = st.session_state["settings_managers_key"]
     visible_player_ids = tuple(players_editor_df["id"].astype(str).tolist())
     editor_state = (visible_player_ids, tuple(fanta_managers))
-    editor_key = f"purchase_editor_{abs(hash(editor_state))}_key"
+    editor_key = f"{page_name}_purchase_editor_{abs(hash(editor_state))}_key"
 
     # Apply pending manager selections before styling the rows
     editor_changes = st.session_state.get(editor_key, {}).get("edited_rows", {})
@@ -364,7 +346,7 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
             fanta_manager_players_dict[selected_manager] = pd.DataFrame(bought_players)
 
     # Store the updated auction state
-    st.session_state["fanta_manager_players_dict_key"] = fanta_manager_players_dict
+    st.session_state[f"{page_name}_manager_players_dict_key"] = fanta_manager_players_dict
 
     # Store bought players
     bought_players_dataframes = [bought_players for bought_players in fanta_manager_players_dict.values() if not bought_players.empty]
@@ -372,22 +354,22 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
         bought_players_df = pd.concat(bought_players_dataframes, ignore_index=True)
     else:
         bought_players_df = pd.DataFrame(columns=["id", "player", "team", "role", "mantra_role", "manager", "mln"])
-    st.session_state["bought_players_df_key"] = bought_players_df
+    st.session_state[f"{page_name}_bought_players_df_key"] = bought_players_df
 
     return
 
 
-def create_current_purchases(fanta_manager_players_dict: dict, fanta_manager=None):
+def create_current_teams(fanta_manager_players_dict: dict, fanta_manager=None):
     # Create the df
     if fanta_manager is None:
-        fanta_manager = st.session_state["my_fanta_manager_key"]
+        fanta_manager = st.session_state["settings_my_manager_key"]
     bought_players_df = fanta_manager_players_dict.get(fanta_manager, pd.DataFrame()).copy()
     if bought_players_df.empty:
         bought_players_df = pd.DataFrame(columns=["player", "team", "role", "mantra_role", "manager", "mln"])
     bought_players_df["mln"] = pd.to_numeric(bought_players_df["mln"], errors="coerce").fillna(0).astype(int)
 
     # Compute some budget metric
-    starting_budget = st.session_state.get("fantacalcio_budget_key", 500)
+    starting_budget = st.session_state.get("settings_budget_key", 500)
     tot_spent = bought_players_df["mln"].sum()
     available_budget = starting_budget - tot_spent
 
@@ -434,8 +416,8 @@ def create_current_purchases(fanta_manager_players_dict: dict, fanta_manager=Non
         # Players bought with the role "role"
         bought_players_role = bought_players_df.loc[bought_players_df["role"] == role]
         tot_spent_for_role = bought_players_role['mln'].sum()
-        st.session_state[f"{fanta_manager}_num_of_bought_{role}_key"] = len(bought_players_role)
-        st.session_state[f"{fanta_manager}_{role}_budget_limit_exceeded"] = tot_spent_for_role > role_limit
+        st.session_state[f"{page_name}_{fanta_manager}_num_of_bought_{role}_key"] = len(bought_players_role)
+        st.session_state[f"{page_name}_{fanta_manager}_{role}_budget_limit_exceed_key"] = tot_spent_for_role > role_limit
 
         with col:
             with st.container(border=True, width="stretch", height="stretch"):
@@ -456,10 +438,10 @@ def create_current_purchases(fanta_manager_players_dict: dict, fanta_manager=Non
                 st.divider()
 
                 if len(bought_players_role) > role_limit:
-                    st.session_state[f"{fanta_manager}_{role}_limit_exceeded"] = True
+                    st.session_state[f"{page_name}_{fanta_manager}_{role}_limit_exceed_key"] = True
                     st.error("Role limit exceeded: remove the last purchase.")
                 else:
-                    st.session_state[f"{fanta_manager}_{role}_limit_exceeded"] = False
+                    st.session_state[f"{page_name}_{fanta_manager}_{role}_limit_exceed_key"] = False
 
                 # Case of no player bought for this role
                 if bought_players_role.empty:
@@ -470,7 +452,7 @@ def create_current_purchases(fanta_manager_players_dict: dict, fanta_manager=Non
                 for _, player_row in bought_players_role.iterrows():
                     col1, col2 = st.columns(2)
                     with col1:
-                        if st.session_state[f"{fanta_manager}_{role}_limit_exceeded"]:
+                        if st.session_state[f"{page_name}_{fanta_manager}_{role}_limit_exceed_key"]:
                             st.markdown(f"- :red[**{player_row['player']}**]")
                         else:
                             st.markdown(f"- **{player_row['player']}**")
@@ -488,6 +470,38 @@ def create_current_purchases(fanta_manager_players_dict: dict, fanta_manager=Non
 # =============================== SCRIPT ======================================
 # =============================================================================
 
+# Load stored persistent values before initializing Session State defaults
+loaded_env_values = load_env(path=".env")
+
+# Set of keys whom value has to be stored (for next loaded)
+fantacalcio_keys_set = set(loaded_env_values)
+
+# Case of restore of bought players needed
+if f"{page_name}_manager_players_dict_key" not in st.session_state:
+    restore_bought_players(page_name)
+fanta_manager_players_dict = st.session_state[f"{page_name}_manager_players_dict_key"]
+
+# Initialize by default values not available in the environment file
+settings_my_manager_key = "settings_my_manager_key"
+fantacalcio_keys_set.add(settings_my_manager_key)
+st.session_state.setdefault(settings_my_manager_key, "Me")
+settings_managers_key = "settings_managers_key"
+fantacalcio_keys_set.add(settings_managers_key)
+st.session_state.setdefault(settings_managers_key, [st.session_state[settings_my_manager_key]])
+settings_budget_key = "settings_budget_key"
+fantacalcio_keys_set.add(settings_budget_key)
+st.session_state.setdefault(settings_budget_key, 500)
+settings_ai_enabled_key = "settings_ai_enabled_key"
+fantacalcio_keys_set.add(settings_ai_enabled_key)
+st.session_state.setdefault(settings_ai_enabled_key, False)
+
+# Reorder the Fanta Managers with my Fanta Manager as first item
+my_fanta_manager = st.session_state[settings_my_manager_key]
+fanta_managers = st.session_state[settings_managers_key]
+fanta_managers = [my_fanta_manager] + [manager for manager in fanta_managers if manager != my_fanta_manager]
+st.session_state[settings_managers_key] = fanta_managers
+
+
 st.title("⚽ Fantacalcio 26-27 - Create your own team")
 
 thick_divider()
@@ -499,11 +513,18 @@ st.caption(
     "Select the Fanta Manager on the first column if someone has bought a player and set the millions spent to update the teams."
 )
 fanta_players = load_dataset("data/filtered_history_players.csv", filter_by_current_year=True)
-filtered_players = player_filter(fanta_players)
+filtered_players = player_filter(
+    fanta_players,
+    columns_list=["player", "team", "fanta_role"],
+    widget_types=["multiselect", "selectbox", "selectbox"],
+    fanta_manager_players_dict=fanta_manager_players_dict
+)
+
+# Create table
 create_editor_dataframe(filtered_players, fanta_manager_players_dict)
 
 # Case of AI enabled
-if st.session_state["ai_enabled_key"] and filtered_players.shape[0] == 1:
+if st.session_state[settings_ai_enabled_key] and filtered_players.shape[0] == 1:
     generate_ai_response(fanta_manager_players_dict)
 
 thick_divider()
@@ -511,13 +532,16 @@ thick_divider()
 # Teams of the Fanta Managers
 st.header("Teams & Billing")
 st.divider()
-for fanta_manager in st.session_state["fanta_managers_key"]:
-    create_current_purchases(fanta_manager_players_dict, fanta_manager)
+for fanta_manager in st.session_state[settings_managers_key]:
+    create_current_teams(fanta_manager_players_dict, fanta_manager)
     st.divider()
 
-# Store only persistent Session State values
+# Store persistent Session State values
+fantacalcio_bought_players_df_key = f"{page_name}_bought_players_df_key"
+fantacalcio_keys_set.add(fantacalcio_bought_players_df_key)
+fantacalcio_keys_list = list(fantacalcio_keys_set)
 store_env(
-    data_dict={key: st.session_state[key] for key in persistent_session_keys if key in st.session_state},
+    data_dict={key: st.session_state[key] for key in fantacalcio_keys_list if key in st.session_state},
     path=".env",
 )
 

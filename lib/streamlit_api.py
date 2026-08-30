@@ -7,27 +7,10 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
 import streamlit as st
-
-# Session state keys of which value has to persist between sessions
-persistent_session_keys = [
-    "my_fanta_manager_key",
-    "fanta_managers_key",
-    "fantacalcio_budget_key",
-    "fantacalcio_goalkeepers_budget_limit_key",
-    "fantacalcio_defenders_budget_limit_key",
-    "fantacalcio_midfielders_budget_limit_key",
-    "fantacalcio_attackers_budget_limit_key",
-    "fantacalcio_goalkeepers_limit_key",
-    "fantacalcio_defenders_limit_key",
-    "fantacalcio_midfielders_limit_key",
-    "fantacalcio_attackers_limit_key",
-    "golkeeper_graphical_cols_key",
-    "defender_graphical_cols_key",
-    "midfielder_graphical_cols_key",
-    "attacker_graphical_cols_key",
-    "ai_enabled_key",
-    "bought_players_df_key",
-]
+from lib.utils import (
+    get_condition_by,
+    get_default_value
+)
 
 stats_persistent_key_fields = [
     "selected",
@@ -101,7 +84,22 @@ columns_to_user_view_dict = {
 }
 
 
-def get_stats_persistent_keys(player_ids) -> list[str]:
+def apply_filters(df: pd.DataFrame, exclude=None, columns_to_filter_list=[], compare_op_for_columns_to_filter_dict={}, page="unknown_page") -> pd.DataFrame:
+    """Apply session-state filters, excluding one filter when requested."""
+    result = df.copy()
+
+    for column in columns_to_filter_list:
+        selected_values = st.session_state.get(f"{page}_{column}_key", get_default_value(result[column]))
+        if exclude == column or not selected_values:
+            continue
+        result = result[
+            get_condition_by(result, column, selected_values, compare_op_for_columns_to_filter_dict[column])
+        ]
+
+    return result
+
+
+def get_stats_persistent_keys(player_ids, page_name="stats") -> list[str]:
     """
     Build the persistent Session State keys used by the statistics tables.
 
@@ -115,7 +113,7 @@ def get_stats_persistent_keys(player_ids) -> list[str]:
             player_id = int(player_id)
 
         for field in stats_persistent_key_fields:
-            persistent_keys.append(f"stats_{field}_{player_id}_key")
+            persistent_keys.append(f"{page_name}_{field}_{player_id}_key")
 
     return persistent_keys
 
@@ -129,7 +127,7 @@ def config_page(page_title="Fantacalcio tool", page_icon="⚽", layout="wide", i
 
 def highlight_bought_rows(row, fanta_managers):
     '''Highlight players bought by the user or by another fanta manager'''
-    if row["bought"] == st.session_state["my_fanta_manager_key"]:
+    if row["bought"] == st.session_state["settings_my_manager_key"]:
         row_style = "background-color: rgba(40, 167, 69, 0.25)"
     elif row["bought"] in fanta_managers:
         row_style = "background-color: rgba(220, 53, 69, 0.25)"
@@ -190,10 +188,10 @@ def get_col_from_user_view(user_view: str):
 
 def get_role_limits() -> dict:
     return {
-        "P": st.session_state.get("fantacalcio_goalkeepers_limit_key", 3),
-        "D": st.session_state.get("fantacalcio_defenders_limit_key", 8),
-        "C": st.session_state.get("fantacalcio_midfielders_limit_key", 8),
-        "A": st.session_state.get("fantacalcio_attackers_limit_key", 6),
+        "P": st.session_state.get("settings_golkeeper_limit_key", 3),
+        "D": st.session_state.get("settings_defender_limit_key", 8),
+        "C": st.session_state.get("settings_midfielder_limit_key", 8),
+        "A": st.session_state.get("settings_attacker_limit_key", 6),
     }
 
 def get_roles_list(enable_aka=False) -> list:
@@ -214,19 +212,19 @@ def get_roles_dict() -> dict:
 
 def get_role_budget_limits() -> dict:
     return {
-        "P": st.session_state.get("fantacalcio_goalkeepers_budget_limit_key", 50),
-        "D": st.session_state.get("fantacalcio_defenders_budget_limit_key", 100),
-        "C": st.session_state.get("fantacalcio_midfielders_budget_limit_key", 200),
-        "A": st.session_state.get("fantacalcio_attackers_budget_limit_key", 150),
+        "P": st.session_state.get("settings_golkeeper_budget_limit_key", 50),
+        "D": st.session_state.get("settings_defender_budget_limit_key", 100),
+        "C": st.session_state.get("settings_midfielder_budget_limit_key", 200),
+        "A": st.session_state.get("settings_attacker_budget_limit_key", 150),
     }
 
 def get_fanta_manager_players_dict() -> dict:
     # Case of rebuild of the bought players dict by restoring from csv
-    if "fanta_manager_players_dict_key" not in st.session_state:
+    if "fantacalcio_manager_players_dict_key" not in st.session_state:
         fanta_manager_players_dict = {}
 
         # Restore data from csv
-        restored_players = st.session_state.get("bought_players_df_key", pd.DataFrame())
+        restored_players = st.session_state.get("fantacalcio_bought_players_df_key", pd.DataFrame())
 
         # Rebuilt of the bought players dict
         if not restored_players.empty and "manager" in restored_players.columns:
@@ -234,15 +232,15 @@ def get_fanta_manager_players_dict() -> dict:
                 fanta_manager_players_dict[fanta_manager] = bought_players.reset_index(drop=True)
 
         # Preserve Fanta Managers without bought players
-        if "fanta_managers_key" in st.session_state:
-            fanta_managers = st.session_state["fanta_managers_key"]
+        if "settings_managers_key" in st.session_state:
+            fanta_managers = st.session_state["settings_managers_key"]
             for fanta_manager in fanta_managers:
                 fanta_manager_players_dict.setdefault(fanta_manager, pd.DataFrame())
 
-        st.session_state["fanta_manager_players_dict_key"] = fanta_manager_players_dict
+        st.session_state["fantacalcio_manager_players_dict_key"] = fanta_manager_players_dict
 
     # Case of data already present in session_state
-    fanta_manager_players_dict = st.session_state["fanta_manager_players_dict_key"]
+    fanta_manager_players_dict = st.session_state["fantacalcio_manager_players_dict_key"]
     return fanta_manager_players_dict
 
 def get_from_session_state(key: str):
@@ -251,8 +249,8 @@ def get_from_session_state(key: str):
     return None
 
 
-def load_env(keys: list[str], path: str = ".env") -> dict:
-    """Load selected values from an environment file into Session State."""
+def load_env(keys: list[str] | None = None, path: str = ".env") -> dict:
+    """Load selected or all stored values into Session State."""
     env_path = Path(path)
     if not env_path.exists():
         return {}
@@ -268,10 +266,16 @@ def load_env(keys: list[str], path: str = ".env") -> dict:
             env_key, env_value = line.split("=", 1)
             env_values[env_key.strip()] = env_value.strip().strip('"').strip("'")
 
+    if keys is None:
+        keys = [key for key in env_values if not key.endswith("_type")]
+
     loaded_values = {}
     for key in keys:
         # Keep values already initialized during the current session.
-        if key in st.session_state or key not in env_values:
+        if key not in env_values:
+            continue
+        if key in st.session_state:
+            loaded_values[key] = st.session_state[key]
             continue
 
         raw_value = env_values[key]
@@ -299,6 +303,8 @@ def load_env(keys: list[str], path: str = ".env") -> dict:
                 csv_path = Path(raw_value)
                 if not csv_path.is_absolute():
                     csv_path = env_path.parent / csv_path
+                if not csv_path.exists():
+                    continue
                 value = pd.read_csv(csv_path, low_memory=False)
             case _:
                 raise ValueError(f"Unsupported type for '{key}': {value_type}")
@@ -376,6 +382,27 @@ def store_env(data_dict: dict, path: str = ".env") -> dict:
 
     return stored_values
 
+def restore_bought_players(page: str):
+    '''Rebuild of the bought players dict by from csv'''
+    fanta_manager_players_dict = {}
+
+    # Restore data from csv
+    restored_players = st.session_state.get(f"{page}_bought_players_df_key", pd.DataFrame())
+
+    # Rebuilt of the bought players dict
+    if not restored_players.empty and "manager" in restored_players.columns:
+        for fanta_manager, bought_players in restored_players.groupby("manager"):
+            fanta_manager_players_dict[fanta_manager] = bought_players.reset_index(drop=True)
+
+    # Preserve Fanta Managers without bought players
+    fanta_managers = st.session_state[settings_managers_key]
+    for fanta_manager in fanta_managers:
+        fanta_manager_players_dict.setdefault(fanta_manager, pd.DataFrame())
+
+    st.session_state[f"{page}_manager_players_dict_key"] = fanta_manager_players_dict
+
+
+
 
 @st.cache_data(show_spinner=False)
 def load_dataset(path: str, filter_by_current_year: bool = False, current_season: str = "2026-27") -> pd.DataFrame:
@@ -420,7 +447,7 @@ def plot_comparison_between_players(filtered_players: pd.DataFrame) -> None:
         DataFrame containing the historical records of two players.
     """
     available_players = filtered_players["player"].dropna().drop_duplicates().tolist()
-    selected_players = st.session_state.get("player_key", [])
+    selected_players = st.session_state.get("statistics_player_key", [])
     player_names = [player for player in selected_players if player in available_players]
 
     # Add players missing from Session State while preserving DataFrame order.
@@ -435,7 +462,7 @@ def plot_comparison_between_players(filtered_players: pd.DataFrame) -> None:
 
         fanta_role = player_df["fanta_role"].dropna().iloc[0]
         role_name = get_roles_dict()[fanta_role]
-        columns = st.session_state[f"{role_name}_graphical_cols_key"]
+        columns = st.session_state.get(f"settings_{role_name}_graphical_cols_key", [])
 
         for col in columns:
             if col in filtered_players.columns and col not in columns_to_plot:
@@ -538,7 +565,10 @@ def plot_player_history(filtered_players: pd.DataFrame) -> None:
     except:
         fanta_role = "C"
 
-    columns_to_plot = st.session_state.get(f"{get_roles_dict()[fanta_role]}_graphical_cols_key", [])
+    columns_to_plot = st.session_state.get(
+        f"settings_{get_roles_dict()[fanta_role]}_graphical_cols_key",
+        [],
+    )
 
     # Select only available columns
     columns_to_plot = [col for col in columns_to_plot if col in filtered_players.columns]
@@ -592,13 +622,13 @@ def plot_player_history(filtered_players: pd.DataFrame) -> None:
 
 def has_full_team(fanta_manager: str) -> bool:
     """Return True when the Fanta Manager has filled every role."""
-    fanta_manager_players_dict = st.session_state.get("fanta_manager_players_dict_key", {})
+    fanta_manager_players_dict = st.session_state.get("fantacalcio_manager_players_dict_key", {})
     bought_players = fanta_manager_players_dict.get(fanta_manager, pd.DataFrame())
     role_limit_keys_dict = {
-        "P": "fantacalcio_goalkeepers_limit_key",
-        "D": "fantacalcio_defenders_limit_key",
-        "C": "fantacalcio_midfielders_limit_key",
-        "A": "fantacalcio_attackers_limit_key",
+        "P": "settings_golkeeper_limit_key",
+        "D": "settings_defender_limit_key",
+        "C": "settings_midfielder_limit_key",
+        "A": "settings_attacker_limit_key",
     }
 
     if not isinstance(bought_players, pd.DataFrame) or "role" not in bought_players.columns:
@@ -616,8 +646,8 @@ def has_full_team(fanta_manager: str) -> bool:
 
 def generate_pdf_with_bought_players(default_file_name: str = "fantacalcio_teams.pdf"):
     """Generate the teams PDF and display its download controls in the sidebar."""
-    fanta_manager_players_dict = st.session_state.get("fanta_manager_players_dict_key", {})
-    budget = st.session_state.get("fantacalcio_budget_key", 500)
+    fanta_manager_players_dict = st.session_state.get("fantacalcio_manager_players_dict_key", {})
+    budget = st.session_state.get("settings_budget_key", 500)
 
     if not fanta_manager_players_dict:
         return
@@ -726,16 +756,16 @@ def generate_pdf_with_bought_players(default_file_name: str = "fantacalcio_teams
                 if reset_players:
                     bought_player_columns = ["id", "player", "team", "role", "mantra_role", "manager", "mln"]
                     empty_bought_players = pd.DataFrame(columns=bought_player_columns)
-                    fanta_managers = st.session_state.get("fanta_managers_key", [])
+                    fanta_managers = st.session_state.get("settings_managers_key", [])
 
-                    st.session_state["fanta_manager_players_dict_key"] = {
+                    st.session_state["fantacalcio_manager_players_dict_key"] = {
                         fanta_manager: empty_bought_players.copy()
                         for fanta_manager in fanta_managers
                     }
-                    st.session_state["bought_players_df_key"] = empty_bought_players
+                    st.session_state["fantacalcio_bought_players_df_key"] = empty_bought_players
 
                     for key in list(st.session_state):
-                        if str(key).startswith("purchase_editor_"):
+                        if str(key).startswith("fantacalcio_purchase_editor_"):
                             del st.session_state[key]
 
                     st.session_state.pop("show_auction_reset_confirmation_key", None)
