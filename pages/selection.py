@@ -52,17 +52,19 @@ hidden_selection_columns = [
 
 def create_multiselect_filters(players: pd.DataFrame) -> pd.DataFrame:
     """Display the Fantacalcio player filters vertically in the sidebar."""
+    # Initilizations of the session_state
     for column in columns_to_filter_list:
+        # Add the key to the page's keys
         filter_key = f"{page_name}_{column}_key"
         selection_keys_set.add(filter_key)
         st.session_state.setdefault(filter_key, [])
 
-        selected_values = st.session_state[f"{page_name}_{column}_key"]
-        if not isinstance(selected_values, list):
-            selected_values = [] if selected_values in (None, "") else [selected_values]
-            st.session_state[f"{page_name}_{column}_key"] = selected_values
+        # Check if it is None or empty string to initialize it to empty list
+        selected_values_of_column = st.session_state[f"{page_name}_{column}_key"]
+        if selected_values_of_column in [None, ""]:
+            st.session_state[f"{page_name}_{column}_key"] = []
 
-    # Each widget is filtered only by the other active fields.
+    # Apply the filters
     column_df_dict = {}
     for column in columns_to_filter_list:
         column_df_dict[column] = apply_filters(
@@ -73,6 +75,7 @@ def create_multiselect_filters(players: pd.DataFrame) -> pd.DataFrame:
             page=page_name
         )
 
+    # Create the multiselection filters
     for column in columns_to_filter_list:
         options = sorted(column_df_dict[column][column].dropna().unique(), key=str)
         selected_values = [value for value in st.session_state[f"{page_name}_{column}_key"] if value in options]
@@ -88,6 +91,7 @@ def create_multiselect_filters(players: pd.DataFrame) -> pd.DataFrame:
             args=(f"{page_name}_{column}_key", f"{page_name}_{column}_widget_key"),
         )
 
+    # Filter the df based on the selections
     filtered_players = apply_filters(
         players,
         columns_to_filter_list=columns_to_filter_list,
@@ -103,19 +107,11 @@ def get_stats_player_key(field: str, player_id) -> str:
     return f"{page_name}_{field}_{player_id}_key"
 
 
-def restore_selection_players(path: str) -> None:
+def load_selected_players(path: str) -> None:
     """Restore selected players and their editable fields from a CSV file."""
-    csv_path = Path(path)
-    if not csv_path.exists():
-        return
-
     try:
-        selection_players = pd.read_csv(csv_path, low_memory=False)
+        selection_players = pd.read_csv(path, low_memory=False)
     except pd.errors.EmptyDataError:
-        return
-
-    required_columns = {"Id", "mln", "interest_level", "description"}
-    if not required_columns.issubset(selection_players.columns):
         return
 
     for _, player_row in selection_players.iterrows():
@@ -137,20 +133,26 @@ def restore_selection_players(path: str) -> None:
         st.session_state[get_stats_player_key("interest_level", player_id)] = interest_level
         st.session_state[get_stats_player_key("description", player_id)] = "" if pd.isna(description) else str(description)
 
+    return
 
-def store_selection_players(players: pd.DataFrame, path: str) -> None:
+
+def store_selected_players(players: pd.DataFrame, path: str) -> None:
     """Overwrite the CSV file with the currently selected players."""
     selection_players = []
 
     for player_id in players["Id"]:
         selected_key = get_stats_player_key("selected", player_id)
+
+        # Case of non-selected player
         if not st.session_state.get(selected_key, False):
             continue
-
+        
+        # Creation of the keys
         mln_key = get_stats_player_key("mln", player_id)
         interest_level_key = get_stats_player_key("interest_level", player_id)
         description_key = get_stats_player_key("description", player_id)
 
+        # Append of the new row to store
         selection_players.append(
             {
                 "Id": player_id,
@@ -160,14 +162,15 @@ def store_selection_players(players: pd.DataFrame, path: str) -> None:
             }
         )
 
+    # Write into the file
     selection_players_df = pd.DataFrame(
         selection_players,
         columns=["Id", "mln", "interest_level", "description"],
     )
-
     csv_path = Path(path)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     selection_players_df.to_csv(csv_path, index=False)
+    return
 
 
 def highlight_player_role(row: pd.Series) -> list[str]:
@@ -358,39 +361,50 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
 
 fanta_players = load_dataset("data/Listone_Fantacalcio_Stagione_2026_27.csv")
 loaded_env_values = load_env(path=".env")
-selection_keys_set = {
-    key
-    for key in loaded_env_values
-    if key.startswith(f"{page_name}_")
-}
+selection_keys_set = {key for key in loaded_env_values if key.startswith(f"{page_name}_")}
 
-selection_players_key = f"{page_name}_selection_players"
-selection_keys_set.add(selection_players_key)
+# Save the path to the csv file with selected players
+selection_players_key = f"{page_name}_selected_players_csv_path_key"
 st.session_state.setdefault(selection_players_key, "data/selection_players.csv")
+selection_keys_set.add(selection_players_key)
 
-selection_restored_key = f"{page_name}_selection_restored_key"
+# Load the selected players 
+selection_restored_key = f"{page_name}_selection_players_restored_key"
 if not st.session_state.get(selection_restored_key, False):
-    restore_selection_players(st.session_state[selection_players_key])
+    load_selection_players(st.session_state[selection_players_key])
     st.session_state[selection_restored_key] = True
 
+# Create filters on the sidebar
 with st.sidebar:
     st.markdown("### Filters")
     filtered_players = create_multiselect_filters(fanta_players)
 
+
 st.title(":material/group_add: Players Selection")
 st.subheader("Fantacalcio players")
+
 st.divider()
 
+# Filter the visible columns
 visible_selection_columns = [column for column in filtered_players.columns if column not in hidden_selection_columns]
 
-col1, col2, col3, col4, col5 = st.columns([1,1,3,1,1])
-col1.metric("Rows", len(filtered_players))
-col2.metric("Columns", len(visible_selection_columns) + 1)
-col5.metric("Players", filtered_players["Nome"].nunique())
+# Metrics
+col1, col2, col3, col4 = st.columns([1,1,4,1])
+with col1:
+    st.metric("Rows", len(filtered_players))
+with col2:
+    st.metric("Columns", len(visible_selection_columns) + 1)
+with col4:
+    st.metric("Players", filtered_players["Nome"].nunique())
 
+# Create the full table
 create_player_selection_table(filtered_players, visible_selection_columns)
+
+# Create the selection table
 create_selected_players_table(fanta_players, visible_selection_columns)
-store_selection_players(fanta_players, st.session_state[selection_players_key])
+
+# Store the selected players in a csv file
+store_selected_players(fanta_players, st.session_state[selection_players_key])
 
 selection_keys_list = list(selection_keys_set)
 store_env(
