@@ -29,7 +29,11 @@ st.title("⚙️ Settings")
 st.caption("Customize your Fantacalcio's parameters.")
 
 loaded_env_values = load_env(path=".env")
-settings_keys_set = set(loaded_env_values)
+settings_keys_set = {
+    key
+    for key in loaded_env_values
+    if key.startswith(f"{page_name}_")
+}
 
 my_manager_key = f"{page_name}_my_manager_key"
 settings_keys_set.add(my_manager_key)
@@ -168,12 +172,12 @@ with st.container(border=True):
             if add_warning:
                 st.info(add_warning)
             else:
-                st.success("Fanta Manager added successfully")
+                st.success("New Fanta Manager added")
         if remove_fanta_manager_button:
             if remove_warning:
                 st.info(remove_warning)
             else:
-                st.success("Fanta Manager removed successfully")
+                st.success("Fanta Manager removed")
 
 # Auction settings
 with st.container(border=True):

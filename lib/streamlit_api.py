@@ -382,12 +382,12 @@ def store_env(data_dict: dict, path: str = ".env") -> dict:
 
     return stored_values
 
-def restore_bought_players(page: str):
+def restore_bought_players(bought_players_df_key: str, settings_managers_key: str, fanta_manager_players_dict_key:str):
     '''Rebuild of the bought players dict by from csv'''
     fanta_manager_players_dict = {}
 
     # Restore data from csv
-    restored_players = st.session_state.get(f"{page}_bought_players_df_key", pd.DataFrame())
+    restored_players = st.session_state.get(bought_players_df_key, pd.DataFrame())
 
     # Rebuilt of the bought players dict
     if not restored_players.empty and "manager" in restored_players.columns:
@@ -399,7 +399,7 @@ def restore_bought_players(page: str):
     for fanta_manager in fanta_managers:
         fanta_manager_players_dict.setdefault(fanta_manager, pd.DataFrame())
 
-    st.session_state[f"{page}_manager_players_dict_key"] = fanta_manager_players_dict
+    st.session_state[fanta_manager_players_dict_key] = fanta_manager_players_dict
 
 
 

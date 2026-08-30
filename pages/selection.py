@@ -1,4 +1,4 @@
-from numbers import Real
+from pathlib import Path
 import pandas as pd
 import streamlit as st
 from lib.utils import (
@@ -9,7 +9,6 @@ from lib.streamlit_api import (
     sync_filter,
     apply_filters,
     get_user_view_of_column,
-    get_stats_persistent_keys,
     load_dataset,
     load_env,
     store_env,
@@ -102,6 +101,73 @@ def create_multiselect_filters(players: pd.DataFrame) -> pd.DataFrame:
 def get_stats_player_key(field: str, player_id) -> str:
     """Return the persistent Session State key for one player field."""
     return f"{page_name}_{field}_{player_id}_key"
+
+
+def restore_selection_players(path: str) -> None:
+    """Restore selected players and their editable fields from a CSV file."""
+    csv_path = Path(path)
+    if not csv_path.exists():
+        return
+
+    try:
+        selection_players = pd.read_csv(csv_path, low_memory=False)
+    except pd.errors.EmptyDataError:
+        return
+
+    required_columns = {"Id", "mln", "interest_level", "description"}
+    if not required_columns.issubset(selection_players.columns):
+        return
+
+    for _, player_row in selection_players.iterrows():
+        player_id = player_row["Id"]
+        if pd.isna(player_id):
+            continue
+        if isinstance(player_id, float) and player_id.is_integer():
+            player_id = int(player_id)
+
+        mln_value = pd.to_numeric(player_row["mln"], errors="coerce")
+        interest_level = player_row["interest_level"]
+        description = player_row["description"]
+
+        if interest_level not in stats_interest_level_colors_dict:
+            interest_level = "Da valutare"
+
+        st.session_state[get_stats_player_key("selected", player_id)] = True
+        st.session_state[get_stats_player_key("mln", player_id)] = 0 if pd.isna(mln_value) else int(mln_value)
+        st.session_state[get_stats_player_key("interest_level", player_id)] = interest_level
+        st.session_state[get_stats_player_key("description", player_id)] = "" if pd.isna(description) else str(description)
+
+
+def store_selection_players(players: pd.DataFrame, path: str) -> None:
+    """Overwrite the CSV file with the currently selected players."""
+    selection_players = []
+
+    for player_id in players["Id"]:
+        selected_key = get_stats_player_key("selected", player_id)
+        if not st.session_state.get(selected_key, False):
+            continue
+
+        mln_key = get_stats_player_key("mln", player_id)
+        interest_level_key = get_stats_player_key("interest_level", player_id)
+        description_key = get_stats_player_key("description", player_id)
+
+        selection_players.append(
+            {
+                "Id": player_id,
+                "mln": st.session_state.get(mln_key, 0),
+                "interest_level": st.session_state.get(interest_level_key, "Da valutare"),
+                "description": st.session_state.get(description_key, ""),
+            }
+        )
+
+    selection_players_df = pd.DataFrame(
+        selection_players,
+        columns=["Id", "mln", "interest_level", "description"],
+    )
+
+    csv_path = Path(path)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    selection_players_df.to_csv(csv_path, index=False)
 
 
 def highlight_player_role(row: pd.Series) -> list[str]:
@@ -219,14 +285,14 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
 
         st.session_state.setdefault(selected_key, True)
         st.session_state.setdefault(mln_key, 0)
-        st.session_state.setdefault(interest_level_key, "")
+        st.session_state.setdefault(interest_level_key, "Da valutare")
         st.session_state.setdefault(description_key, "")
 
         mln_value = pd.to_numeric(st.session_state[mln_key], errors="coerce")
         mln_value = 0 if pd.isna(mln_value) else int(mln_value)
         interest_level = st.session_state[interest_level_key]
         if interest_level not in stats_interest_level_colors_dict:
-            interest_level = ""
+            interest_level = "Da valutare"
         description = st.session_state[description_key]
         description = "" if pd.isna(description) else str(description)
 
@@ -274,7 +340,7 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
 
         interest_level = player_row["interest_level"]
         if interest_level not in stats_interest_level_colors_dict:
-            interest_level = ""
+            interest_level = "Da valutare"
 
         description = player_row["description"]
         description = "" if pd.isna(description) else str(description)
@@ -292,10 +358,20 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
 
 fanta_players = load_dataset("data/Listone_Fantacalcio_Stagione_2026_27.csv")
 loaded_env_values = load_env(path=".env")
-selection_keys_set = set(loaded_env_values)
+selection_keys_set = {
+    key
+    for key in loaded_env_values
+    if key.startswith(f"{page_name}_")
+}
 
-player_persistent_keys = get_stats_persistent_keys(fanta_players["Id"], page_name=page_name)
-selection_keys_set.update(player_persistent_keys)
+selection_players_key = f"{page_name}_selection_players"
+selection_keys_set.add(selection_players_key)
+st.session_state.setdefault(selection_players_key, "data/selection_players.csv")
+
+selection_restored_key = f"{page_name}_selection_restored_key"
+if not st.session_state.get(selection_restored_key, False):
+    restore_selection_players(st.session_state[selection_players_key])
+    st.session_state[selection_restored_key] = True
 
 with st.sidebar:
     st.markdown("### Filters")
@@ -314,6 +390,7 @@ col5.metric("Players", filtered_players["Nome"].nunique())
 
 create_player_selection_table(filtered_players, visible_selection_columns)
 create_selected_players_table(fanta_players, visible_selection_columns)
+store_selection_players(fanta_players, st.session_state[selection_players_key])
 
 selection_keys_list = list(selection_keys_set)
 store_env(

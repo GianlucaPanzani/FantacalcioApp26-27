@@ -474,12 +474,11 @@ def create_current_teams(fanta_manager_players_dict: dict, fanta_manager=None):
 loaded_env_values = load_env(path=".env")
 
 # Set of keys whom value has to be stored (for next loaded)
-fantacalcio_keys_set = set(loaded_env_values)
-
-# Case of restore of bought players needed
-if f"{page_name}_manager_players_dict_key" not in st.session_state:
-    restore_bought_players(page_name)
-fanta_manager_players_dict = st.session_state[f"{page_name}_manager_players_dict_key"]
+fantacalcio_keys_set = {
+    key
+    for key in loaded_env_values
+    if key.startswith(f"{page_name}_")
+}
 
 # Initialize by default values not available in the environment file
 settings_my_manager_key = "settings_my_manager_key"
@@ -500,6 +499,15 @@ my_fanta_manager = st.session_state[settings_my_manager_key]
 fanta_managers = st.session_state[settings_managers_key]
 fanta_managers = [my_fanta_manager] + [manager for manager in fanta_managers if manager != my_fanta_manager]
 st.session_state[settings_managers_key] = fanta_managers
+
+# Case of restore of bought players needed
+if f"{page_name}_manager_players_dict_key" not in st.session_state:
+    restore_bought_players(
+        bought_players_df_key=f"{page_name}_bought_players_df_key",
+        settings_managers_key=settings_managers_key,
+        fanta_manager_players_dict_key=f"{page_name}_manager_players_dict_key"
+    )
+fanta_manager_players_dict = st.session_state[f"{page_name}_manager_players_dict_key"]
 
 
 st.title("⚽ Fantacalcio 26-27 - Create your own team")

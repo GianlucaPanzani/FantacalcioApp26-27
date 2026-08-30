@@ -175,7 +175,11 @@ def checks_to_stop(players: pd.DataFrame):
 # =============================================================================
 
 loaded_env_values = load_env(path=".env")
-statistics_keys_set = set(loaded_env_values)
+statistics_keys_set = {
+    key
+    for key in loaded_env_values
+    if key.startswith(f"{page_name}_")
+}
 history_players = load_dataset("data/filtered_history_players.csv")
 with st.sidebar:
     st.markdown("### Filters")
