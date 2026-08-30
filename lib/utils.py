@@ -12,6 +12,28 @@ from pandas.api.types import (
 )
 
 
+# Material Design colors used by the player interest selector
+stats_interest_level_colors_dict = {
+    "Da valutare": "#E0E0E0",
+    "Solo a 1": "#FFFFFF",
+    "Basso": "#FFF59D",
+    "Medio": "#FFCC80",
+    "Alto": "#EF9A9A",
+    "Scommessa": "#81D4FA",
+}
+
+
+def get_color_per_role(role: str) -> str:
+    """Return a soft Material Design color for a Fantacalcio role."""
+    role_colors_dict = {
+        "P": "#FFD54F",
+        "D": "#81C784",
+        "C": "#64B5F6",
+        "A": "#E57373",
+    }
+    return role_colors_dict.get(str(role).strip().upper(), "")
+
+
 def normalize_name(name: str) -> str:
     """Normalize a player name for fuzzy comparison."""
     name = unicodedata.normalize("NFD", str(name))

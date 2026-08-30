@@ -29,7 +29,22 @@ persistent_session_keys = [
     "bought_players_df_key",
 ]
 
+stats_persistent_key_fields = [
+    "selected",
+    "mln",
+    "interest_level",
+    "description",
+]
+
 columns_to_user_view_dict = {
+    "selected": "Select",
+    "mln": "💰 Mln",
+    "interest_level": "Interest level",
+    "description": "✍️ Description",
+    "Id": "Player ID",
+    "R": "Fantacalcio role",
+    "RM": "Mantra role",
+    "Nome": "Player",
     "id": "Player ID",
     "season": "Season",
     "player": "Player",
@@ -84,6 +99,25 @@ columns_to_user_view_dict = {
     "FVM": "Classic recommended value",
     "FVM M": "Mantra recommended value",
 }
+
+
+def get_stats_persistent_keys(player_ids) -> list[str]:
+    """
+    Build the persistent Session State keys used by the statistics tables.
+
+    One key is created for every editable field of every player ID.
+    """
+    persistent_keys = []
+    unique_player_ids = pd.Series(player_ids).dropna().drop_duplicates()
+
+    for player_id in unique_player_ids:
+        if isinstance(player_id, Real) and float(player_id).is_integer():
+            player_id = int(player_id)
+
+        for field in stats_persistent_key_fields:
+            persistent_keys.append(f"stats_{field}_{player_id}_key")
+
+    return persistent_keys
 
 def config_page(page_title="Fantacalcio tool", page_icon="⚽", layout="wide", initial_sidebar_state="expanded"):
     st.set_page_config(
@@ -146,7 +180,7 @@ def toast_css_format(background_color="#47BEF1", border_color="#FFFFFF", border_
     )
 
 def get_user_view_of_column(col: str):
-    return columns_to_user_view_dict[col]
+    return columns_to_user_view_dict.get(col, col.replace("_", " ").capitalize())
 
 def get_col_from_user_view(user_view: str):
     for col, user_view_i in columns_to_user_view_dict.items():
