@@ -45,6 +45,7 @@ hidden_selection_columns = [
     "FVM",
     "FVM M",
 ]
+
 interest_level_colors_dict = {
     "Da valutare": "#E0E0E0",
     "Bassissimo": "#FFFFFF",

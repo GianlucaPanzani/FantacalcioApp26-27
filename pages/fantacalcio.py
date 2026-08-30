@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import lib.ollama_api as llm
 from lib.utils import (
-    set_format_interest_level,
+    interest_level_markers,
+    set_format_interest_level
 )
 from lib.streamlit_api import (
     thick_divider,
@@ -160,8 +161,9 @@ def player_filters(fanta_players: pd.DataFrame, columns_list: list, widget_types
     fantacalcio_keys_set.add(enable_player_preferences_key)
     st.session_state.setdefault(enable_player_preferences_key, False)
     st.checkbox(
-        "Show yuor players preferences",
+        "Show your selected players",
         key=enable_player_preferences_key,
+        persist_state="session",
         wrap=True,
     )
 
@@ -387,7 +389,9 @@ def create_editor_dataframe(
                 index=players_editor_df.index,
                 dtype=object,
             )
-        players_editor_df["interest_level"] = (players_editor_df["interest_level"].map(set_format_interest_level))
+        players_editor_df["interest_level"] = (players_editor_df["interest_level"].map(
+            lambda x: interest_level_markers[x] if x is not None else set_format_interest_level(x)
+        ))
 
     # Use a different widget key when the visible players change.
     fanta_managers = st.session_state["settings_managers_key"]
@@ -395,7 +399,7 @@ def create_editor_dataframe(
     editor_state = (visible_player_ids, tuple(fanta_managers), player_preferences is not None)
     editor_key = f"{page_name}_purchase_editor_{abs(hash(editor_state))}_key"
 
-    # Apply pending manager selections before styling the rows
+    # Applied when a manager selection occurs
     editor_changes = st.session_state.get(editor_key, {}).get("edited_rows", {})
     for row_position, changes in editor_changes.items():
         if "bought" in changes:
@@ -447,7 +451,7 @@ def create_editor_dataframe(
                 "description": st.column_config.TextColumn(
                     "Description",
                     help="Temporary note: changes made here are not saved.",
-                    width="large",
+                    width="medium",
                 ),
             }
         )
@@ -455,15 +459,16 @@ def create_editor_dataframe(
     # Set the order of the columns
     column_order = ["bought", "mln"]
     if player_preferences is not None:
-        column_order += ["mln_prevision", "interest_level"]
+        column_order += ["mln_prevision"]
     column_order += ["player", "team", "fanta_role", "Qt.I", "Qt.A", "FVM"]
     if player_preferences is not None:
-        column_order += ["description"]
+        column_order += ["interest_level", "description"]
     
     # Set the editable columns
     editable_columns = {"bought", "mln"}
     if player_preferences is not None:
         editable_columns.add("mln_prevision")
+        editable_columns.add("interest_level")
         editable_columns.add("description")
 
     # Create the table
@@ -672,7 +677,16 @@ if st.session_state[enable_player_preferences_key]:
     player_preferences = load_player_preferences(selection_players_path)
 
 # Create editable df
-create_editor_dataframe(filtered_players, fanta_manager_players_dict, player_preferences)
+if not st.session_state[enable_player_preferences_key]:
+    create_editor_dataframe(filtered_players, fanta_manager_players_dict, player_preferences)
+else:
+    col1, _, col2 = st.columns([26,1,3])
+    with col1:
+        create_editor_dataframe(filtered_players, fanta_manager_players_dict, player_preferences)
+    with col2:
+        if st.session_state[enable_player_preferences_key]:
+            for key, value in interest_level_markers.items():
+                st.markdown(f"{value} :small[{key}]")
 
 # Case of AI enabled
 if st.session_state[settings_ai_enabled_key] and filtered_players.shape[0] == 1:

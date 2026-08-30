@@ -8,6 +8,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
 import streamlit as st
 from lib.utils import (
+    get_color_per_role,
     get_condition_by,
     get_default_value
 )
@@ -126,13 +127,20 @@ def config_page(page_title="Fantacalcio tool", page_icon="⚽", layout="wide", i
     )
 
 def highlight_bought_rows(row, fanta_managers):
-    '''Highlight players bought by the user or by another fanta manager'''
+    '''Highlight bought players first, otherwise use the Fantacalcio role color.'''
+    my_fanta_manager_color = "#2BE74A" #"#36EB69"
+    others_fanta_managers_color = "#D33C28" #"#37A5FF"
     if row["bought"] == st.session_state["settings_my_manager_key"]:
-        row_style = "background-color: rgba(40, 167, 69, 0.25)"
+        row_style = f"background-color: {my_fanta_manager_color}; color: #212121"
     elif row["bought"] in fanta_managers:
-        row_style = "background-color: rgba(220, 53, 69, 0.25)"
+        row_style = f"background-color: {others_fanta_managers_color}; color: #212121"
     else:
-        row_style = ""
+        role_color = get_color_per_role(row.get("fanta_role", ""))
+        row_style = (
+            f"background-color: {role_color}; color: #212121"
+            if role_color
+            else ""
+        )
     return [row_style] * len(row)
 
 def sidebar_navigation_size(font_size=1.15, font_weight=600):

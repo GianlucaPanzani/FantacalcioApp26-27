@@ -13,6 +13,7 @@ from pandas.api.types import (
 
 
 interest_level_markers = {
+    "Da rivedere": "⚫",
     "Bassissimo": "⚪",
     "Basso": "🟡",
     "Medio": "🟠",
