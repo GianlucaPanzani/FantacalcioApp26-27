@@ -25,6 +25,11 @@ st.set_page_config(
 page_name = "settings"
 
 
+def add_graphical_columns(graphical_cols_key, widget_key):
+    st.session_state[graphical_cols_key].extend(st.session_state[widget_key])
+    st.session_state[widget_key] = []
+
+
 st.title("⚙️ Settings")
 st.caption("Customize your Fantacalcio's parameters.")
 
@@ -304,24 +309,24 @@ with st.container(border=True):
         with cols[i]:
             st.divider()
 
-            selected_graphical_col = st.selectbox(
-                "Select a field to use for statistics",
+            graphical_cols_key = f"{page_name}_{role}_graphical_cols_key"
+            graphical_cols_widget_key = f"{page_name}_add_{role}_graphical_col_widget_key"
+            selected_graphical_cols = st.multiselect(
+                "Select fields to use for statistics",
                 options=numeric_columns,
-                index=None,
-                placeholder="Select a column...",
+                placeholder="Select columns...",
                 format_func=get_user_view_of_column,
-                key=f"{page_name}_add_{role}_graphical_col_widget_key",
+                key=graphical_cols_widget_key,
             )
 
-            add_graphical_col_button = st.button(
+            st.button(
                 "Add",
                 width="stretch",
-                disabled=selected_graphical_col is None,
-                key=f"{page_name}_add_button_{role}_graphical_col_key"
+                disabled=not selected_graphical_cols,
+                key=f"{page_name}_add_button_{role}_graphical_col_key",
+                on_click=add_graphical_columns,
+                args=(graphical_cols_key, graphical_cols_widget_key),
             )
-            if add_graphical_col_button and selected_graphical_col is not None:
-                st.session_state[f"{page_name}_{role}_graphical_cols_key"].append(selected_graphical_col)
-                st.rerun()
 
 # AI settings
 with st.container(border=True):
