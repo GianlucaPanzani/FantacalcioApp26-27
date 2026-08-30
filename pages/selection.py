@@ -2,7 +2,9 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from lib.utils import (
-    get_color_per_role,
+    highlight_player_role,
+    set_format_interest_level,
+    interest_level_markers
 )
 from lib.streamlit_api import (
     sync_filter,
@@ -53,21 +55,12 @@ interest_level_colors_dict = {
     "Buoni low cost": "#81FAC8",
 }
 
-interest_level_markers = {
-    "Bassissimo": "⚪",
-    "Basso": "🟡",
-    "Medio": "🟠",
-    "Alto": "🔴",
-    "Scommessa": "🟣",
-    "Buoni low cost": "🔵",
-}
-
 
 # =============================================================================
 # ============================== FUNCTIONS ====================================
 # =============================================================================
 
-def create_multiselect_filters(players: pd.DataFrame) -> pd.DataFrame:
+def players_filters(players: pd.DataFrame) -> pd.DataFrame:
     """Display the Fantacalcio player filters vertically in the sidebar."""
     # Initilizations of the session_state
     for column in columns_to_filter_list:
@@ -107,6 +100,8 @@ def create_multiselect_filters(players: pd.DataFrame) -> pd.DataFrame:
             on_change=sync_filter,
             args=(f"{page_name}_{column}_key", f"{page_name}_{column}_widget_key"),
         )
+    
+    st.divider()
 
     # Filter the df based on the selections
     filtered_players = apply_filters(
@@ -122,12 +117,6 @@ def create_multiselect_filters(players: pd.DataFrame) -> pd.DataFrame:
 def get_stats_player_key(field: str, player_id) -> str:
     """Return the persistent Session State key for one player field."""
     return f"{page_name}_{field}_{player_id}_key"
-
-
-def format_interest_level(interest_level: str) -> str:
-    """Add a color marker to an interest level, except for the default one."""
-    marker = interest_level_markers.get(interest_level)
-    return f"{marker} {interest_level}" if marker else interest_level
 
 
 def update_player_selections(player_ids: tuple, editor_key: str) -> None:
@@ -215,14 +204,6 @@ def store_selected_players(players: pd.DataFrame, path: str) -> None:
     return
 
 
-def highlight_player_role(row: pd.Series) -> list[str]:
-    """Apply the Fantacalcio role color to every read-only player cell."""
-    role_color = get_color_per_role(row.get("R", ""))
-    if not role_color:
-        return [""] * len(row)
-    return [f"background-color: {role_color}; color: #212121"] * len(row)
-
-
 def get_selection_column_config(columns: list[str]) -> dict:
     """Create readable Streamlit column configurations for selection tables."""
     column_config = {
@@ -254,7 +235,7 @@ def get_selection_column_config(columns: list[str]) -> dict:
             get_user_view_of_column("interest_level"),
             help="Choose your current interest level for this player.",
             options=list(interest_level_colors_dict),
-            format_func=format_interest_level,
+            format_func=set_format_interest_level,
             default="Da valutare",
             required=True,
         )
@@ -425,7 +406,7 @@ if not st.session_state.get(selection_restored_key, False):
 # Create filters on the sidebar
 with st.sidebar:
     st.markdown("### Filters")
-    filtered_players = create_multiselect_filters(fanta_players)
+    filtered_players = players_filters(fanta_players)
 
 
 st.title(":material/group_add: Players Selection")

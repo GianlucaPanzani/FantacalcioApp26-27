@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 import lib.ollama_api as llm
+from lib.utils import (
+    set_format_interest_level,
+)
 from lib.streamlit_api import (
     thick_divider,
     highlight_bought_rows,
@@ -46,18 +49,13 @@ enable_player_preferences_key = f"{page_name}_enable_player_preferences_key"
 # ============================== FUNCTIONS ====================================
 # =============================================================================
 
-def player_filter(fanta_players: pd.DataFrame, columns_list: list, widget_types: list, fanta_manager_players_dict: dict) -> pd.DataFrame:
+def player_filters(fanta_players: pd.DataFrame, columns_list: list, widget_types: list, fanta_manager_players_dict: dict) -> pd.DataFrame:
 
     # Initialize default filter values
     for col, widget_type in zip(columns_list, widget_types):
         key = f"{page_name}_{col}_key"
         fantacalcio_keys_set.add(key)
         st.session_state.setdefault(key, get_default_value(fanta_players[col]))
-
-    cols = st.columns(
-        [9,1] * (len(columns_list)+2),
-        vertical_alignment="bottom",
-    )
 
     # Create widgets
     filtered_df = fanta_players.copy()
@@ -89,26 +87,25 @@ def player_filter(fanta_players: pd.DataFrame, columns_list: list, widget_types:
                 else None
             )
 
-        with cols[i*2]:
-            if widget_type == "multiselect":
-                selected_values = st.multiselect(
-                    f"Search {column}",
-                    options=options,
-                    placeholder="Select one or more elements...",
-                    key=widget_key,
-                    on_change=sync_filter,
-                    args=(filter_key, widget_key),
-                )
-            else:
-                selected_values = st.selectbox(
-                    f"Select {column}",
-                    options=options,
-                    index=None,
-                    placeholder="Select an element...",
-                    key=widget_key,
-                    on_change=sync_filter,
-                    args=(filter_key, widget_key),
-                )
+        if widget_type == "multiselect":
+            selected_values = st.multiselect(
+                f"Search {column}",
+                options=options,
+                placeholder="Select one or more elements...",
+                key=widget_key,
+                on_change=sync_filter,
+                args=(filter_key, widget_key),
+            )
+        else:
+            selected_values = st.selectbox(
+                f"Select {column}",
+                options=options,
+                index=None,
+                placeholder="Select an element...",
+                key=widget_key,
+                on_change=sync_filter,
+                args=(filter_key, widget_key),
+            )
 
         # Apply the value setted in the widget
         if selected_values:
@@ -127,7 +124,6 @@ def player_filter(fanta_players: pd.DataFrame, columns_list: list, widget_types:
     st.session_state.setdefault(manager_filter_key, "")
 
     manager_options = ["Free"] + st.session_state["settings_managers_key"]
-
     manager_widget_key = f"{page_name}_selected_manager_widget_key"
     st.session_state[manager_widget_key] = (
         st.session_state[manager_filter_key]
@@ -135,16 +131,16 @@ def player_filter(fanta_players: pd.DataFrame, columns_list: list, widget_types:
         else None
     )
 
-    with cols[-4]:
-        selected_fanta_manager = st.selectbox(
-            "Select a Fanta Manager",
-            options=manager_options,
-            index=None,
-            placeholder="Select a manager...",
-            key=manager_widget_key,
-            on_change=sync_filter,
-            args=(manager_filter_key, manager_widget_key),
-        )
+    # Fanta Manager filter
+    selected_fanta_manager = st.selectbox(
+        "Select a Fanta Manager",
+        options=manager_options,
+        index=None,
+        placeholder="Select a manager...",
+        key=manager_widget_key,
+        on_change=sync_filter,
+        args=(manager_filter_key, manager_widget_key),
+    )
 
     if selected_fanta_manager == "Free":
         bought_player_ids = set()
@@ -160,14 +156,14 @@ def player_filter(fanta_players: pd.DataFrame, columns_list: list, widget_types:
             bought_player_ids = set()
         filtered_df = filtered_df[filtered_df["id"].astype(str).isin(bought_player_ids)]
 
+    # Checkbox to show the Manager's prefered players
     fantacalcio_keys_set.add(enable_player_preferences_key)
     st.session_state.setdefault(enable_player_preferences_key, False)
-    with cols[-2]:
-        st.checkbox(
-            "Enable yuor players preferences",
-            key=enable_player_preferences_key,
-            wrap=True,
-        )
+    st.checkbox(
+        "Show yuor players preferences",
+        key=enable_player_preferences_key,
+        wrap=True,
+    )
 
     st.divider()
     
@@ -334,12 +330,7 @@ def update_player_purchases(
     st.session_state[f"{page_name}_bought_players_df_key"] = bought_players_df
 
 
-def sync_purchase_editor(
-    players_editor_df: pd.DataFrame,
-    fanta_manager_players_dict: dict,
-    fanta_managers: list,
-    editor_key: str,
-) -> None:
+def sync_purchase_editor(players_editor_df: pd.DataFrame, fanta_manager_players_dict: dict, fanta_managers: list, editor_key: str) -> None:
     """Apply purchase edits before Streamlit rebuilds the table."""
     editor_changes = st.session_state.get(editor_key, {}).get("edited_rows", {})
     changed_row_positions = set()
@@ -387,17 +378,16 @@ def create_editor_dataframe(
     players_editor_df.insert(loc=1, column="mln", value=mln_values)
 
     if player_preferences is not None:
-        preference_columns = ["mln_prevision", "interest_level", "description"]
-        for column in preference_columns:
-            column_values = [
-                player_preferences.get(str(player_id), {}).get(column)
-                for player_id in players_editor_df["id"]
-            ]
+        for column in ["mln_prevision", "interest_level", "description"]:
             players_editor_df[column] = pd.Series(
-                column_values,
+                data=[
+                    player_preferences.get(str(player_id), {}).get(column)
+                    for player_id in players_editor_df["id"]
+                ],
                 index=players_editor_df.index,
                 dtype=object,
             )
+        players_editor_df["interest_level"] = (players_editor_df["interest_level"].map(set_format_interest_level))
 
     # Use a different widget key when the visible players change.
     fanta_managers = st.session_state["settings_managers_key"]
@@ -462,12 +452,19 @@ def create_editor_dataframe(
             }
         )
 
+    # Set the order of the columns
     column_order = ["bought", "mln"]
+    if player_preferences is not None:
+        column_order += ["mln_prevision", "interest_level"]
+    column_order += ["player", "team", "fanta_role", "Qt.I", "Qt.A", "FVM"]
+    if player_preferences is not None:
+        column_order += ["description"]
+    
+    # Set the editable columns
     editable_columns = {"bought", "mln"}
     if player_preferences is not None:
-        column_order.extend(["mln_prevision", "interest_level", "description"])
+        editable_columns.add("mln_prevision")
         editable_columns.add("description")
-    column_order.extend(["player", "team", "fanta_role", "Qt.I", "Qt.A", "FVM"])
 
     # Create the table
     st.data_editor(
@@ -653,13 +650,17 @@ st.caption(
     "Search or reduce the players in the table using the following filters.\n"
     "Select the Fanta Manager on the first column if someone has bought a player and set the millions spent to update the teams."
 )
+
 fanta_players = load_dataset("data/filtered_history_players.csv", filter_by_current_year=True)
-filtered_players = player_filter(
-    fanta_players,
-    columns_list=["player", "team", "fanta_role"],
-    widget_types=["multiselect", "selectbox", "selectbox"],
-    fanta_manager_players_dict=fanta_manager_players_dict
-)
+
+with st.sidebar:
+    st.markdown("### Filters")
+    filtered_players = player_filters(
+        fanta_players,
+        columns_list=["player", "team", "fanta_role"],
+        widget_types=["multiselect", "selectbox", "selectbox"],
+        fanta_manager_players_dict=fanta_manager_players_dict
+    )
 
 # Load the optional preferences stored by the Players Selection page
 player_preferences = None
@@ -670,7 +671,7 @@ if st.session_state[enable_player_preferences_key]:
     )
     player_preferences = load_player_preferences(selection_players_path)
 
-# Create table
+# Create editable df
 create_editor_dataframe(filtered_players, fanta_manager_players_dict, player_preferences)
 
 # Case of AI enabled

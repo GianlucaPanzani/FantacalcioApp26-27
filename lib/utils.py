@@ -12,6 +12,28 @@ from pandas.api.types import (
 )
 
 
+interest_level_markers = {
+    "Bassissimo": "⚪",
+    "Basso": "🟡",
+    "Medio": "🟠",
+    "Alto": "🔴",
+    "Scommessa": "🟣",
+    "Buoni low cost": "🔵",
+}
+
+def set_format_interest_level(interest_level):
+    if interest_level is None:
+        return None
+    marker = interest_level_markers.get(interest_level)
+    return f"{marker} {interest_level}" if marker else interest_level
+
+def highlight_player_role(row: pd.Series) -> list[str]:
+    """Apply the Fantacalcio role color to every read-only player cell."""
+    role_color = get_color_per_role(row.get("R", ""))
+    if not role_color:
+        return [""] * len(row)
+    return [f"background-color: {role_color}; color: #212121"] * len(row)
+
 def get_color_per_role(role: str) -> str:
     """Return a soft Material Design color for a Fantacalcio role."""
     role_colors_dict = {
