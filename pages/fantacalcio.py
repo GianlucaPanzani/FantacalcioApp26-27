@@ -355,12 +355,9 @@ def sync_purchase_editor(players_editor_df: pd.DataFrame, fanta_manager_players_
         )
 
 
-def create_editor_dataframe(
-    filtered_players: pd.DataFrame,
-    fanta_manager_players_dict: dict,
-    player_preferences: dict | None = None,
-):
-
+def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_players_dict: dict, player_preferences: dict | None = None,):
+    players_editor_df = filtered_players.copy()
+    
     # Create the players dataframe to be shown
     bought_players_by_id = {}
     for fanta_manager, bought_players in fanta_manager_players_dict.items():
@@ -371,14 +368,22 @@ def create_editor_dataframe(
             bought_player_data["manager"] = fanta_manager
             bought_players_by_id[str(bought_player["id"])] = bought_player_data
 
-    players_editor_df = filtered_players.copy()
-    bought_values = players_editor_df["id"].map(lambda player_id: bought_players_by_id.get(str(player_id), {}).get("manager"))
-    bought_values = bought_values.fillna("").astype(str)
-    mln_values = players_editor_df["id"].map(lambda player_id: bought_players_by_id.get(str(player_id), {}).get("mln", 0))
-    mln_values = pd.to_numeric(mln_values, errors="coerce").fillna(0).astype(int)
+    # Create the bought column
+    bought_values = players_editor_df["id"].map(
+        lambda player_id: bought_players_by_id.get(str(player_id), {}).get("manager")
+    ).fillna("").astype(str)
     players_editor_df.insert(loc=0, column="bought", value=bought_values)
+
+    # Create the mln column
+    mln_values = pd.to_numeric(
+        players_editor_df["id"].map(
+            lambda player_id: bought_players_by_id.get(str(player_id), {}).get("mln", 1)
+        ).fillna(1).astype(int),
+        errors="coerce"
+    )
     players_editor_df.insert(loc=1, column="mln", value=mln_values)
 
+    # Case of checkbox selected to show the selected players
     if player_preferences is not None:
         for column in ["mln_prevision", "interest", "description"]:
             players_editor_df[column] = pd.Series(
@@ -429,9 +434,9 @@ def create_editor_dataframe(
                 alignment="center",
             ),
             "id": st.column_config.NumberColumn("ID", alignment="center"),
+            "fanta_role": st.column_config.TextColumn("R", alignment="center"),
             "player": st.column_config.TextColumn("Player", alignment="center"),
             "team": st.column_config.TextColumn("Team", alignment="center"),
-            "fanta_role": st.column_config.TextColumn("R", alignment="center"),
         }
     )
 
@@ -457,12 +462,9 @@ def create_editor_dataframe(
         )
 
     # Set the order of the columns
-    column_order = ["bought", "mln"]
+    column_order = ["bought", "mln", "fanta_role", "player", "team", "Qt.I", "Qt.A", "FVM"]
     if player_preferences is not None:
-        column_order += ["mln_prevision"]
-    column_order += ["player", "team", "fanta_role", "Qt.I", "Qt.A", "FVM"]
-    if player_preferences is not None:
-        column_order += ["interest", "description"]
+        column_order += ["mln_prevision", "interest", "description"]
     
     # Set the editable columns
     editable_columns = {"bought", "mln"}

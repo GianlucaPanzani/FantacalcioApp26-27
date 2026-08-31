@@ -38,10 +38,10 @@ def highlight_player_role(row: pd.Series) -> list[str]:
 def get_color_per_role(role: str) -> str:
     """Return a soft Material Design color for a Fantacalcio role."""
     role_colors_dict = {
-        "P": "#F8D156",  # Previous: "#FFD54F"
-        "D": "#84C487",  # Previous: "#81C784"
-        "C": "#6AB4F0",  # Previous: "#64B5F6"
-        "A": "#E07878",  # Previous: "#E57373"
+        "P": "#EACD6D",  # Previous: "#FFD54F"
+        "D": "#8FCD92",  # Previous: "#81C784"
+        "C": "#73B3E7",  # Previous: "#64B5F6"
+        "A": "#DE7D7D",  # Previous: "#E57373"
     }
     return role_colors_dict.get(str(role).strip().upper(), "")
 

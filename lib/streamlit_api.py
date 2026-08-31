@@ -128,8 +128,8 @@ def config_page(page_title="Fantacalcio tool", page_icon="⚽", layout="wide", i
 
 def highlight_bought_rows(row, fanta_managers):
     '''Highlight bought players first, otherwise use the Fantacalcio role color.'''
-    my_fanta_manager_color = "#2BE74A" #"#36EB69"
-    others_fanta_managers_color = "#D33C28" #"#37A5FF"
+    my_fanta_manager_color = "#23C43E" #"#36EB69"
+    others_fanta_managers_color = "#D44633" #"#37A5FF"
     if row["bought"] == st.session_state["settings_my_manager_key"]:
         row_style = f"background-color: {my_fanta_manager_color}; color: #212121"
     elif row["bought"] in fanta_managers:
