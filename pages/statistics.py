@@ -90,7 +90,7 @@ def get_safe_slider_max(df, column_name, state_key, minimum_max=0.01):
     return max(data_max, current_value, minimum_max)
 
 
-def get_statistics_table(players: pd.DataFrame) -> pd.DataFrame:
+def build_statistics_table(players: pd.DataFrame) -> pd.DataFrame:
     """Put Fantacalcio fields first and remove columns hidden from the table."""
     ordered_columns = [
         column
@@ -207,21 +207,43 @@ def create_sliders_filters(players: pd.DataFrame, columns=["goals_per90", "ninet
     st.session_state[f"{page_name}_filtered_players_key"] = filtered_df
     return filtered_df
 
-def checks_to_stop(players: pd.DataFrame):
+def create_dataframe(statistics_table, displayed_table):
+    fantacalcio_visible_columns = [col for col in fantacalcio_dataset_columns if col in statistics_table.columns]
 
-    # Case of NO statistics: more than 2 players selected
-    if players["player"].nunique() > 2:
-        st.stop()
+    integer_statistics_columns = {"age", "birth_year", "appearances", "starts", "minutes"}
+    float_statistics_columns = {col for col in statistics_table.select_dtypes(include="float").columns if col not in integer_statistics_columns}
+    statistics_number_formats = {
+        **dict.fromkeys(integer_statistics_columns, "%d"),
+        **dict.fromkeys(float_statistics_columns, "%.2f"),
+    }
 
-    # Case of NO statistics: the current season hasn't stats
-    if players.shape[0] == 1 and players["season"].iloc[0] == "2026-27":
-        st.stop()
-
-    # Case of NO statistics: one specific season or team selected (no plots possible with this)
-    if players["season"].nunique() == 1 and (st.session_state[f"{page_name}_season_widget_key"] or st.session_state[f"{page_name}_team_widget_key"]):
-        st.warning("You have selected 1 specific season or a specific team: deselect it to see the statistics accross years.")
-        st.stop()
-    
+    st.dataframe(
+        displayed_table.style.apply(
+            highlight_player_role,
+            axis=1,
+            subset=fantacalcio_visible_columns,
+        ),
+        width="stretch",
+        height=700 if displayed_table.shape[0] > 30 else "auto",
+        hide_index=False,
+        column_config={
+            column: (
+                st.column_config.NumberColumn(
+                    get_user_view_of_column(column),
+                    format=statistics_number_formats[column],
+                    width=get_column_width(displayed_table, column),
+                    alignment="center",
+                )
+                if column in statistics_number_formats
+                else st.column_config.Column(
+                    get_user_view_of_column(column),
+                    width=get_column_width(displayed_table, column),
+                    alignment="center",
+                )
+            )
+            for column in statistics_table.columns
+        },
+    )
     return
 
 
@@ -236,28 +258,38 @@ statistics_keys_set = {
     if key.startswith(f"{page_name}_")
 }
 history_players = load_dataset("data/filtered_history_players.csv")
-with st.sidebar:
-    st.markdown("### Filters")
-    filtered_players = create_multiselect_filters(history_players)
-    filtered_players = create_sliders_filters(filtered_players)
 
 
 st.title("📊 Statistics")
 st.subheader("Players")
 
-# Case of 2 players
-if filtered_players["player"].nunique() == 2:
-    st.divider()
-    plot_comparison_between_players(filtered_players)
-elif filtered_players["player"].nunique() == 1:
-    st.divider()
-    plot_player_history(filtered_players)
+# Filters on the sidebar
+with st.sidebar:
+    st.markdown("### Filters")
+    filtered_players = create_multiselect_filters(history_players)
+    filtered_players = create_sliders_filters(filtered_players)
 
 st.divider()
 
-statistics_table = get_statistics_table(filtered_players)
+# Case of NO statistics: one specific season or team selected (no plots possible with this)
+if filtered_players["season"].nunique() <= 2 and (
+        st.session_state[f"{page_name}_season_widget_key"] or st.session_state[f"{page_name}_team_widget_key"]
+    ):
+    st.info("You have selected 1 specific season or a specific team: deselect it to see the statistics accross years.")
 
-cols = st.columns([1,1,1,4,1,1])
+# Case of 2 players selected
+if filtered_players["player"].nunique() == 2:
+    plot_comparison_between_players(filtered_players)
+    thick_divider()
+# Case of 1 player selected
+elif filtered_players["player"].nunique() == 1:
+    plot_player_history(filtered_players)
+    thick_divider()
+
+
+statistics_table = build_statistics_table(filtered_players)
+
+cols = st.columns([1,1,1,3,2,1])
 with cols[0]:
     st.metric("Rows", len(filtered_players))
 with cols[1]:
@@ -270,51 +302,26 @@ with cols[5]:
     table_page_key = f"{page_name}_table_page_key"
     st.session_state[table_page_key] = min(st.session_state.get(table_page_key, 1), total_table_pages)
     table_page = st.number_input(
-        f"Page {st.session_state.get(table_page_key, 1)}/{total_table_pages}",
+        f"Table {st.session_state.get(table_page_key, 1)}/{total_table_pages}",
         min_value=1,
         max_value=total_table_pages,
         key=table_page_key,
     )
     start = (table_page - 1) * rows_per_page
-    end = start + rows_per_page
+    end = min(start + rows_per_page, statistics_table.shape[0])
     displayed_table = statistics_table.iloc[start:end]
 with cols[4]:
-    st.metric("Rows in current page", displayed_table.shape[0])
+    st.metric(
+        label="Range of rows for this table",
+        value=f"{start}-{end}",
+        help=f"Dataset is segmented in multiple tables of {rows_per_page} rows because \
+            of its length to avoid lagging.\n\
+            Anyways, the filters on the sidebar will be applied to the entire dataset.",
+        label_visibility="visible"
+    )
 
 # Create the dataframe
-fantacalcio_visible_columns = [col for col in fantacalcio_dataset_columns if col in statistics_table.columns]
-integer_statistics_columns = {"age", "birth_year", "appearances", "starts", "minutes"}
-float_statistics_columns = {col for col in statistics_table.select_dtypes(include="float").columns if col not in integer_statistics_columns}
-statistics_number_formats = {
-    **dict.fromkeys(integer_statistics_columns, "%d"),
-    **dict.fromkeys(float_statistics_columns, "%.2f"),
-}
-st.dataframe(
-    displayed_table.style.apply(
-        highlight_player_role,
-        axis=1,
-        subset=fantacalcio_visible_columns,
-    ),
-    width="stretch",
-    hide_index=False,
-    column_config={
-        column: (
-            st.column_config.NumberColumn(
-                get_user_view_of_column(column),
-                format=statistics_number_formats[column],
-                width=get_column_width(displayed_table, column),
-                alignment="center",
-            )
-            if column in statistics_number_formats
-            else st.column_config.Column(
-                get_user_view_of_column(column),
-                width=get_column_width(displayed_table, column),
-                alignment="center",
-            )
-        )
-        for column in statistics_table.columns
-    },
-)
+create_dataframe(statistics_table, displayed_table)
 
 statistics_keys_list = list(statistics_keys_set)
 store_env(
