@@ -224,7 +224,7 @@ def create_dataframe(statistics_table, displayed_table):
             subset=fantacalcio_visible_columns,
         ),
         width="stretch",
-        height=700 if displayed_table.shape[0] > 30 else "auto",
+        height=650 if displayed_table.shape[0] > 30 else "auto",
         hide_index=False,
         column_config={
             column: (

@@ -455,9 +455,38 @@ def create_player_history_chart(data: pd.DataFrame, statistic_name: str, y_limit
     return chart + mean_line
 
 
-def compute_column_mean(players: pd.DataFrame, column: str) -> float | None:
-    values = pd.to_numeric(players[column], errors="coerce").dropna()
-    return None if values.empty else float(values.mean())
+def compute_role_column_means(
+    history_players: pd.DataFrame,
+    roles: list[str],
+) -> dict[str, dict[str, float | None]]:
+    """
+    Compute numeric column means by role, giving each player equal weight.
+
+    First average each player's historical values, then average those results
+    across all players with the same role.
+    """
+    numeric_columns = history_players.select_dtypes(include="number").columns
+    role_column_means = {}
+
+    for role in roles:
+        # Keep all historical rows for players of the requested role.
+        role_players = history_players.loc[
+            history_players["fanta_role"] == role,
+            ["player", *numeric_columns],
+        ]
+
+        # Average each player's history, then average all players of the role.
+        player_column_means = role_players.groupby("player")[numeric_columns].mean()
+        role_column_means[role] = {
+            column: (
+                None
+                if player_column_means[column].dropna().empty
+                else float(player_column_means[column].mean())
+            )
+            for column in numeric_columns
+        }
+
+    return role_column_means
 
 
 def plot_comparison_between_players(history_players: pd.DataFrame, filtered_players: pd.DataFrame) -> None:
@@ -473,14 +502,8 @@ def plot_comparison_between_players(history_players: pd.DataFrame, filtered_play
     filtered_players:
         DataFrame containing the historical records of two players.
     """
-    # Compute the mean of each column of the history df
-    role_column_means = {}
-    for role in filtered_players["fanta_role"].dropna().unique():
-        role_players = history_players[history_players["fanta_role"] == role]
-        role_column_means[role] = {
-            column: compute_column_mean(role_players, column)
-            for column in role_players.select_dtypes(include="number").columns
-        }
+    roles = filtered_players["fanta_role"].dropna().unique().tolist()
+    role_column_means = compute_role_column_means(history_players, roles)
 
     available_players = filtered_players["player"].dropna().drop_duplicates().tolist()
     selected_players = st.session_state.get("statistics_player_key", [])
@@ -611,14 +634,8 @@ def plot_player_history(history_players: pd.DataFrame, filtered_players: pd.Data
     filtered_players:
         DataFrame containing the historical records of one player.
     """
-    # Compute the mean of each column of the history df
-    role_column_means = {}
-    for role in filtered_players["fanta_role"].dropna().unique():
-        role_players = history_players[history_players["fanta_role"] == role]
-        role_column_means[role] = {
-            column: compute_column_mean(role_players, column)
-            for column in role_players.select_dtypes(include="number").columns
-        }
+    roles = filtered_players["fanta_role"].dropna().unique().tolist()
+    role_column_means = compute_role_column_means(history_players, roles)
 
     try:
         fanta_role = filtered_players["fanta_role"].dropna().iloc[0]
