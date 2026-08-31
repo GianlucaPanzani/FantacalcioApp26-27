@@ -457,7 +457,7 @@ def create_player_history_chart(data: pd.DataFrame, statistic_name: str, y_limit
 
 def compute_column_mean(players: pd.DataFrame, column: str) -> float | None:
     values = pd.to_numeric(players[column], errors="coerce").dropna()
-    
+    return None if values.empty else float(values.mean())
 
 
 def plot_comparison_between_players(history_players: pd.DataFrame, filtered_players: pd.DataFrame) -> None:
@@ -596,6 +596,8 @@ def plot_comparison_between_players(history_players: pd.DataFrame, filtered_play
                     chart,
                     width="stretch",
                 )
+    return
+
 
 def plot_player_history(history_players: pd.DataFrame, filtered_players: pd.DataFrame) -> None:
     """
@@ -681,6 +683,7 @@ def plot_player_history(history_players: pd.DataFrame, filtered_players: pd.Data
                 chart,
                 width="stretch",
             )
+    return
 
 
 def has_full_team(fanta_manager: str) -> bool:
