@@ -110,7 +110,11 @@ def get_statistics_table(players: pd.DataFrame) -> pd.DataFrame:
     return players[visible_columns]
 
 
-
+def get_column_width(players: pd.DataFrame, column: str) -> int:
+    """Return a readable width based on the column label and its contents."""
+    max_content_length = int(players[column].fillna("").astype(str).str.len().max())
+    label_length = len(get_user_view_of_column(column))
+    return (max(max_content_length, label_length) + 1) * 8
 
 
 def create_multiselect_filters(players: pd.DataFrame, columns=["player", "fanta_role", "season", "team", "competition"]) -> pd.DataFrame:
@@ -275,26 +279,41 @@ with cols[5]:
     end = start + rows_per_page
     displayed_table = statistics_table.iloc[start:end]
 with cols[4]:
-    st.metric("Players in the page", displayed_table.shape[0])
+    st.metric("Rows in current page", displayed_table.shape[0])
 
-fantacalcio_visible_columns = [
-    column
-    for column in fantacalcio_dataset_columns
-    if column in statistics_table.columns
-]
-
+# Create the dataframe
+fantacalcio_visible_columns = [col for col in fantacalcio_dataset_columns if col in statistics_table.columns]
+integer_statistics_columns = {"age", "birth_year", "appearances", "starts", "minutes"}
+float_statistics_columns = {col for col in statistics_table.select_dtypes(include="float").columns if col not in integer_statistics_columns}
+statistics_number_formats = {
+    **dict.fromkeys(integer_statistics_columns, "%d"),
+    **dict.fromkeys(float_statistics_columns, "%.2f"),
+}
 st.dataframe(
     displayed_table.style.apply(
         highlight_player_role,
         axis=1,
-        subset=fantacalcio_visible_columns
+        subset=fantacalcio_visible_columns,
     ),
     width="stretch",
     hide_index=False,
     column_config={
-        column: st.column_config.Column(get_user_view_of_column(column), alignment="center")
+        column: (
+            st.column_config.NumberColumn(
+                get_user_view_of_column(column),
+                format=statistics_number_formats[column],
+                width=get_column_width(displayed_table, column),
+                alignment="center",
+            )
+            if column in statistics_number_formats
+            else st.column_config.Column(
+                get_user_view_of_column(column),
+                width=get_column_width(displayed_table, column),
+                alignment="center",
+            )
+        )
         for column in statistics_table.columns
-    }
+    },
 )
 
 statistics_keys_list = list(statistics_keys_set)
@@ -304,5 +323,3 @@ store_env(
 )
 
 #checks_to_stop(filtered_players)
-
-
