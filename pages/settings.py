@@ -76,7 +76,7 @@ with st.container(border=True):
             label="Your Fanta Manager name",
             placeholder=st.session_state[f"{page_name}_my_manager_key"],
             key=f"{page_name}_my_manager_widget_key",
-        ).strip()
+        ).capitalize().strip()
 
         managers_list = [manager.lower() for manager in fanta_managers]
         update_warning = None
@@ -106,7 +106,7 @@ with st.container(border=True):
             label="Add a new Fanta Manager",
             placeholder="Enter a name...",
             key=f"{page_name}_new_manager_widget_key",
-        ).strip()
+        ).capitalize().strip()
 
         managers_list = [manager.lower() for manager in fanta_managers]
         add_warning = None
@@ -192,16 +192,23 @@ with st.container(border=True):
     with cols[0]:
         st.markdown("#### **Players per role**")
 
-    for i, role, role_with_aka, value in zip(range(2,9,2), roles_list, roles_with_aka_list, [3,8,8,6]):
+    for i, role, role_with_aka, default_value in zip(range(2,9,2), roles_list, roles_with_aka_list, [3,8,8,6]):
+        role_limit_key = f"{page_name}_{role}_limit_key"
+        st.session_state.setdefault(role_limit_key, default_value)
+        settings_keys_set.add(role_limit_key)
+
+        # Restore data of the widget
+        role_limit_widget_key = f"{page_name}_{role}_limit_widget_key"
+        st.session_state[role_limit_widget_key] = st.session_state[role_limit_key]
+
         with cols[i]:
-            role_limit_key = f"{page_name}_{role}_limit_key"
-            settings_keys_set.add(role_limit_key)
-            st.session_state.setdefault(role_limit_key, value)
-            goalkeepers_limit = st.number_input(
+            st.number_input(
                 f"Number of {str(role).capitalize()} {str(role_with_aka).split(' ')[1]}",
                 min_value=0,
                 step=1,
-                key=role_limit_key,
+                key=role_limit_widget_key,
+                on_change=sync_filter,
+                args=(role_limit_key, role_limit_widget_key)
             )
 
 # Budget limits settings
@@ -214,30 +221,44 @@ with st.container(border=True):
 
     with cols[2]:
         budget_key = f"{page_name}_budget_key"
-        settings_keys_set.add(budget_key)
         st.session_state.setdefault(budget_key, 500)
+        settings_keys_set.add(budget_key)
+        
+        # Restore data of the widget
+        budget_widget_key = f"{page_name}_budget_widget_key"
+        st.session_state[budget_widget_key] = st.session_state[budget_key]
+
         budget = st.number_input(
             "Total Budget",
             min_value=0,
             step=50,
-            key=budget_key,
+            key=budget_widget_key,
+            on_change=sync_filter,
+            args=(budget_key, budget_widget_key)
         )
 
     cols = st.columns([8,1,6,1,6,1,6,1,6,1,6], vertical_alignment="center")
 
     budget_limits = []
-    for i, role, role_with_aka, value in zip(range(2,9,2), roles_list, roles_with_aka_list, [50,100,200,150]):
+    for i, role, role_with_aka, default_value in zip(range(2,9,2), roles_list, roles_with_aka_list, [50,100,200,150]):
+        role_budget_limit_key = f"{page_name}_{role}_budget_limit_key"
+        st.session_state.setdefault(role_budget_limit_key, default_value)
+        settings_keys_set.add(role_budget_limit_key)
+        
+        # Restore data of the widget
+        role_budget_limit_widget_key = f"{page_name}_{role}_budget_limit_widget_key"
+        st.session_state[role_budget_limit_widget_key] = st.session_state[role_budget_limit_key]
+        
         with cols[i]:
-            role_budget_limit_key = f"{page_name}_{role}_budget_limit_key"
-            settings_keys_set.add(role_budget_limit_key)
-            st.session_state.setdefault(role_budget_limit_key, value)
             budget_limits.append(
                 st.number_input(
                     f"Budget for {str(role).capitalize()}s",
                     min_value=0,
                     max_value=500,
                     step=5,
-                    key=role_budget_limit_key,
+                    key=role_budget_limit_widget_key,
+                    on_change=sync_filter,
+                    args=(role_budget_limit_key, role_budget_limit_widget_key)
                 )
             )
 
@@ -277,8 +298,9 @@ with st.container(border=True):
             st.markdown(f"**{str(role).capitalize()} statistics**")
 
             graphical_cols_key = f"{page_name}_{role}_graphical_cols_key"
-            settings_keys_set.add(graphical_cols_key)
             st.session_state.setdefault(graphical_cols_key, [])
+            settings_keys_set.add(graphical_cols_key)
+
             for column_idx, column in enumerate(st.session_state[graphical_cols_key]):
                 with st.container(border=True):
                     col1, col2 = st.columns([8,2], vertical_alignment="center")
@@ -300,17 +322,17 @@ with st.container(border=True):
 
     cols = st.columns([8,1,8,1,8,1,8,1,8])
     for i, role in zip(range(2,9,2), roles_list):
+        graphical_cols_key = f"{page_name}_{role}_graphical_cols_key"
+        graphical_cols_widget_key = f"{page_name}_add_{role}_graphical_col_widget_key"
 
         numeric_columns = [
             column for column in history_players.select_dtypes(include="number").columns.tolist()
-            if column not in st.session_state[f"{page_name}_{role}_graphical_cols_key"]
+            if column not in st.session_state[graphical_cols_key]
         ]
 
         with cols[i]:
             st.divider()
 
-            graphical_cols_key = f"{page_name}_{role}_graphical_cols_key"
-            graphical_cols_widget_key = f"{page_name}_add_{role}_graphical_col_widget_key"
             selected_graphical_cols = st.multiselect(
                 "Select fields to use for statistics",
                 options=numeric_columns,

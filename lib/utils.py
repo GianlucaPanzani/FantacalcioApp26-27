@@ -13,7 +13,7 @@ from pandas.api.types import (
 
 
 interest_markers = {
-    "Da rivedere": "⚫",
+    "Da valutare": "⚫",
     "Bassissimo": "⚪",
     "Basso": "🟡",
     "Medio": "🟠",
@@ -25,12 +25,11 @@ interest_markers = {
 def set_format_interest(interest):
     if interest is None:
         return None
-    marker = interest_markers.get(interest)
-    return f"{marker} {interest}" if marker else interest
+    return interest_markers.get(interest, interest)
 
 def highlight_player_role(row: pd.Series) -> list[str]:
     """Apply the Fantacalcio role color to every read-only player cell."""
-    role_color = get_color_per_role(row.get("R", ""))
+    role_color = get_color_per_role(row.get("R", row.get("fanta_role", "")))
     if not role_color:
         return [""] * len(row)
     return [f"background-color: {role_color}; color: #212121"] * len(row)

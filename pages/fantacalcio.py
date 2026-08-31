@@ -44,6 +44,9 @@ compare_op_for_columns_to_filter_dict = {
 }
 
 enable_player_preferences_key = f"{page_name}_enable_player_preferences_key"
+reset_managers_widget_key = f"{page_name}_reset_managers_widget_key"
+reset_boughts_button_key = f"{page_name}_reset_boughts_button_key"
+bought_player_columns = ["id", "player", "team", "role", "mantra_role", "manager", "mln"]
 
 
 # =============================================================================
@@ -119,7 +122,7 @@ def player_filters(fanta_players: pd.DataFrame, columns_list: list, widget_types
                 )
             ]
 
-    # Create the special filter based on the external purchases dictionary
+    # Create the special filter based on the external boughts dictionary
     manager_filter_key = f"{page_name}_selected_manager_key"
     fantacalcio_keys_set.add(manager_filter_key)
     st.session_state.setdefault(manager_filter_key, "")
@@ -281,7 +284,7 @@ def generate_ai_response(fanta_manager_players_dict: dict):
     return
 
 
-def update_player_purchases(
+def update_player_boughts(
     players: pd.DataFrame,
     fanta_manager_players_dict: dict,
     fanta_managers: list,
@@ -327,9 +330,63 @@ def update_player_purchases(
         bought_players_df = pd.concat(bought_players_dataframes, ignore_index=True)
     else:
         bought_players_df = pd.DataFrame(
-            columns=["id", "player", "team", "role", "mantra_role", "manager", "mln"]
+            columns=bought_player_columns
         )
     st.session_state[f"{page_name}_bought_players_df_key"] = bought_players_df
+
+
+def reset_fanta_manager_boughts(selection_key: str) -> None:
+    """Reset every purchase belonging to the selected Fanta Managers."""
+    fanta_managers = st.session_state.get("settings_managers_key", [])
+    selected_managers = [
+        manager
+        for manager in st.session_state.get(selection_key, [])
+        if manager in fanta_managers
+    ]
+    if not selected_managers:
+        return
+
+    empty_bought_players = pd.DataFrame(columns=bought_player_columns)
+    fanta_manager_players_dict = st.session_state.get(
+        f"{page_name}_manager_players_dict_key",
+        {},
+    )
+
+    for fanta_manager in fanta_managers:
+        fanta_manager_players_dict.setdefault(fanta_manager, empty_bought_players.copy())
+    for fanta_manager in selected_managers:
+        fanta_manager_players_dict[fanta_manager] = empty_bought_players.copy()
+
+        for role in ("P", "D", "C", "A"):
+            st.session_state[f"{page_name}_{fanta_manager}_num_of_bought_{role}_key"] = 0
+            st.session_state[f"{page_name}_{fanta_manager}_{role}_budget_limit_exceed_key"] = False
+            st.session_state[f"{page_name}_{fanta_manager}_{role}_limit_exceed_key"] = False
+
+    remaining_boughts = [
+        bought_players
+        for bought_players in fanta_manager_players_dict.values()
+        if isinstance(bought_players, pd.DataFrame) and not bought_players.empty
+    ]
+    bought_players_df = (
+        pd.concat(remaining_boughts, ignore_index=True)
+        if remaining_boughts
+        else empty_bought_players
+    )
+
+    st.session_state[f"{page_name}_manager_players_dict_key"] = fanta_manager_players_dict
+    st.session_state[f"{page_name}_bought_players_df_key"] = bought_players_df
+
+    for key in list(st.session_state):
+        if str(key).startswith(f"{page_name}_purchase_editor_"):
+            del st.session_state[key]
+
+    store_env(
+        data_dict={f"{page_name}_bought_players_df_key": bought_players_df},
+        path=".env",
+    )
+    st.session_state[selection_key] = []
+    st.session_state[f"{page_name}_reset_boughts_message_key"] = "Purchases reset for: {', '.join(selected_managers)}"
+    return
 
 
 def sync_purchase_editor(players_editor_df: pd.DataFrame, fanta_manager_players_dict: dict, fanta_managers: list, editor_key: str) -> None:
@@ -348,7 +405,7 @@ def sync_purchase_editor(players_editor_df: pd.DataFrame, fanta_manager_players_
                 changed_row_positions.add(row_position)
 
     if changed_row_positions:
-        update_player_purchases(
+        update_player_boughts(
             players_editor_df.iloc[sorted(changed_row_positions)],
             fanta_manager_players_dict,
             fanta_managers,
@@ -394,9 +451,7 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
                 index=players_editor_df.index,
                 dtype=object,
             )
-        players_editor_df["interest"] = (players_editor_df["interest"].map(
-            lambda x: interest_markers[x] if x is not None else set_format_interest(x)
-        ))
+        players_editor_df["interest"] = players_editor_df["interest"].map(set_format_interest)
 
     # Use a different widget key when the visible players change.
     fanta_managers = st.session_state["settings_managers_key"]
@@ -428,7 +483,7 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
             "mln": st.column_config.NumberColumn(
                 "Mln",
                 help="Fantamilioni spent for this player.",
-                min_value=0,
+                min_value=1,
                 step=1,
                 format="%d",
                 alignment="center",
@@ -602,6 +657,46 @@ def create_current_teams(fanta_manager_players_dict: dict, fanta_manager=None):
 
     return
 
+def reset_teams_filters(fanta_managers):
+    selected_fanta_managers = st.multiselect(
+        "Select Fanta Managers to reset",
+        options=fanta_managers,
+        placeholder="Select one or more managers...",
+        key=reset_managers_widget_key,
+        persist_state="session",
+    )
+    if selected_fanta_managers:
+        st.html(
+            f"""
+            <style>
+            .st-key-{reset_boughts_button_key} button:not(:disabled) {{
+                background-color: #D32F2F;
+                border-color: #D32F2F;
+                color: #FFFFFF;
+            }}
+            .st-key-{reset_boughts_button_key} button:not(:disabled):hover {{
+                background-color: #B71C1C;
+                border-color: #B71C1C;
+            }}
+            </style>
+            """
+        )
+        st.button(
+            "Reset boughts",
+            icon=":material/delete_sweep:",
+            width="stretch",
+            disabled=not selected_fanta_managers,
+            key=reset_boughts_button_key,
+            on_click=reset_fanta_manager_boughts,
+            args=(reset_managers_widget_key,),
+            help="Remove every bought player from the selected Fanta Managers.",
+        )
+
+    reset_message = st.session_state.pop(f"{page_name}_reset_boughts_message_key", None)
+    if reset_message:
+        st.toast(reset_message, icon=":material/check_circle:")
+    return
+
 
 # =============================================================================
 # =============================== SCRIPT ======================================
@@ -661,6 +756,7 @@ st.caption(
 fanta_players = load_dataset("data/filtered_history_players.csv", filter_by_current_year=True)
 
 with st.sidebar:
+
     st.markdown("### Filters")
     filtered_players = player_filters(
         fanta_players,
@@ -668,6 +764,9 @@ with st.sidebar:
         widget_types=["multiselect", "selectbox", "selectbox"],
         fanta_manager_players_dict=fanta_manager_players_dict
     )
+
+    st.markdown("### Reset teams")
+    reset_teams_filters(fanta_managers)
 
 # Load the optional preferences stored by the Players Selection page
 player_preferences = None

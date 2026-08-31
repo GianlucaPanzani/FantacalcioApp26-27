@@ -9,6 +9,7 @@ from lib.utils import (
 from lib.streamlit_api import (
     sync_filter,
     apply_filters,
+    get_roles_dict,
     get_user_view_of_column,
     load_dataset,
     load_env,
@@ -25,8 +26,8 @@ st.set_page_config(
 page_name = "selection"
 
 columns_to_filter_list = [
-    "Nome",
     "R",
+    "Nome",
     "Squadra",
 ]
 
@@ -61,7 +62,7 @@ interest_colors_dict = {
 # ============================== FUNCTIONS ====================================
 # =============================================================================
 
-def players_filters(players: pd.DataFrame) -> pd.DataFrame:
+def players_filters(players: pd.DataFrame, columns_to_filter_list: list[str]) -> pd.DataFrame:
     """Display the Fantacalcio player filters vertically in the sidebar."""
     # Initilizations of the session_state
     for column in columns_to_filter_list:
@@ -113,6 +114,79 @@ def players_filters(players: pd.DataFrame) -> pd.DataFrame:
     )
     st.session_state[f"{page_name}_filtered_selection_players_key"] = filtered_players
     return filtered_players
+
+
+def get_configured_statistics_columns(selected_roles: list[str]) -> list[str]:
+    """Return the union of the statistics configured for the selected roles."""
+    roles_dict = get_roles_dict()
+    roles = [role for role in roles_dict if not selected_roles or role in selected_roles]
+    statistics_columns = []
+
+    for role in roles:
+        role_columns = st.session_state.get(
+            f"settings_{roles_dict[role]}_graphical_cols_key",
+            [],
+        )
+        for column in role_columns:
+            if column not in statistics_columns:
+                statistics_columns.append(column)
+
+    return statistics_columns
+
+
+def add_latest_player_statistics(
+    players: pd.DataFrame,
+    history_players: pd.DataFrame,
+    statistics_columns: list[str],
+) -> pd.DataFrame:
+    """Add the latest available statistics without duplicating player rows."""
+    players_with_statistics = players.copy()
+    available_columns = [
+        column
+        for column in statistics_columns
+        if column in history_players.columns and column not in players.columns
+    ]
+    if not available_columns or "id" not in history_players.columns:
+        return players_with_statistics
+
+    lookup_columns = ["id", "season", "minutes", *available_columns]
+    lookup_columns = list(dict.fromkeys(
+        column for column in lookup_columns if column in history_players.columns
+    ))
+    statistics_lookup = history_players[lookup_columns].copy()
+    statistics_lookup = statistics_lookup[
+        statistics_lookup[available_columns].notna().any(axis=1)
+    ]
+
+    if statistics_lookup.empty:
+        for column in available_columns:
+            players_with_statistics[column] = pd.NA
+        return players_with_statistics
+
+    if "season" in statistics_lookup:
+        statistics_lookup["_season_sort"] = statistics_lookup["season"].astype(str)
+    else:
+        statistics_lookup["_season_sort"] = ""
+    if "minutes" in statistics_lookup:
+        statistics_lookup["_minutes_sort"] = pd.to_numeric(
+            statistics_lookup["minutes"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        statistics_lookup["_minutes_sort"] = 0
+
+    latest_statistics = (
+        statistics_lookup
+        .sort_values(["id", "_season_sort", "_minutes_sort"])
+        .drop_duplicates("id", keep="last")
+        .set_index("id")
+    )
+    for column in available_columns:
+        players_with_statistics[column] = players_with_statistics["Id"].map(
+            latest_statistics[column]
+        )
+
+    return players_with_statistics
 
 
 def get_stats_player_key(field: str, player_id) -> str:
@@ -221,6 +295,7 @@ def get_selection_column_config(columns: list[str]) -> dict:
             help="Add or remove this player from your selection.",
             default=False,
             pinned=True,
+            alignment="center",
         )
     if "mln" in columns:
         column_config["mln"] = st.column_config.NumberColumn(
@@ -230,6 +305,7 @@ def get_selection_column_config(columns: list[str]) -> dict:
             step=1,
             format="%d",
             required=True,
+            alignment="center",
         )
     if "interest" in columns:
         column_config["interest"] = st.column_config.SelectboxColumn(
@@ -246,6 +322,7 @@ def get_selection_column_config(columns: list[str]) -> dict:
             help="Write a short note about this player.",
             default="",
             width="large",
+            alignment="center",
         )
 
     return column_config
@@ -356,16 +433,21 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
 
     st.divider()
     st.subheader("Selected players")
-    edited_selected_players = st.data_editor(
-        editor_data,
-        hide_index=True,
-        width="stretch",
-        height=450,
-        column_order=column_order,
-        disabled=visible_columns,
-        column_config=column_config,
-        key=f"{page_name}_selected_players_editor_key",
-    )
+    table_col, _, legend_col = st.columns([26, 1, 3])
+    with table_col:
+        edited_selected_players = st.data_editor(
+            editor_data,
+            hide_index=True,
+            width="stretch",
+            height=450,
+            column_order=column_order,
+            disabled=visible_columns,
+            column_config=column_config,
+            key=f"{page_name}_selected_players_editor_key",
+        )
+    with legend_col:
+        for interest, marker in interest_markers.items():
+            st.markdown(f"{marker} :small[{interest}]")
 
     for player_id, player_row in edited_selected_players.iterrows():
         mln_key = get_stats_player_key("mln", player_id)
@@ -390,6 +472,7 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
 # =============================================================================
 
 fanta_players = load_dataset("data/Listone_Fantacalcio_Stagione_2026_27.csv")
+history_players = load_dataset("data/filtered_history_players.csv")
 loaded_env_values = load_env(path=".env")
 selection_keys_set = {key for key in loaded_env_values if key.startswith(f"{page_name}_")}
 
@@ -407,7 +490,7 @@ if not st.session_state.get(selection_restored_key, False):
 # Create filters on the sidebar
 with st.sidebar:
     st.markdown("### Filters")
-    filtered_players = players_filters(fanta_players)
+    filtered_players = players_filters(fanta_players, columns_to_filter_list)
 
 
 st.title(":material/group_add: Players Selection")
@@ -416,7 +499,24 @@ st.subheader("Fantacalcio players")
 st.divider()
 
 # Filter the visible columns
-visible_selection_columns = [column for column in filtered_players.columns if column not in hidden_selection_columns]
+base_visible_selection_columns = [
+    column
+    for column in filtered_players.columns
+    if column not in hidden_selection_columns
+]
+selected_roles = st.session_state.get(f"{page_name}_R_key", [])
+statistics_columns = get_configured_statistics_columns(selected_roles)
+filtered_players_with_statistics = add_latest_player_statistics(
+    filtered_players,
+    history_players,
+    statistics_columns,
+)
+visible_selection_columns = base_visible_selection_columns + [
+    column
+    for column in statistics_columns
+    if column in filtered_players_with_statistics.columns
+    and column not in base_visible_selection_columns
+]
 
 # Metrics
 col1, col2, col3, col4 = st.columns([1,1,4,1])
@@ -428,10 +528,10 @@ with col4:
     st.metric("Players", filtered_players["Nome"].nunique())
 
 # Create the full table
-create_player_selection_table(filtered_players, visible_selection_columns)
+create_player_selection_table(filtered_players_with_statistics, visible_selection_columns)
 
 # Create the selection table
-create_selected_players_table(fanta_players, visible_selection_columns)
+create_selected_players_table(fanta_players, base_visible_selection_columns)
 
 # Store the selected players in a csv file
 store_selected_players(fanta_players, st.session_state[selection_players_key])
