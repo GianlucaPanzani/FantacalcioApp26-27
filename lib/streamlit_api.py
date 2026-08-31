@@ -410,27 +410,26 @@ def restore_bought_players(bought_players_df_key: str, settings_managers_key: st
     st.session_state[fanta_manager_players_dict_key] = fanta_manager_players_dict
 
 
-
-
 @st.cache_data(show_spinner=False)
 def load_dataset(path: str, filter_by_current_year: bool = False, current_season: str = "2026-27") -> pd.DataFrame:
     """Load and cache a players dataset."""
     df = pd.read_csv(path, low_memory=False)
     return df.loc[df["season"].eq(current_season)].copy() if filter_by_current_year else df
 
+
 def sync_filter(filter_key: str, widget_key: str) -> None:
     """Copy a widget value into its persistent filter state."""
     st.session_state[filter_key] = st.session_state.get(widget_key)
 
 
-def create_player_history_chart(data: pd.DataFrame, statistic_name: str, y_limits=None):
+def create_player_history_chart(data: pd.DataFrame, statistic_name: str, y_limits=None, mean_value: float | None = None):
     """Create a player history chart with season, team and value tooltips."""
     y_scale = alt.Scale(zero=False)
     if y_limits is not None:
         y_scale = alt.Scale(domain=list(y_limits), zero=False)
 
     season_order = data["season"].drop_duplicates().tolist()
-    return alt.Chart(data).mark_line(point=True).encode(
+    chart = alt.Chart(data).mark_line(point=True).encode(
         x=alt.X("season:N", title="Season", sort=season_order),
         y=alt.Y("value:Q", title=statistic_name, scale=y_scale),
         tooltip=[
@@ -440,8 +439,28 @@ def create_player_history_chart(data: pd.DataFrame, statistic_name: str, y_limit
         ],
     )
 
+    if mean_value is None:
+        return chart
 
-def plot_comparison_between_players(filtered_players: pd.DataFrame) -> None:
+    mean_data = pd.DataFrame({"mean": [mean_value]})
+    mean_line = alt.Chart(mean_data).mark_rule(
+        color="#8A8A8A",
+        opacity=0.75,
+        strokeDash=[6, 4],
+        strokeWidth=1.5,
+    ).encode(
+        y=alt.Y("mean:Q", scale=y_scale),
+        tooltip=[alt.Tooltip("mean:Q", title="Role average", format=".2f")],
+    )
+    return chart + mean_line
+
+
+def compute_column_mean(players: pd.DataFrame, column: str) -> float | None:
+    values = pd.to_numeric(players[column], errors="coerce").dropna()
+    
+
+
+def plot_comparison_between_players(history_players: pd.DataFrame, filtered_players: pd.DataFrame) -> None:
     """
     Compare the historical statistics of two selected players.
 
@@ -454,6 +473,15 @@ def plot_comparison_between_players(filtered_players: pd.DataFrame) -> None:
     filtered_players:
         DataFrame containing the historical records of two players.
     """
+    # Compute the mean of each column of the history df
+    role_column_means = {}
+    for role in filtered_players["fanta_role"].dropna().unique():
+        role_players = history_players[history_players["fanta_role"] == role]
+        role_column_means[role] = {
+            column: compute_column_mean(role_players, column)
+            for column in role_players.select_dtypes(include="number").columns
+        }
+
     available_players = filtered_players["player"].dropna().drop_duplicates().tolist()
     selected_players = st.session_state.get("statistics_player_key", [])
     player_names = [player for player in selected_players if player in available_players]
@@ -486,12 +514,19 @@ def plot_comparison_between_players(filtered_players: pd.DataFrame) -> None:
         player_max_values = []
 
         for player_name in player_names:
-            player_values = filtered_players.loc[filtered_players["player"] == player_name, col]
+            player_df = filtered_players[filtered_players["player"] == player_name]
+            player_values = player_df[col]
             player_values = pd.to_numeric(player_values, errors="coerce").dropna()
 
             if not player_values.empty:
                 player_min_values.append(float(player_values.min()))
                 player_max_values.append(float(player_values.max()))
+
+            player_role = player_df["fanta_role"].dropna().iloc[0]
+            mean_value = role_column_means.get(player_role, {}).get(col)
+            if mean_value is not None:
+                player_min_values.append(mean_value)
+                player_max_values.append(mean_value)
 
         if player_min_values and player_max_values:
             y_min = min(player_min_values)
@@ -549,14 +584,20 @@ def plot_comparison_between_players(filtered_players: pd.DataFrame) -> None:
                     continue
 
                 y_min, y_max = y_limits_dict[col]
-                chart = create_player_history_chart(data, user_view_col, (y_min, y_max))
+                mean_value = role_column_means.get(fanta_role, {}).get(col)
+                chart = create_player_history_chart(
+                    data,
+                    user_view_col,
+                    (y_min, y_max),
+                    mean_value,
+                )
 
                 st.altair_chart(
                     chart,
                     width="stretch",
                 )
 
-def plot_player_history(filtered_players: pd.DataFrame) -> None:
+def plot_player_history(history_players: pd.DataFrame, filtered_players: pd.DataFrame) -> None:
     """
     Display the selected historical statistics for a single player.
 
@@ -568,6 +609,15 @@ def plot_player_history(filtered_players: pd.DataFrame) -> None:
     filtered_players:
         DataFrame containing the historical records of one player.
     """
+    # Compute the mean of each column of the history df
+    role_column_means = {}
+    for role in filtered_players["fanta_role"].dropna().unique():
+        role_players = history_players[history_players["fanta_role"] == role]
+        role_column_means[role] = {
+            column: compute_column_mean(role_players, column)
+            for column in role_players.select_dtypes(include="number").columns
+        }
+
     try:
         fanta_role = filtered_players["fanta_role"].dropna().iloc[0]
     except:
@@ -621,7 +671,12 @@ def plot_player_history(filtered_players: pd.DataFrame) -> None:
                 f"<h4 style='text-align: center;'>{user_view_col}</h4>",
                 unsafe_allow_html=True
             )
-            chart = create_player_history_chart(data, user_view_col)
+            mean_value = role_column_means.get(fanta_role, {}).get(col)
+            chart = create_player_history_chart(
+                data,
+                user_view_col,
+                mean_value=mean_value,
+            )
             st.altair_chart(
                 chart,
                 width="stretch",

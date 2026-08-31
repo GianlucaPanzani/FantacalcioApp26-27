@@ -277,13 +277,16 @@ if filtered_players["season"].nunique() <= 2 and (
     ):
     st.info("You have selected 1 specific season or a specific team: deselect it to see the statistics accross years.")
 
+# Count of the players
+selected_player_count = filtered_players["player"].nunique()
+
 # Case of 2 players selected
-if filtered_players["player"].nunique() == 2:
-    plot_comparison_between_players(filtered_players)
+if selected_player_count == 2:
+    plot_comparison_between_players(history_players, filtered_players)
     thick_divider()
 # Case of 1 player selected
-elif filtered_players["player"].nunique() == 1:
-    plot_player_history(filtered_players)
+elif selected_player_count == 1:
+    plot_player_history(history_players, filtered_players)
     thick_divider()
 
 
