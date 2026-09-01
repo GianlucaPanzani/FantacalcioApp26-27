@@ -12,6 +12,7 @@ from lib.streamlit_api import (
     get_user_view_of_column,
     load_dataset,
     load_env,
+    load_model,
     store_env,
     plot_comparison_between_players,
     plot_player_history
@@ -258,10 +259,16 @@ statistics_keys_set = {
     if key.startswith(f"{page_name}_")
 }
 history_players = load_dataset("data/filtered_history_players.csv")
+####################ai_features_explainer_df = load_dataset("data/features_explainability.csv")
+model_goals_per90 = load_model(target_feature="goals_per90")
 
 
 st.title("📊 Statistics")
-st.subheader("Players")
+st.caption(
+    "Use the sidebar filters to explore the data. Select one player to view their \
+    history or two to compare them, including the average values for their roles, \
+    that you can see in the graphics as an horizontal row."
+)
 
 # Filters on the sidebar
 with st.sidebar:

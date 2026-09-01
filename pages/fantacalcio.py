@@ -16,10 +16,17 @@ from lib.streamlit_api import (
     get_default_value,
     get_condition_by,
     load_env,
+    load_model,
     store_env,
     restore_bought_players,
     has_full_team,
     generate_pdf_with_bought_players
+)
+from lib.shap_explainability import (
+    get_shap_info
+)
+from lib.xgboost_predictor import (
+    build_temporal_dataset
 )
 
 
@@ -209,7 +216,7 @@ def load_player_preferences(path: str) -> dict:
     return preferences
 
 
-def generate_ai_response(fanta_manager_players_dict: dict):
+def generate_llm_response(fanta_manager_players_dict: dict):
     # Data preparation
     my_players = fanta_manager_players_dict.get(st.session_state["settings_my_manager_key"], pd.DataFrame()).copy()
     if my_players.empty:
@@ -257,9 +264,9 @@ def generate_ai_response(fanta_manager_players_dict: dict):
     Do not invent injuries, transfers or starting status. Clearly mention uncertainty
     when current information is unavailable.
 
-    Answer in Italian, using at most 160 words and this structure:
+    Answer in Italian, using at most 50 words with this structure:
 
-    **Profilo:** brief description of his real playing role and likely usage.
+    "**Profilo:** brief description of his real playing role and likely usage.
 
     **Punti a favore**
     - Two or three concise points.
@@ -270,14 +277,19 @@ def generate_ai_response(fanta_manager_players_dict: dict):
     **Verdetto:** state whether you would buy him and suggest a reasonable maximum bid,
     considering my available budget, remaining role budget and remaining role slots.
 
-    **Voto Fantacalcio:** X/10.
+    **Voto Fantacalcio:** X/10."
     """
 
     with st.spinner("Ollama AI is working..."):
         response = llm.query_ollama(
             prompt=prompt,
-            content="Follow the user's instructions carefully. Use the supplied data, \
-                avoid unsupported claims and respect the requested output format.",
+            model="qwen3:4b",
+            content=(
+                "Sei un esperto di football analist, specializzato sulla Serie A e sul Fantacalcio. "
+                "Segui le richieste e rispondi in modo breve e conciso. Non dare informazioni non richieste."
+                "Non impiegare troppo tempo nel penare prima di rispondere."
+            ),
+            format=None,
         )
 
     st.markdown(response)
@@ -533,7 +545,7 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
         players_editor_df.style.apply(highlight_bought_rows, axis=1, fanta_managers=fanta_managers),
         hide_index=True,
         width="stretch",
-        height=450,
+        height="auto" if filtered_players.shape[0] == 1 and st.session_state[settings_ai_enabled_key] else 450,
         column_order=column_order,
         disabled=[column for column in players_editor_df.columns if column not in editable_columns],
         column_config=column_config,
@@ -698,12 +710,65 @@ def reset_teams_filters(fanta_managers):
     return
 
 
+def build_model_prediction_response(
+        model,
+        features: list,
+        player_history: pd.DataFrame,
+        col_to_predict: str
+    ) -> str:
+
+    # Get the first player and select only the passed features
+    player = filtered_players.iloc[0]
+    player_name = player["player"]
+    X_input = player[features].to_frame().T
+
+    # Prediction with XGBoost
+    prediction = round(model.predict(X_input)[0], 2)
+
+    return f":red[**{player_name}**]\n**Predicted {col_to_predict}**: {prediction}.\n"
+
+
+def build_model_explaination_response(
+        shap_explainer,
+        features: list,
+        explainer: dict,
+        player_history: pd.DataFrame,
+        top_k=5
+    ) -> str:
+
+    # Get the first player with the passed features
+    player = player_history[features].iloc[0]
+    X_input = player.to_frame().T
+
+    # Explainability with SHAP
+    shap_values = shap_explainer.shap_values(X_input)
+    shap_info_dict = get_shap_info(
+        shap_values_dict=dict(zip(X_input.columns, shap_values)),
+        df=X_input,
+        top_k=top_k
+    )
+
+    # Create the text using the explainer
+    text_md = "**_Explaination of the predicion_**:\n"
+    for feature, shap_dict in shap_info_dict.items():
+        symbol = "⬆" if shap_dict["outcome"] == "positive" else "⬇" #:white_check_mark:
+        explaination = explainer_map[shap_dict["outcome"]]
+        feature_name = explainer_map[feature]["feature_name"]\
+
+        text_md += f"- {symbol} :blue[**{feature_name}**]: {explaination}\n"
+
+    return text_md
+
+    
+
+
 # =============================================================================
 # =============================== SCRIPT ======================================
 # =============================================================================
 
 # Load stored persistent values before initializing Session State defaults
 loaded_env_values = load_env(path=".env")
+model_goals_per90 = load_model(target_feature="goals_per90")
 
 # Set of keys whom value has to be stored (for next loaded)
 fantacalcio_keys_set = {
@@ -743,20 +808,21 @@ fanta_manager_players_dict = st.session_state[f"{page_name}_manager_players_dict
 
 
 st.title("⚽ Fantacalcio 26-27 - Create your own team")
+st.caption(
+    "Filter players, display your saved preferences and assign purchases and prices. "
+    "The page automatically tracks the remaining budget, purchased players and role limits."
+    "At the end of the auction it will allows you to download the pdf with all the created teams."
+)
 
 thick_divider()
 
-# Filters + players table
-st.header("Fanta List")
-st.caption(
-    "Search or reduce the players in the table using the following filters.\n"
-    "Select the Fanta Manager on the first column if someone has bought a player and set the millions spent to update the teams."
-)
+# History players
+history_players = load_dataset("data/players_history.csv")
 
+# Filters + players table
 fanta_players = load_dataset("data/filtered_history_players.csv", filter_by_current_year=True)
 
 with st.sidebar:
-
     st.markdown("### Filters")
     filtered_players = player_filters(
         fanta_players,
@@ -764,7 +830,6 @@ with st.sidebar:
         widget_types=["multiselect", "selectbox", "selectbox"],
         fanta_manager_players_dict=fanta_manager_players_dict
     )
-
     st.markdown("### Reset teams")
     reset_teams_filters(fanta_managers)
 
@@ -778,25 +843,46 @@ if st.session_state[enable_player_preferences_key]:
     player_preferences = load_player_preferences(selection_players_path)
 
 # Create editable df
+col1, _, col2 = st.columns([52,1,7])
 if not st.session_state[enable_player_preferences_key]:
     create_editor_dataframe(filtered_players, fanta_manager_players_dict, player_preferences)
 else:
-    col1, _, col2 = st.columns([26,1,3])
     with col1:
         create_editor_dataframe(filtered_players, fanta_manager_players_dict, player_preferences)
+        if st.session_state[settings_ai_enabled_key] and filtered_players.shape[0] == 1:
+            history_of_the_player, _ = build_temporal_dataset(
+                history_players[history_players["player"] == filtered_players["player"].iloc(0)],
+                target_col="goals_per90",
+                window_size=model_goals_per90["window_size"]
+            )
+            print(f"Missing features: {set(model_goals_per90['features']) - set(history_of_the_player.tail(1).columns)}")
+            st.markdown(
+                build_model_prediction_response(
+                    model=model_goals_per90["model"],
+                    features=model_goals_per90["features"],
+                    player_history=history_of_the_player,
+                    col_to_predict="goals_per90"
+                )
+            )
+            st.markdown(
+                build_model_explaination_response(
+                    shap_explainer=model_goals_per90["explainer"],
+                    features=model_goals_per90["features"],
+                    explainer=model_goals_per90["explainer"],
+                    player_history=history_of_the_player,
+                    top_k=5
+                )
+            )
     with col2:
         if st.session_state[enable_player_preferences_key]:
+            st.markdown("**Interest column symbols meanings**:")
             for key, value in interest_markers.items():
                 st.markdown(f"{value} :small[{key}]")
-
-# Case of AI enabled
-if st.session_state[settings_ai_enabled_key] and filtered_players.shape[0] == 1:
-    generate_ai_response(fanta_manager_players_dict)
 
 thick_divider()
 
 # Teams of the Fanta Managers
-st.header("Teams & Billing")
+st.header("Teams")
 st.divider()
 for fanta_manager in st.session_state[settings_managers_key]:
     create_current_teams(fanta_manager_players_dict, fanta_manager)
@@ -819,4 +905,9 @@ for fanta_manager in fanta_manager_players_dict:
 if auction_completed:
     with st.spinner("Building the teams file..."):
         generate_pdf_with_bought_players()
-    
+
+# Case of AI response enabled
+if st.session_state[enable_player_preferences_key]:
+    with col1:
+        if st.session_state[settings_ai_enabled_key] and filtered_players.shape[0] == 1:
+            generate_llm_response(fanta_manager_players_dict)

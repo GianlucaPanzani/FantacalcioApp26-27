@@ -12,6 +12,77 @@ from pandas.api.types import (
 )
 
 
+stats_persistent_key_fields = [
+    "selected",
+    "mln",
+    "interest",
+    "description",
+]
+
+columns_to_user_view_dict = {
+    "selected": "Select",
+    "mln": "💰 Mln",
+    "interest": "Interest",
+    "description": "Description",
+    "Id": "Fanta ID",
+    "R": "Fanta role",
+    "RM": "Mantra role",
+    "Nome": "Player",
+    "id": "ID",
+    "season": "Season",
+    "player": "Player",
+    "team": "Old team",
+    "competition": "Competition",
+    "nationality": "Nationality",
+    "position": "Role",
+    "fanta_role": "Fanta role",
+    "mantra_role": "Mantra role",
+    "age": "Age",
+    "birth_year": "Birth year",
+    "appearances": "Appearances",
+    "starts": "Starts",
+    "minutes": "Minutes played",
+    "nineties": "90-minutes played",
+    "goals_per90": "Goals per 90",
+    "assists_per90": "Assists per 90",
+    "goals_assists_per90": "Goals + assists per 90",
+    "non_penalty_goals_per90": "Non-penalty goals per 90",
+    "non_penalty_goals_assists_per90": "Non-penalty goals + assists per 90",
+    "penalty_attempts_per90": "Penalty attempts per 90",
+    "yellow_cards_per90": "Yellow cards per 90",
+    "red_cards_per90": "Red cards per 90",
+    "shots_on_target_pct": "Shots on target prc",
+    "shots_per90": "Shots per 90",
+    "shots_on_target_per90": "Shots on target per 90",
+    "goals_per_shot": "Goals per shot",
+    "goals_per_shot_on_target": "Goals per shot on target",
+    "interceptions_per90": "Interceptions per 90",
+    "tackles_won_per90": "Tackles won per 90",
+    "goals_against_per90": "Goals conceded per 90",
+    "shots_on_target_against_per90": "Shots on target against per 90",
+    "saves_per90": "Saves per 90",
+    "save_pct": "Save pct",
+    "wins_per90": "Wins per 90",
+    "draws_per90": "Draws per 90",
+    "losses_per90": "Losses per 90",
+    "clean_sheets_per90": "Clean sheets per 90",
+    "clean_sheet_pct": "Clean sheet pct",
+    "keeper_penalty_attempts_per90": "Penalties faced per 90",
+    "penalties_allowed_per90": "Penalties conceded per 90",
+    "penalties_saved_per90": "Penalties saved per 90",
+    "penalties_missed_per90": "Penalties missed per 90",
+    "normalized_name": "Normalized name",
+    "Squadra": "Team",
+    "Qt.A": "Quote",
+    "Qt.I": "Initial quote",
+    "Diff.": "Quote diff.",
+    "Qt.A M": "Mantra quote",
+    "Qt.I M": "Initial Mantra quote",
+    "Diff.M": "Mantra quote diff.",
+    "FVM": "Mean Fanta mln",
+    "FVM M": "Mean Mantra mln",
+}
+
 interest_markers = {
     "Da valutare": "⚫",
     "Bassissimo": "⚪",
@@ -21,6 +92,8 @@ interest_markers = {
     "Scommessa": "🟣",
     "Buoni low cost": "🔵",
 }
+
+
 
 def set_format_interest(interest):
     if interest is None:
@@ -43,7 +116,6 @@ def get_color_per_role(role: str) -> str:
         "A": "#DE7D7D",  # Previous: "#E57373"
     }
     return role_colors_dict.get(str(role).strip().upper(), "")
-
 
 def normalize_name(name: str) -> str:
     """Normalize a player name for fuzzy comparison."""
@@ -160,7 +232,6 @@ def get_candidates_by_season(
     ]
 
     candidates = []
-
     for _, season_df in history_df.groupby(season_column, sort=False):
         season_candidates = []
         for _, history_row in season_df.iterrows():

@@ -1,15 +1,11 @@
 import streamlit as st
 import pandas as pd
-
-
-import lib.ollama_api as llm
 from lib.streamlit_api import (
-    thick_divider,
-    toast_css_format,
     get_user_view_of_column,
     get_fanta_manager_players_dict,
     get_roles_list,
     sync_filter,
+    add_graphical_columns,
     load_dataset,
     load_env,
     store_env
@@ -25,13 +21,8 @@ st.set_page_config(
 page_name = "settings"
 
 
-def add_graphical_columns(graphical_cols_key, widget_key):
-    st.session_state[graphical_cols_key].extend(st.session_state[widget_key])
-    st.session_state[widget_key] = []
-
-
 st.title("⚙️ Settings")
-st.caption("Customize your Fantacalcio's parameters.")
+st.caption("Configure Fanta Managers, budgets, role limits and the statistics displayed throughout the application.")
 
 loaded_env_values = load_env(path=".env")
 settings_keys_set = {
@@ -47,6 +38,10 @@ st.session_state.setdefault(my_manager_key, "Me")
 managers_key = f"{page_name}_managers_key"
 settings_keys_set.add(managers_key)
 st.session_state.setdefault(managers_key, [st.session_state[my_manager_key]])
+
+ai_enabled_key = f"{page_name}_ai_enabled_key"
+settings_keys_set.add(ai_enabled_key)
+st.session_state.setdefault(ai_enabled_key, False)
 
 my_fanta_manager = st.session_state[f"{page_name}_my_manager_key"]
 
@@ -352,6 +347,8 @@ with st.container(border=True):
 
 # AI settings
 with st.container(border=True):
+    ai_enabled_widget_key = f"{page_name}_ai_enabled_widget_key"
+    st.session_state[ai_enabled_widget_key] = st.session_state[ai_enabled_key]
 
     cols = st.columns([8,1,8,1,8,1,8,1,8])
 
@@ -359,12 +356,11 @@ with st.container(border=True):
         st.markdown("#### **AI settings**")
 
     with cols[2]:
-        ai_enabled_key = f"{page_name}_ai_enabled_key"
-        settings_keys_set.add(ai_enabled_key)
-        st.session_state.setdefault(ai_enabled_key, False)
         ai_enabled = st.toggle(
             "Activate AI to help you",
-            key=ai_enabled_key,
+            key=ai_enabled_widget_key,
+            on_change=sync_filter,
+            args=(ai_enabled_key, ai_enabled_widget_key)
         )
 
 

@@ -494,6 +494,10 @@ with st.sidebar:
 
 
 st.title(":material/group_add: Players Selection")
+st.caption(
+    "Build and manage your personal shortlist by selecting players, comparing the configured statistics, "
+    "setting expected prices and interest levels, and adding notes for the auction."
+)
 st.subheader("Fantacalcio players")
 
 st.divider()

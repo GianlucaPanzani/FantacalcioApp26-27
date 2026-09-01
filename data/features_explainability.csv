@@ -1,0 +1,23 @@
+feature,name,category,description,positive,negative,unit
+age,Età,Profile,Età anagrafica del giocatore.,L'età è compatibile con una fase di crescita o piena maturità.,L'età può indicare un possibile calo fisico o minor margine di crescita.,years
+birth_year,Anno di nascita,Profile,Anno di nascita usato come indicatore temporale dell'età.,Profilo anagrafico favorevole rispetto al ruolo.,Profilo anagrafico meno favorevole.,year
+appearances,Presenze stagionali,Reliability,Numero totale di presenze ottenute nella stagione.,Elevata continuità e disponibilità per la squadra.,Poche presenze indicano possibile rischio di scarso impiego.,count
+starts,Titolare,Reliability,Numero di partite iniziate dal primo minuto.,Indica un ruolo centrale nelle gerarchie della squadra.,Può indicare un ruolo marginale o rotazioni frequenti.,count
+minutes,Minuti giocati,Reliability,Volume totale di gioco nella stagione.,Maggiore affidabilità e probabilità di accumulare bonus.,Pochi minuti aumentano il rischio di rendimento discontinuo.,minutes
+nineties,Partite equivalenti complete,Reliability,Minuti normalizzati in partite complete.,Elevato utilizzo complessivo dal tecnico.,Scarso utilizzo stagionale.,90s
+goals_per90,Gol per 90 minuti,Attack,Produzione realizzativa normalizzata sui minuti giocati.,Alta capacità realizzativa aumenta la previsione di gol.,Bassa produzione offensiva riduce la previsione.,goals/90
+assists_per90,Assist per 90 minuti,Attack,Capacità di creare assist in rapporto ai minuti.,Maggiore contributo creativo offensivo.,Scarso contributo alla creazione di occasioni.,assists/90
+goals_assists_per90,Gol e assist per 90 minuti,Attack,Produzione offensiva complessiva.,Elevata partecipazione ai gol aumenta la previsione.,Bassa partecipazione offensiva penalizza la previsione.,G+A/90
+non_penalty_goals_per90,Gol senza rigori per 90 minuti,Attack,Produzione realizzativa indipendente dai rigori.,Indica capacità realizzativa pura.,Ridotta efficacia offensiva senza rigori.,goals/90
+non_penalty_goals_assists_per90,Gol e assist senza rigori per 90 minuti,Attack,Contributo offensivo esclusi i rigori.,Alta produzione offensiva naturale.,Bassa produzione offensiva naturale.,G+A/90
+shots_per90,Tiri per 90 minuti,Attack,Volume di conclusioni tentate.,Molti tiri indicano maggiore partecipazione offensiva.,Pochi tiri limitano le opportunità realizzative.,shots/90
+shots_on_target_per90,Tiri nello specchio per 90 minuti,Attack,Numero di conclusioni pericolose.,Maggiore presenza nelle zone di finalizzazione.,Poche conclusioni nello specchio riducono il potenziale.,shots/90
+goals_per_shot,Gol per tiro,Attack,Efficienza nel trasformare i tiri in gol.,Elevata conversione migliora la previsione.,Bassa conversione indica inefficienza realizzativa.,ratio
+goals_per_shot_on_target,Gol per tiro nello specchio,Attack,Precisione realizzativa sui tiri nello specchio.,Alta capacità di finalizzazione.,Bassa capacità di finalizzazione.,ratio
+yellow_cards_per90,Cartellini gialli per 90 minuti,Discipline,Frequenza di ammonizioni.,Può indicare aggressività utile in alcuni ruoli.,Aumenta il rischio di malus e squalifiche.,cards/90
+red_cards_per90,Cartellini rossi per 90 minuti,Discipline,Frequenza di espulsioni.,Nessun impatto negativo.,Aumenta il rischio di assenze e malus.,cards/90
+interceptions_per90,Intercetti per 90 minuti,Defense,Capacità di recuperare palloni.,Maggiore contributo difensivo.,Minore partecipazione difensiva.,actions/90
+tackles_won_per90,Contrasti vinti per 90 minuti,Defense,Efficacia nei contrasti difensivi.,Indica solidità difensiva.,Minore efficacia nei duelli.,actions/90
+wins_per90,Vittorie per 90 minuti,Team,Risultati della squadra durante le presenze.,Indicatore positivo del contesto squadra.,Contesto squadra meno favorevole.,ratio
+draws_per90,Pareggi per 90 minuti,Team,Frequenza di pareggi.,Può indicare stabilità.,Minore capacità di ottenere vittorie.,ratio
+losses_per90,Sconfitte per 90 minuti,Team,Frequenza di sconfitte.,Nessun impatto positivo rilevante.,Contesto squadra meno favorevole.,ratio
