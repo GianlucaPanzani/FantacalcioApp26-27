@@ -8,6 +8,9 @@ from sklearn.metrics import (
     mean_squared_error,
     r2_score
 )
+from lib.utils import (
+    columns_to_user_view_dict
+)
 
 
 
@@ -154,7 +157,7 @@ class XGBPlayerPerformancePredictor:
 
 
 
-def prepare_player_input(
+def build_temporal_player_input(
     player_history: pd.DataFrame,
     features: list[str],
     season_col: str = "season",
@@ -187,3 +190,19 @@ def prepare_player_input(
     model_input = pd.DataFrame([input_row], columns=features)
 
     return model_input.apply(pd.to_numeric, errors="coerce").fillna(0.0)
+
+
+def get_model_prediction(
+        model_package: dict,
+        player_history: pd.DataFrame,
+    ) -> str:
+
+    features = model_package["features"]
+    model = model_package["model"]
+
+    # Prediction with XGBoost
+    X_input = player_history.loc[:, features].iloc[[0]]
+    prediction = model.predict(X_input)[0]
+
+    return prediction
+

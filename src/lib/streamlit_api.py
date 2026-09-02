@@ -14,6 +14,15 @@ from lib.utils import (
     get_condition_by,
     get_default_value
 )
+from lib.shap_explainability import (
+    get_shap_info,
+    build_model_explaination_response,
+)
+from lib.xgboost_predictor import (
+    build_temporal_player_input,
+    get_model_prediction,
+)
+
 
 
 @st.cache_data(show_spinner=False)
@@ -24,8 +33,33 @@ def load_dataset(path: str, filter_by_current_year: bool = False, current_season
 
 
 @st.cache_resource
-def load_model(target_feature: str):
-    return joblib.load(f"models/xgb_{target_feature}.pkl")
+def load_models(target_features: list) -> dict:
+    '''
+    Returns
+    -------
+    - dict:
+        Dictionary containing one entry for each target feature.
+
+        Structure::
+            {
+                "target_feature1": {
+                    "model": model,
+                    "explainer": explainer,
+                    "features": features,
+                    "window_size": window_size,
+                    "RMSE": rmse_error,
+                    "MAE": baseline_error
+                },
+
+                "target_feature2": {
+                    ...
+                },
+            }
+    '''
+    models_packages_dict = {}
+    for feature in target_features:
+        models_packages_dict[feature] = joblib.load(f"models/xgb_{feature}.pkl")
+    return models_packages_dict
 
 
 def apply_filters(df: pd.DataFrame, exclude=None, columns_to_filter_list=[], compare_op_for_columns_to_filter_dict={}, page="unknown_page") -> pd.DataFrame:
@@ -41,6 +75,83 @@ def apply_filters(df: pd.DataFrame, exclude=None, columns_to_filter_list=[], com
         ]
 
     return result
+
+
+def print_models_predictions(
+        models_packages_dict: dict,
+        history_of_the_player: pd.DataFrame,
+        player_row: pd.Series,
+        top_k=5,
+        worst_k=2,
+        explainability_enabled=True
+    ):
+    features_explainability = load_dataset("data/features_explainability.csv")
+
+    player_name = player_row["player"]
+    fanta_role = player_row["fanta_role"]
+    role_name = get_roles_dict()[fanta_role].capitalize()
+    latest_team = player_row["Squadra"]
+
+    with st.container(border=True):
+        st.markdown(
+            f"### :material/person: {player_name}",
+            text_alignment="center",
+            anchors=False,
+        )
+        st.markdown(
+            f":blue-badge[{role_name} ({fanta_role})] :green-badge[{latest_team}]",
+            text_alignment="center",
+        )
+
+    st.divider()
+
+    cols = st.columns([9,1,9,1,9,1,9])
+    n_cols = 8
+
+    n_iters = len(models_packages_dict.items())
+    for i, (feature, model_package) in enumerate(models_packages_dict.items()):
+
+        # Build the dataframe input for the model to get the prediction
+        model_input = build_temporal_player_input(
+            player_history=history_of_the_player,
+            features=model_package["features"],
+        )
+        prediction = get_model_prediction(
+            model_package=model_package,
+            player_history=model_input,
+        )
+        ai_icon = st.html(
+            """
+            <link type="image/png" sizes="16x16" rel="icon" href=".../icons8-bardo-fluent-16.png"> <link type="image/png" sizes="72x72" rel="icon" href=".../icons8-bardo-fluent-72.png"> <link type="image/png" sizes="96x96" rel="icon" href=".../icons8-bardo-fluent-96.png"> <link type="image/png" sizes="144x144" rel="icon" href=".../icons8-bardo-fluent-144.png"> <link type="image/png" sizes="192x192" rel="icon" href=".../icons8-bardo-fluent-192.png"> <link type="image/png" sizes="512x512" rel="icon" href=".../icons8-bardo-fluent-512.png">
+            """
+        )
+        # AI prediction
+        with cols[i*2 % n_cols]:
+            st.metric(
+                label=f"{ai_icon} Predicted **:blue[_{columns_to_user_view_dict[feature]}_]**",
+                value=f":blue[{prediction:.2f}]",
+                border=True
+            )
+        
+            # Case of SHAP explainability enabled
+            if explainability_enabled:
+                st.markdown(
+                    build_model_explaination_response(
+                        shap_explainer=model_package["explainer"],
+                        features=model_package["features"],
+                        features_explainability=features_explainability,
+                        player_history=model_input,
+                        top_k=top_k,
+                        worst_k=worst_k
+                    )
+                )
+        
+        
+        if i*2 % n_cols == 0 and i < n_iters:
+            st.write(f"{i}/{n_iters}")
+            st.divider()
+
+    return
 
 
 def get_stats_persistent_keys(player_ids, page_name="stats") -> list[str]:

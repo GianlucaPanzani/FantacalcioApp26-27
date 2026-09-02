@@ -345,24 +345,6 @@ with st.container(border=True):
                 args=(graphical_cols_key, graphical_cols_widget_key),
             )
 
-# AI settings
-with st.container(border=True):
-    ai_enabled_widget_key = f"{page_name}_ai_enabled_widget_key"
-    st.session_state[ai_enabled_widget_key] = st.session_state[ai_enabled_key]
-
-    cols = st.columns([8,1,8,1,8,1,8,1,8])
-
-    with cols[0]:
-        st.markdown("#### **AI settings**")
-
-    with cols[2]:
-        ai_enabled = st.toggle(
-            "Activate AI to help you",
-            key=ai_enabled_widget_key,
-            on_change=sync_filter,
-            args=(ai_enabled_key, ai_enabled_widget_key)
-        )
-
 
 # Synchronize bought players after adding, renaming or removing a manager
 bought_players_dataframes = [
