@@ -12,10 +12,10 @@ from lib.utils import (
     stats_persistent_key_fields,
     get_color_per_role,
     get_condition_by,
-    get_default_value
+    get_default_value,
+    get_ai_icon
 )
 from lib.shap_explainability import (
-    get_shap_info,
     build_model_explaination_response,
 )
 from lib.xgboost_predictor import (
@@ -77,6 +77,18 @@ def apply_filters(df: pd.DataFrame, exclude=None, columns_to_filter_list=[], com
     return result
 
 
+def set_text_size(text_size):
+    return st.html(
+        f"""
+        <style>
+        [class*="budget-metric"] [data-testid="stMetricLabel"] p {{
+            font-size: {str(text_size)}rem;
+        }}
+        </style>
+        """
+    )
+
+
 def print_models_predictions(
         models_packages_dict: dict,
         history_of_the_player: pd.DataFrame,
@@ -87,69 +99,79 @@ def print_models_predictions(
     ):
     features_explainability = load_dataset("data/features_explainability.csv")
 
-    player_name = player_row["player"]
-    fanta_role = player_row["fanta_role"]
-    role_name = get_roles_dict()[fanta_role].capitalize()
-    latest_team = player_row["Squadra"]
+    thick_divider()
 
-    with st.container(border=True):
-        st.markdown(
-            f"### :material/person: {player_name}",
-            text_alignment="center",
-            anchors=False,
-        )
-        st.markdown(
-            f":blue-badge[{role_name} ({fanta_role})] :green-badge[{latest_team}]",
-            text_alignment="center",
-        )
+    with st.container():
+        col1, _, col2 = st.columns([9,1,40])
 
-    st.divider()
+        # Create Fanta player title
+        player_name = player_row["player"]
+        fanta_role = player_row["fanta_role"]
+        role_name = get_roles_dict()[fanta_role].capitalize()
+        latest_team = player_row["Squadra"]
+        role_badge_color = get_color_per_role(role=fanta_role, color_version=False)
 
-    cols = st.columns([9,1,9,1,9,1,9])
-    n_cols = 8
-
-    n_iters = len(models_packages_dict.items())
-    for i, (feature, model_package) in enumerate(models_packages_dict.items()):
-
-        # Build the dataframe input for the model to get the prediction
-        model_input = build_temporal_player_input(
-            player_history=history_of_the_player,
-            features=model_package["features"],
-        )
-        prediction = get_model_prediction(
-            model_package=model_package,
-            player_history=model_input,
-        )
-        ai_icon = st.html(
-            """
-            <link type="image/png" sizes="16x16" rel="icon" href=".../icons8-bardo-fluent-16.png"> <link type="image/png" sizes="72x72" rel="icon" href=".../icons8-bardo-fluent-72.png"> <link type="image/png" sizes="96x96" rel="icon" href=".../icons8-bardo-fluent-96.png"> <link type="image/png" sizes="144x144" rel="icon" href=".../icons8-bardo-fluent-144.png"> <link type="image/png" sizes="192x192" rel="icon" href=".../icons8-bardo-fluent-192.png"> <link type="image/png" sizes="512x512" rel="icon" href=".../icons8-bardo-fluent-512.png">
-            """
-        )
-        # AI prediction
-        with cols[i*2 % n_cols]:
-            st.metric(
-                label=f"{ai_icon} Predicted **:blue[_{columns_to_user_view_dict[feature]}_]**",
-                value=f":blue[{prediction:.2f}]",
-                border=True
-            )
-        
-            # Case of SHAP explainability enabled
-            if explainability_enabled:
+        with col1:
+            with st.container(border=True, horizontal_alignment="center", width="stretch"):
                 st.markdown(
-                    build_model_explaination_response(
-                        shap_explainer=model_package["explainer"],
-                        features=model_package["features"],
-                        features_explainability=features_explainability,
-                        player_history=model_input,
-                        top_k=top_k,
-                        worst_k=worst_k
-                    )
+                    f"### :material/person: {player_name}",
+                    text_alignment="center",
                 )
-        
-        
-        if i*2 % n_cols == 0 and i < n_iters:
-            st.write(f"{i}/{n_iters}")
-            st.divider()
+                st.markdown(
+                    f":{role_badge_color}-badge[{role_name} ({fanta_role})]  \n:violet-badge[{latest_team}]",
+                    text_alignment="center",
+                )
+
+        with col2:
+            cols = st.columns([9,1,9,1,9,1,9])
+            n_cols = 8
+
+            n_iters = len(models_packages_dict.items())
+            for i, (feature, model_package) in enumerate(models_packages_dict.items()):
+
+                # Build the dataframe input for the model to get the prediction
+                model_input = build_temporal_player_input(
+                    player_history=history_of_the_player,
+                    features=model_package["features"],
+                )
+                prediction = get_model_prediction(
+                    model_package=model_package,
+                    player_history=model_input,
+                )
+
+                # AI prediction
+                with cols[i*2 % n_cols]:
+                    st.html(
+                        f"""
+                        <style>
+                        [class*="budget-metric"] [data-testid="stMetricLabel"] p {{
+                            font-size: 1.2rem;
+                        }}
+                        </style>
+                        """
+                    )
+                    st.metric(
+                        label=f"{get_ai_icon()} Predicted **:blue[_{columns_to_user_view_dict[feature]}_]**",
+                        value=f":blue[{prediction:.2f}]",
+                        width="stretch"
+                    )
+                
+                    # Case of SHAP explainability enabled
+                    if explainability_enabled:
+                        st.markdown(
+                            build_model_explaination_response(
+                                shap_explainer=model_package["explainer"],
+                                features=model_package["features"],
+                                features_explainability=features_explainability,
+                                player_history=model_input,
+                                top_k=top_k,
+                                worst_k=worst_k
+                            )
+                        )
+                
+                
+                if i > 0 and i < n_iters - 1 and i*2 % n_cols == 0:
+                    st.divider()
 
     return
 

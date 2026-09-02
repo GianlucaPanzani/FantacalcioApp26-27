@@ -19,6 +19,7 @@ from lib.streamlit_api import (
     get_role_budget_limits,
     get_default_value,
     get_condition_by,
+    set_text_size,
     load_env,
     load_models,
     store_env,
@@ -527,15 +528,7 @@ def create_current_teams(fanta_manager_players_dict: dict, fanta_manager=None):
 
     # Create the bought of the budget
     with budget_col:
-        st.html(
-            """
-            <style>
-            [class*="budget-metric"] [data-testid="stMetricLabel"] p {
-                font-size: 1.25rem;
-            }
-            </style>
-            """
-        )
+        set_text_size(text_size=1.25)
         with st.container(key=f"{fanta_manager}-budget-metric", border=True):
             st.markdown(f":blue[**{fanta_manager}**]")
             st.metric(
@@ -659,7 +652,7 @@ def reset_teams_filters(fanta_managers):
 
 # Load stored persistent values before initializing Session State defaults
 loaded_env_values = load_env(path=".env")
-models_packages_dict = load_models(target_features=["goals_per90", "assists_per90"])
+models_packages_dict = load_models(target_features=["goals_per90", "assists_per90", "minutes"])
 feature_explanations = load_dataset("data/features_explainability.csv")
 
 # Set of keys whom value has to be stored (for next loaded)
@@ -698,6 +691,21 @@ if f"{page_name}_manager_players_dict_key" not in st.session_state:
     )
 fanta_manager_players_dict = st.session_state[f"{page_name}_manager_players_dict_key"]
 
+# Load the optional preferences stored by the Players Selection page
+player_preferences = None
+if st.session_state[enable_player_preferences_key]:
+    selection_players_path = st.session_state.get(
+        "selection_selected_players_csv_path_key",
+        "data/selection_players.csv",
+    )
+    player_preferences = load_player_preferences(selection_players_path)
+
+# History players
+history_players = load_dataset("data/filtered_history_players.csv")
+
+# Filters + players table
+fanta_players = load_dataset("data/filtered_history_players.csv", filter_by_current_year=True)
+
 
 st.title("⚽ Fantacalcio 26-27 - Create your own team")
 st.caption(
@@ -708,12 +716,7 @@ st.caption(
 
 thick_divider()
 
-# History players
-history_players = load_dataset("data/filtered_history_players.csv")
-
-# Filters + players table
-fanta_players = load_dataset("data/filtered_history_players.csv", filter_by_current_year=True)
-
+# Filters
 with st.sidebar:
     st.markdown("### Filters")
     filtered_players = player_filters(
@@ -724,15 +727,6 @@ with st.sidebar:
     )
     st.markdown("### Reset teams")
     reset_teams_filters(fanta_managers)
-
-# Load the optional preferences stored by the Players Selection page
-player_preferences = None
-if st.session_state[enable_player_preferences_key]:
-    selection_players_path = st.session_state.get(
-        "selection_selected_players_csv_path_key",
-        "data/selection_players.csv",
-    )
-    player_preferences = load_player_preferences(selection_players_path)
 
 # Create editable df
 col1, _, col2 = st.columns([52,1,7])

@@ -1,5 +1,7 @@
+from pathlib import Path
 import pandas as pd
 import numpy as np
+from base64 import b64encode
 from rapidfuzz import fuzz
 import re
 import unicodedata
@@ -93,7 +95,8 @@ interest_markers = {
     "Buoni low cost": "🔵",
 }
 
-
+def get_ai_icon():
+    return f"![AI](data:image/png;base64,{b64encode(Path('icons/icons8-bardo-48.png').read_bytes()).decode('ascii')})"
 
 def set_format_interest(interest):
     if interest is None:
@@ -107,13 +110,13 @@ def highlight_player_role(row: pd.Series) -> list[str]:
         return [""] * len(row)
     return [f"background-color: {role_color}; color: #212121"] * len(row)
 
-def get_color_per_role(role: str) -> str:
+def get_color_per_role(role: str, color_version=True) -> str:
     """Return a soft Material Design color for a Fantacalcio role."""
     role_colors_dict = {
-        "P": "#EACD6D",  # Previous: "#FFD54F"
-        "D": "#8FCD92",  # Previous: "#81C784"
-        "C": "#73B3E7",  # Previous: "#64B5F6"
-        "A": "#DE7D7D",  # Previous: "#E57373"
+        "P": "#EACD6D" if color_version else "orange",  # Previous: "#FFD54F"
+        "D": "#8FCD92"  if color_version else "green",  # Previous: "#81C784"
+        "C": "#73B3E7" if color_version else "blue",  # Previous: "#64B5F6"
+        "A": "#DE7D7D" if color_version else "red",  # Previous: "#E57373"
     }
     return role_colors_dict.get(str(role).strip().upper(), "")
 
