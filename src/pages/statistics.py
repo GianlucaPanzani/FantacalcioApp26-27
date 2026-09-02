@@ -145,9 +145,21 @@ def create_multiselect_filters(players: pd.DataFrame, columns=["player", "fanta_
             compare_op_for_columns_to_filter_dict=compare_op_for_columns_to_filter_dict,
             page=page_name
         )
+    
+    st.multiselect(
+        f"Select {get_user_view_of_column('player').lower()}",
+        options=sorted(col_name_df_dict["player"]["player"].dropna().unique(), key=str),
+        placeholder=f"Select one or more elements...",
+        help="- Select 1 player to see deeper statistics  \n- Select 2 players to compare them",
+        key=f"{page_name}_player_widget_key",
+        on_change=sync_filter,
+        args=(f"{page_name}_player_key", f"{page_name}_player_widget_key"),
+    )
 
     # Create the multiselect widgets
     for column in columns:
+        if column == "player":
+            continue
         options = sorted(col_name_df_dict[column][column].dropna().unique(), key=str)
         selected_values = [value for value in st.session_state[f"{page_name}_{column}_key"] if value in options]
         st.session_state[f"{page_name}_{column}_key"] = selected_values

@@ -652,15 +652,15 @@ def plot_comparison_between_players(history_players: pd.DataFrame, filtered_play
             # Players header
             fanta_role = chart_df["fanta_role"].dropna().iloc[0]
             role_name = get_roles_dict()[fanta_role].capitalize()
+            role_badge_color = get_color_per_role(role=fanta_role, color_version=False)
             latest_team = chart_df["team"].dropna().iloc[-1]
             with st.container(border=True):
                 st.markdown(
                     f"### :material/person: {player_name}",
                     text_alignment="center",
-                    anchors=False,
                 )
                 st.markdown(
-                    f":blue-badge[{role_name} ({fanta_role})] :green-badge[{latest_team}]",
+                    f":{role_badge_color}-badge[{role_name} ({fanta_role})]  \n:violet-badge[{latest_team}]",
                     text_alignment="center",
                 )
 
@@ -710,19 +710,11 @@ def plot_player_history(history_players: pd.DataFrame, filtered_players: pd.Data
     """
     roles = filtered_players["fanta_role"].dropna().unique().tolist()
     role_column_means = compute_role_column_means(history_players, roles)
+    roles_dict = get_roles_dict()
+    fanta_role = filtered_players["fanta_role"].dropna().iloc[0]
 
-    try:
-        fanta_role = filtered_players["fanta_role"].dropna().iloc[0]
-    except:
-        fanta_role = "C"
-
-    columns_to_plot = st.session_state.get(
-        f"settings_{get_roles_dict()[fanta_role]}_graphical_cols_key",
-        [],
-    )
-
-    # Select only available columns
-    columns_to_plot = [col for col in columns_to_plot if col in filtered_players.columns]
+    st.session_state.setdefault(f"settings_{roles_dict[fanta_role]}_graphical_cols_key", [])
+    columns_to_plot = st.session_state.get(f"settings_{roles_dict[fanta_role]}_graphical_cols_key")
 
     # Case of no fields selected
     if not columns_to_plot:
@@ -738,6 +730,7 @@ def plot_player_history(history_players: pd.DataFrame, filtered_players: pd.Data
     # Player header
     player_name = chart_df["player"].dropna().iloc[0]
     role_name = get_roles_dict()[fanta_role].capitalize()
+    role_badge_color = get_color_per_role(role=fanta_role, color_version=False)
     latest_team = chart_df["team"].dropna().iloc[-1]
     with st.container(border=True):
         st.markdown(
@@ -746,7 +739,7 @@ def plot_player_history(history_players: pd.DataFrame, filtered_players: pd.Data
             anchors=False,
         )
         st.markdown(
-            f":blue-badge[{role_name} ({fanta_role})] :green-badge[{latest_team}]",
+            f":{role_badge_color}-badge[{role_name} ({fanta_role})]  \n:violet-badge[{latest_team}]",
             text_alignment="center",
         )
 

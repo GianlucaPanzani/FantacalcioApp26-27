@@ -279,12 +279,31 @@ def store_selected_players(players: pd.DataFrame, path: str) -> None:
     return
 
 
-def get_selection_column_config(columns: list[str]) -> dict:
+def get_selection_column_config(columns: list[str], players: pd.DataFrame) -> dict:
     """Create readable Streamlit column configurations for selection tables."""
+    integer_statistics_columns = {"age", "birth_year", "appearances", "starts", "minutes"}
+    float_statistics_columns = {
+        column
+        for column in players.select_dtypes(include="float").columns
+        if column not in integer_statistics_columns
+    }
+    statistics_number_formats = {
+        **dict.fromkeys(integer_statistics_columns, "%d"),
+        **dict.fromkeys(float_statistics_columns, "%.2f"),
+    }
+
     column_config = {
-        column: st.column_config.Column(
-            get_user_view_of_column(column),
-            alignment="center",
+        column: (
+            st.column_config.NumberColumn(
+                get_user_view_of_column(column),
+                format=statistics_number_formats[column],
+                alignment="center",
+            )
+            if column in statistics_number_formats
+            else st.column_config.Column(
+                get_user_view_of_column(column),
+                alignment="center",
+            )
         )
         for column in columns
     }
@@ -340,7 +359,7 @@ def create_player_selection_table(players: pd.DataFrame, visible_columns: list[s
 
     players_editor_df.insert(0, "selected", selected_values)
     column_order = ["selected"] + visible_columns
-    column_config = get_selection_column_config(column_order)
+    column_config = get_selection_column_config(column_order, players_editor_df)
     editor_data = players_editor_df.style.apply(
         highlight_player_role,
         axis=1,
@@ -414,7 +433,7 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
 
     editable_columns = ["remove", "mln", "interest", "description"]
     column_order = editable_columns + visible_columns
-    column_config = get_selection_column_config(column_order)
+    column_config = get_selection_column_config(column_order, selected_players_editor_df)
     remove_button_key = f"{page_name}_remove_player_button_key"
     column_config["remove"] = st.column_config.ButtonColumn(
         "",
