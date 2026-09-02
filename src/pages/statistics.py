@@ -12,7 +12,7 @@ from lib.streamlit_api import (
     get_user_view_of_column,
     load_dataset,
     load_env,
-    load_model,
+    load_models,
     store_env,
     plot_comparison_between_players,
     plot_player_history
@@ -260,7 +260,7 @@ statistics_keys_set = {
 }
 history_players = load_dataset("data/filtered_history_players.csv")
 ####################ai_features_explainer_df = load_dataset("data/features_explainability.csv")
-model_goals_per90 = load_model(target_feature="goals_per90")
+model_packages_dict = load_models(target_features=["goals_per90", "assists_per90", "minutes"])
 
 
 st.title("📊 Statistics")
