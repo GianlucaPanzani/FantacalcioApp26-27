@@ -308,7 +308,8 @@ if selected_player_count == 2:
     thick_divider()
 # Case of 1 player selected
 elif selected_player_count == 1:
-    plot_player_history(history_players, filtered_players)
+    selected_player = filtered_players["player"].dropna().iloc[0]
+    plot_player_history(history_players, selected_player)
     thick_divider()
 
 

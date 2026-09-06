@@ -91,17 +91,28 @@ def set_text_size(text_size):
     )
 
 
+def print_ai_icon_with_markdown_title(markdown_text = f"### AI predictions"):
+    cols = st.columns([1,19])
+    with cols[0]:
+        st.markdown(f"{get_ai_icon()}")
+    with cols[1]:
+        st.markdown(markdown_text)
+
+
 def print_models_predictions(
         models_packages_dict: dict,
         history_of_the_player: pd.DataFrame,
         player_row: pd.Series,
         top_k=5,
         worst_k=2,
-        explainability_enabled=True
+        explainability_enabled=True,
+        plots_enebled=True
     ):
     features_explainability = load_dataset("data/features_explainability.csv")
 
     thick_divider()
+
+    print_ai_icon_with_markdown_title(f"### AI predictions")
 
     with st.container():
         col1, _, col2 = st.columns([9,1,40])
@@ -127,12 +138,6 @@ def print_models_predictions(
         with col2:
 
             with st.container(border=True, width="stretch"):
-                cols = st.columns([1,19])
-                with cols[0]:
-                    st.markdown(f"{get_ai_icon()}")
-                with cols[1]:
-                    st.markdown(f"### AI predictions")
-
                 cols = st.columns([9,1,9,1,9,1,9])
                 n_cols = 8
 
@@ -186,6 +191,15 @@ def print_models_predictions(
                         )
                         if available_lags < required_lags:
                             st.caption(f"Based on {available_lags} of {required_lags} historical seasons available.")
+
+                        # Case of plot enabled
+                        if plots_enebled:
+                            plot_player_history(
+                                history_players=load_dataset("data/filtered_history_players.csv"),
+                                player=player_name,
+                                feature=feature,
+                                disable_player_name=True
+                            )
                     
                         # Case of SHAP explainability enabled
                         if explainability_enabled:
@@ -723,7 +737,7 @@ def plot_comparison_between_players(history_players: pd.DataFrame, filtered_play
     return
 
 
-def plot_player_history(history_players: pd.DataFrame, player: str, feature=None, seasons_to_plot=3, disable_player_name=False) -> None:
+def plot_player_history(history_players: pd.DataFrame, player: str, feature=None, seasons_to_plot=4, disable_player_name=False) -> None:
     """
     Display the selected historical statistics for a single player.
 
@@ -736,18 +750,30 @@ def plot_player_history(history_players: pd.DataFrame, player: str, feature=None
         DataFrame containing the historical records of one player.
     """
     player_history = history_players[history_players["player"] == player].copy()
-    roles_dict = get_roles_dict()
     role_column_means = compute_role_column_means(history_players)
-    fanta_role = player_history["fanta_role"].dropna().iloc[0]
+    player_history = history_players[history_players["player"].eq(player)].copy()
+
+    if player_history.empty:
+        st.info(f"No history available for {player}.")
+        return
+
+    player_history = player_history.sort_values("season")
+    player_roles = player_history["fanta_role"].dropna()
+    if player_roles.empty:
+        st.info(f"No Fantacalcio role available for {player}.")
+        return
+
+    fanta_role = player_roles.iloc[-1]
 
     if feature is None:
-        st.session_state.setdefault(f"settings_{roles_dict[fanta_role]}_graphical_cols_key", [])
-        columns_to_plot = st.session_state.get(f"settings_{roles_dict[fanta_role]}_graphical_cols_key")
+        role_name = get_roles_dict()[fanta_role]
+        st.session_state.setdefault(f"settings_{role_name}_graphical_cols_key", [])
+        columns_to_plot = st.session_state[f"settings_{role_name}_graphical_cols_key"]
     else:
         columns_to_plot = [feature]
 
     # Case of no fields selected
-    if not columns_to_plot:
+    if not [column for column in columns_to_plot if column in player_history.columns]:
         st.info("Select at least one statistic for this role in the Settings page.")
         return
 
@@ -818,7 +844,7 @@ def plot_player_history(history_players: pd.DataFrame, player: str, feature=None
         st.altair_chart(
             chart,
             width="stretch",
-            )
+        )
     return
 
 
