@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+import time
 import pandas as pd
 import numpy as np
 from base64 import b64encode
@@ -109,6 +110,15 @@ def set_format_interest(interest):
 
 def get_current_year():
     return datetime.now().year
+
+def ai_data_stream(text: str):
+    words = text.split(" ")
+    n_words = len(words)
+    for i, word in enumerate(words):
+        time.sleep(0.01)
+        next_word = word + " " if i < n_words - 1 else word
+        yield next_word
+    return
 
 def highlight_player_role(row: pd.Series) -> list[str]:
     """Apply the Fantacalcio role color to every read-only player cell."""

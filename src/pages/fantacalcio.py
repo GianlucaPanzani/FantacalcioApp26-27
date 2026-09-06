@@ -67,82 +67,82 @@ bought_player_columns = ["id", "player", "team", "role", "mantra_role", "manager
 # ============================== FUNCTIONS ====================================
 # =============================================================================
 
-def player_filters(fanta_players: pd.DataFrame, columns_list: list, widget_types: list, fanta_manager_players_dict: dict) -> pd.DataFrame:
-
-    # Initialize default filter values
-    for col, widget_type in zip(columns_list, widget_types):
-        key = f"{page_name}_{col}_key"
-        fantacalcio_keys_set.add(key)
-        st.session_state.setdefault(key, get_default_value(fanta_players[col]))
-
-    # Create widgets
+def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
     filtered_df = fanta_players.copy()
-    for i, (column, widget_type) in enumerate(zip(columns_list, widget_types)):
 
-        # Apply previous selections before generating widget options.
-        options_df = apply_filters(
-            fanta_players,
-            columns_to_filter_list=columns_list,
-            compare_op_for_columns_to_filter_dict=compare_op_for_columns_to_filter_dict,
-            page=page_name
-        )
-        options = sorted(options_df[column].dropna().astype(str).unique())
+    player_filter_key = f"{page_name}_player_key"
+    player_widget_key = f"{page_name}_player_widget_key"
+    fantacalcio_keys_set.add(player_filter_key)
+    st.session_state.setdefault(player_filter_key, None)
+    selected_player = st.session_state[player_filter_key]
+    player_options = sorted(fanta_players["player"].dropna().astype(str).unique())
+    st.session_state[player_widget_key] = selected_player if selected_player in player_options else None
 
-        widget_key = f"{page_name}_{column}_widget_key"
-        filter_key = f"{page_name}_{column}_key"
+    # Player filter
+    selected_player = st.selectbox(
+        "Search a player",
+        options=player_options,
+        index=None,
+        placeholder="Select a player...",
+        key=player_widget_key,
+        on_change=sync_filter,
+        args=(player_filter_key, player_widget_key),
+    )
+    if selected_player:
+        filtered_df = filtered_df[filtered_df["player"].eq(selected_player)]
 
-        # Build the filtered data and restore widget values after their options change.
-        if widget_type == "multiselect":
-            st.session_state[widget_key] = [
-                value
-                for value in st.session_state[filter_key]
-                if value in options
-            ]
-        elif widget_type == "selectbox":
-            st.session_state[widget_key] = (
-                st.session_state[filter_key]
-                if st.session_state[filter_key] in options
-                else None
-            )
+    team_filter_key = f"{page_name}_team_key"
+    team_widget_key = f"{page_name}_team_widget_key"
+    fantacalcio_keys_set.add(team_filter_key)
+    st.session_state.setdefault(team_filter_key, None)
+    team_options = sorted(fanta_players["team"].dropna().astype(str).unique())
+    st.session_state[team_widget_key] = (
+        st.session_state[team_filter_key]
+        if st.session_state[team_filter_key] in team_options
+        else None
+    )
 
-        if widget_type == "multiselect":
-            selected_values = st.multiselect(
-                f"Search {column}",
-                options=options,
-                placeholder="Select one or more elements...",
-                key=widget_key,
-                on_change=sync_filter,
-                args=(filter_key, widget_key),
-            )
-        else:
-            selected_values = st.selectbox(
-                f"Select {column}",
-                options=options,
-                index=None,
-                placeholder="Select an element...",
-                key=widget_key,
-                on_change=sync_filter,
-                args=(filter_key, widget_key),
-            )
+    # Team filter
+    selected_team = st.selectbox(
+        "Select a team",
+        options=team_options,
+        index=None,
+        placeholder="Select a team...",
+        key=team_widget_key,
+        on_change=sync_filter,
+        args=(team_filter_key, team_widget_key),
+    )
+    if selected_team:
+        filtered_df = filtered_df[filtered_df["team"].eq(selected_team)]
 
-        # Apply the value setted in the widget
-        if selected_values:
-            filtered_df = filtered_df[
-                get_condition_by(
-                    df=filtered_df,
-                    column=column,
-                    selected_values=selected_values,
-                    compare_op=compare_op_for_columns_to_filter_dict[column],
-                )
-            ]
+    role_filter_key = f"{page_name}_fanta_role_key"
+    role_widget_key = f"{page_name}_fanta_role_widget_key"
+    fantacalcio_keys_set.add(role_filter_key)
+    st.session_state.setdefault(role_filter_key, None)
+    role_options = sorted(fanta_players["fanta_role"].dropna().astype(str).unique())
+    st.session_state[role_widget_key] = (
+        st.session_state[role_filter_key]
+        if st.session_state[role_filter_key] in role_options
+        else None
+    )
 
-    # Create the special filter based on the external boughts dictionary
+    # Fantacalcio role filter
+    selected_role = st.pills(
+        "Select fanta role",
+        options=role_options,
+        selection_mode="single",
+        key=role_widget_key,
+        on_change=sync_filter,
+        args=(role_filter_key, role_widget_key),
+    )
+    if selected_role:
+        filtered_df = filtered_df[filtered_df["fanta_role"].eq(selected_role)]
+
     manager_filter_key = f"{page_name}_selected_manager_key"
-    fantacalcio_keys_set.add(manager_filter_key)
-    st.session_state.setdefault(manager_filter_key, "")
-
-    manager_options = ["Free"] + st.session_state["settings_managers_key"]
     manager_widget_key = f"{page_name}_selected_manager_widget_key"
+    fantacalcio_keys_set.add(manager_filter_key)
+    st.session_state.setdefault(manager_filter_key, None)
+    manager_options = ["Free"] + st.session_state.get("settings_managers_key", [])
     st.session_state[manager_widget_key] = (
         st.session_state[manager_filter_key]
         if st.session_state[manager_filter_key] in manager_options
@@ -150,16 +150,16 @@ def player_filters(fanta_players: pd.DataFrame, columns_list: list, widget_types
     )
 
     # Fanta Manager filter
-    selected_fanta_manager = st.selectbox(
+    selected_fanta_manager = st.pills(
         "Select a Fanta Manager",
         options=manager_options,
-        index=None,
-        placeholder="Select a manager...",
+        selection_mode="single",
         key=manager_widget_key,
         on_change=sync_filter,
         args=(manager_filter_key, manager_widget_key),
     )
 
+    fanta_manager_players_dict = st.session_state[f"{page_name}_manager_players_dict_key"]
     if selected_fanta_manager == "Free":
         bought_player_ids = set()
         for bought_players in fanta_manager_players_dict.values():
@@ -168,10 +168,11 @@ def player_filters(fanta_players: pd.DataFrame, columns_list: list, widget_types
         filtered_df = filtered_df[~filtered_df["id"].astype(str).isin(bought_player_ids)]
     elif selected_fanta_manager:
         bought_players = fanta_manager_players_dict.get(selected_fanta_manager, pd.DataFrame())
-        if "id" in bought_players.columns:
-            bought_player_ids = set(bought_players["id"].dropna().astype(str))
-        else:
-            bought_player_ids = set()
+        bought_player_ids = (
+            set(bought_players["id"].dropna().astype(str))
+            if "id" in bought_players.columns
+            else set()
+        )
         filtered_df = filtered_df[filtered_df["id"].astype(str).isin(bought_player_ids)]
 
     # Checkbox to show the Manager's prefered players
@@ -228,8 +229,22 @@ def player_filters(fanta_players: pd.DataFrame, columns_list: list, widget_types
     )
 
     st.divider()
-    
-    # Store in session_state
+
+    # Order the player field per role
+    role_order = ["P", "D", "C", "A"]
+    filtered_df = (
+        filtered_df.assign(
+            _role_order=pd.Categorical(
+                filtered_df["fanta_role"],
+                categories=role_order,
+                ordered=True,
+            ),
+            _player_order=filtered_df["player"].astype("string").str.casefold(),
+        )
+        .sort_values(["_role_order", "_player_order"], na_position="last")
+        .drop(columns=["_role_order", "_player_order"])
+    )
+
     st.session_state[f"{page_name}_filtered_players"] = filtered_df
     return filtered_df
 
@@ -741,15 +756,9 @@ thick_divider()
 
 # Filters
 with st.sidebar:
-
     st.markdown("### Filters")
-    filtered_players = player_filters(
-        fanta_players,
-        columns_list=["player", "team", "fanta_role"],
-        widget_types=["multiselect", "selectbox", "selectbox"],
-        fanta_manager_players_dict=fanta_manager_players_dict
-    )
-
+    filtered_players = player_filters(fanta_players)
+    st.divider()
     st.markdown("### Reset teams")
     reset_teams_filters(fanta_managers)
 

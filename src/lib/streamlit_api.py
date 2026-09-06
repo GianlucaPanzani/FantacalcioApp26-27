@@ -13,7 +13,8 @@ from lib.utils import (
     get_color_per_role,
     get_condition_by,
     get_default_value,
-    get_ai_icon
+    get_ai_icon,
+    ai_data_stream
 )
 from lib.shap_explainability import (
     build_model_explaination_response,
@@ -170,7 +171,6 @@ def print_models_predictions(
                         player_history=history_of_the_player,
                         features=model_package["features"],
                     )
-                    required_lags = model_input.attrs["required_lags"]
                     available_lags = model_input.attrs["available_lags"]
                     if available_lags == 0:
                         with cols[i*2 % n_cols]:
@@ -204,8 +204,6 @@ def print_models_predictions(
                                 delta_color="normal",
                                 width="content",
                             )
-                        if available_lags < required_lags:
-                            st.caption(f"Based on {available_lags} of {required_lags} historical seasons available.")
 
                         # Case of plot enabled
                         if plots_enebled:
@@ -218,17 +216,21 @@ def print_models_predictions(
                             )
 
                         # Case of SHAP explainability enabled
+                        st.session_state.setdefault(f"previous_explaination_for_{feature}_{player_name}", False)
                         if explainability_enabled:
-                            st.markdown(
-                                build_model_explaination_response(
-                                    shap_explainer=model_package["explainer"],
-                                    features=model_package["features"],
-                                    features_explainability=features_explainability,
-                                    player_history=model_input,
-                                    top_k=top_k,
-                                    worst_k=worst_k
-                                )
+                            explaination_response = build_model_explaination_response(
+                                shap_explainer=model_package["explainer"],
+                                features=model_package["features"],
+                                features_explainability=features_explainability,
+                                player_history=model_input,
+                                top_k=top_k,
+                                worst_k=worst_k
                             )
+                            if not st.session_state[f"previous_explaination_for_{feature}_{player_name}"]:
+                                st.session_state[f"previous_explaination_for_{feature}_{player_name}"] = True
+                                st.write_stream(ai_data_stream(explaination_response))
+                            else:
+                                st.markdown(explaination_response)
                     
                         if (explainability_enabled or plots_enebled) and i < n_iters-1 and i*2 % (n_cols/2) == 0:
                             st.divider()
