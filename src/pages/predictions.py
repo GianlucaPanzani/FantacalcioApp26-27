@@ -4,26 +4,24 @@ import pandas as pd
 import lib.ollama_api as llm
 from lib.utils import (
     interest_markers,
-    set_format_interest,
     get_ai_icon
 )
 from lib.streamlit_api import (
     thick_divider,
-    highlight_bought_rows,
     sync_filter,
     apply_filters,
     load_dataset,
     load_models,
     print_models_predictions,
-    get_role_limits,
-    get_role_budget_limits,
     get_default_value,
     get_condition_by,
-    set_text_size,
     load_env,
     load_models,
     store_env,
-    restore_bought_players,
+)
+from lib.xgboost_predictor import (
+    features_to_predict_list,
+    features_to_predict_per_role_dict
 )
 
 
@@ -144,25 +142,20 @@ def load_fantamanager_players_of_interest(path: str) -> dict:
     return players_dict
 
 
-def create_editor_dataframe(
-        filtered_players: pd.DataFrame,
-        player_of_interest: dict
-    ):
+def create_editor_dataframe(filtered_players: pd.DataFrame):
     players_editor_df = filtered_players.copy()
     
 
     # Create the table
     st.data_editor(
-        players_editor_df.style.apply(highlight_bought_rows, axis=1, fanta_managers=fanta_managers),
+        players_editor_df.style,
         hide_index=True,
         width="stretch",
         height=380,
-        column_order=column_order,
-        disabled=[column for column in players_editor_df.columns if column not in editable_columns],
-        column_config=column_config,
-        key=editor_key,
-        on_change=sync_purchase_editor,
-        args=(players_editor_df, fanta_manager_players_dict, fanta_managers, editor_key),
+        #column_order=column_order,
+        #disabled=[column for column in players_editor_df.columns if column not in editable_columns],
+        #column_config=column_config,
+        key=,
     )
 
     return
@@ -173,7 +166,7 @@ def create_editor_dataframe(
 
 # Load stored persistent values before initializing Session State defaults
 loaded_env_values = load_env(path=".env")
-models_packages_dict = load_models(target_features=["goals_per90", "assists_per90", "minutes"])
+models_packages_dict = load_models(target_features=features_to_predict_list)
 feature_explanations = load_dataset("data/features_explainability.csv")
 
 # Set of keys whom value has to be stored (for next loaded)

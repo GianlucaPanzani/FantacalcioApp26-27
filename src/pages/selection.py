@@ -12,8 +12,12 @@ from lib.streamlit_api import (
     get_roles_dict,
     get_user_view_of_column,
     load_dataset,
+    load_models,
     load_env,
     store_env,
+)
+from lib.xgboost_predictor import (
+    features_to_predict_list,
 )
 
 
@@ -494,6 +498,7 @@ fanta_players = load_dataset("data/Listone_Fantacalcio_Stagione_2026_27.csv")
 history_players = load_dataset("data/filtered_history_players.csv")
 loaded_env_values = load_env(path=".env")
 selection_keys_set = {key for key in loaded_env_values if key.startswith(f"{page_name}_")}
+models_packages_dict = load_models(target_features=features_to_predict_list)
 
 # Save the path to the csv file with selected players
 selection_players_key = f"{page_name}_selected_players_csv_path_key"

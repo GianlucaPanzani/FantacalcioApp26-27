@@ -49,6 +49,11 @@ def build_model_explaination_response(
         worst_k=2
     ) -> str:
 
+    available_features = set(
+        player_history.attrs.get("available_features", features)
+    )
+    seasons_by_lag = player_history.attrs.get("seasons_by_lag", {})
+
     # Get the first player with the passed features
     player = player_history[features].iloc[0]
     X_input = player.to_frame().T
@@ -61,17 +66,24 @@ def build_model_explaination_response(
         shap_values_dict=dict(zip(X_input.columns, shap_values)),
         df=X_input,
     )
+    shap_info_dict = {
+        feature: shap_dict
+        for feature, shap_dict in shap_info_dict.items()
+        if feature in available_features
+    }
 
     explanations_by_feature_df = features_explainability.set_index("feature")
-    current_year = time.localtime().tm_year
 
     text_md = "**_Reasoning of the model_**:\n"
     for i, (feature, shap_dict) in enumerate(shap_info_dict.items()):
         if i+1 > top_k and i < len(shap_info_dict) - worst_k:
             continue
         real_feature, years_ago = str(feature).split("_t-")
-        current_year = time.localtime().tm_year
-        season = f"{str(current_year - int(years_ago))}-{str(current_year)[2:]}"
+        lag = int(years_ago)
+        season = seasons_by_lag.get(lag)
+        if season is None:
+            current_year = time.localtime().tm_year
+            season = f"{str(current_year - lag)}-{str(current_year)[2:]}"
         explanation_row = explanations_by_feature_df.loc[real_feature]
 
         symbol = ":green[⬆]" if shap_dict["outcome"] == "positive" else ":blue[⬇]"

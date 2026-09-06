@@ -8,9 +8,48 @@ from sklearn.metrics import (
     mean_squared_error,
     r2_score
 )
-from lib.utils import (
-    columns_to_user_view_dict
-)
+
+
+features_to_predict_per_role_dict: dict = {
+    "P": [
+        "minutes",
+        "clean_sheets_per90",
+        "goals_against_per90",
+    ],
+    "D": [
+        "minutes",
+        "tackles_won_per90",
+    ],
+    "C": [
+        "goals_per90",
+        "assists_per90",
+        "minutes",
+    ],
+    "A": [
+        "goals_per90",
+        "assists_per90",
+        "minutes",
+    ],
+}
+
+
+features_to_predict_list = [
+    "assists_per90",
+    "clean_sheets_per90",
+    "goals_against_per90",
+    "goals_per90",
+    "minutes",
+    "tackles_won_per90",
+]
+
+features_per_season_per_match = {
+    "assists_per90": " per season",
+    "clean_sheets_per90": " per season",
+    "goals_against_per90": " per match",
+    "goals_per90": " per season",
+    "minutes": " per match",
+    "tackles_won_per90": " per match",
+}
 
 
 
@@ -164,9 +203,9 @@ def build_temporal_player_input(
 ) -> pd.DataFrame:
     """Build the latest temporal row expected by a trained model.
 
-    The window size is inferred from the feature suffixes stored with the model,
-    so stale model metadata cannot produce an incomplete input row. For example,
-    features ending in ``_t-1`` through ``_t-4`` require four historical rows.
+    The window size is inferred from the feature suffixes stored with the model.
+    Available historical lags are populated from newest to oldest; older missing
+    lags remain zero so the input keeps the complete schema expected by XGBoost.
     """
     parsed_features = []
     invalid_features = []
@@ -178,18 +217,35 @@ def build_temporal_player_input(
         parsed_features.append((feature, source_col, int(lag_text)))
 
     required_lags = {lag for _, _, lag in parsed_features}
-    window_size = max(required_lags)
-
-
+    window_size = max(required_lags, default=0)
     latest_history = player_history.sort_values(season_col).tail(window_size)
+    available_lags = len(latest_history)
 
-    input_row = {
-        feature: latest_history.iloc[-lag][source_col]
-        for feature, source_col, lag in parsed_features
-    }
+    input_row = {}
+    available_features = []
+    seasons_by_lag = {}
+    for feature, source_col, lag in parsed_features:
+        if lag > available_lags:
+            input_row[feature] = 0.0
+            continue
+
+        history_row = latest_history.iloc[-lag]
+        input_row[feature] = history_row[source_col]
+        available_features.append(feature)
+        seasons_by_lag[lag] = history_row[season_col]
+
     model_input = pd.DataFrame([input_row], columns=features)
+    model_input = model_input.apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    model_input.attrs.update(
+        {
+            "available_features": available_features,
+            "available_lags": available_lags,
+            "required_lags": window_size,
+            "seasons_by_lag": seasons_by_lag,
+        }
+    )
 
-    return model_input.apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    return model_input
 
 
 def get_model_prediction(
@@ -206,3 +262,24 @@ def get_model_prediction(
 
     return prediction
 
+
+def get_transformed_feature_and_value(feature: str, pred_value, pred_minutes=None):
+    
+    def transform_feature(s: str):
+        strings = s.split("_")[:-1]
+        return " ".join([strings[0].capitalize()] + strings[1:])
+    
+    def transform_value_per90(v):
+        if v < 0:
+            return 0
+        if pred_minutes is None:
+            raise ValueError("Minutes is needed if the feture ends with \"_per90\".")
+        return round(v * 38, 2)
+
+    pred_value = float(pred_value)
+    if feature.endswith("_per90"):
+        return transform_feature(feature) + features_per_season_per_match[feature], transform_value_per90(pred_value)
+    if feature == "minutes":
+        return feature.capitalize() + features_per_season_per_match["minutes"], round(pred_value/90, 2)
+    else:
+        raise ValueError(f"The model is not able to predict the feature \"{feature}\".")

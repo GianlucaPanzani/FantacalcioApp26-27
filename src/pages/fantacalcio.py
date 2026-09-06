@@ -27,6 +27,9 @@ from lib.streamlit_api import (
     has_full_team,
     generate_pdf_with_bought_players
 )
+from lib.xgboost_predictor import (
+    features_to_predict_list
+)
 
 
 st.set_page_config(
@@ -54,6 +57,7 @@ reset_managers_widget_key = f"{page_name}_reset_managers_widget_key"
 reset_boughts_button_key = f"{page_name}_reset_boughts_button_key"
 show_ai_predictions_key = f"{page_name}_show_ai_predictions_key"
 show_ai_explainations_key = f"{page_name}_show_ai_explainations_key"
+hide_other_fantamanagers_key = f"{page_name}_hide_other_fantamanagers_key"
 
 bought_player_columns = ["id", "player", "team", "role", "mantra_role", "manager", "mln"]
 
@@ -179,7 +183,7 @@ def player_filters(fanta_players: pd.DataFrame, columns_list: list, widget_types
         wrap=True,
     )
 
-    # Checkbox to show the Manager's prefered players
+    # Checkbox to show AI predictions
     fantacalcio_keys_set.add(show_ai_predictions_key)
     st.session_state.setdefault(show_ai_predictions_key, False)
     st.checkbox(
@@ -190,15 +194,25 @@ def player_filters(fanta_players: pd.DataFrame, columns_list: list, widget_types
         wrap=True,
     )
 
-    # Checkbox to show the Manager's prefered players
+    # Checkbox to show the Ai explaination
     fantacalcio_keys_set.add(show_ai_explainations_key)
     st.session_state.setdefault(show_ai_explainations_key, False)
     st.checkbox(
-        "Show AI explainations",
+        "Enable AI explainations",
         help="Select a single player to see the predictions and their explainations",
         key=show_ai_explainations_key,
         persist_state="session",
         wrap=True,
+    )
+
+    # Checkbox to disable the others Fanta Manager's boughts
+    fantacalcio_keys_set.add(hide_other_fantamanagers_key)
+    st.session_state.setdefault(hide_other_fantamanagers_key, False)
+    st.checkbox(
+        "Hide the others Fanta Managers",
+        key=hide_other_fantamanagers_key,
+        persist_state="session",
+        wrap=False,
     )
 
     st.divider()
@@ -652,7 +666,7 @@ def reset_teams_filters(fanta_managers):
 
 # Load stored persistent values before initializing Session State defaults
 loaded_env_values = load_env(path=".env")
-models_packages_dict = load_models(target_features=["goals_per90", "assists_per90", "minutes"])
+models_packages_dict = load_models(target_features=features_to_predict_list)
 feature_explanations = load_dataset("data/features_explainability.csv")
 
 # Set of keys whom value has to be stored (for next loaded)
@@ -718,6 +732,7 @@ thick_divider()
 
 # Filters
 with st.sidebar:
+    
     st.markdown("### Filters")
     filtered_players = player_filters(
         fanta_players,
@@ -725,6 +740,7 @@ with st.sidebar:
         widget_types=["multiselect", "selectbox", "selectbox"],
         fanta_manager_players_dict=fanta_manager_players_dict
     )
+
     st.markdown("### Reset teams")
     reset_teams_filters(fanta_managers)
 

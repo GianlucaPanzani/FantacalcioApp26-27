@@ -17,6 +17,10 @@ from lib.streamlit_api import (
     plot_comparison_between_players,
     plot_player_history
 )
+from lib.xgboost_predictor import (
+    features_to_predict_list,
+    features_to_predict_per_role_dict
+)
 
 
 st.set_page_config(
@@ -271,8 +275,7 @@ statistics_keys_set = {
     if key.startswith(f"{page_name}_")
 }
 history_players = load_dataset("data/filtered_history_players.csv")
-####################ai_features_explainer_df = load_dataset("data/features_explainability.csv")
-model_packages_dict = load_models(target_features=["goals_per90", "assists_per90", "minutes"])
+model_packages_dict = load_models(target_features=features_to_predict_list)
 
 
 st.title("📊 Statistics")
@@ -351,4 +354,3 @@ store_env(
     path=".env",
 )
 
-#checks_to_stop(filtered_players)
