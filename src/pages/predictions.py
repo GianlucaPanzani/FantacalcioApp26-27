@@ -226,6 +226,7 @@ history_of_the_player = history_players[
 ]
 print_models_predictions(
     models_packages_dict=models_packages_dict,
+    history_players=load_dataset("data/filtered_history_players.csv"),
     history_of_the_player=history_of_the_player,
     player_row=filtered_players.iloc[0],
     top_k=4,

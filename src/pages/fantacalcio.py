@@ -4,8 +4,8 @@ import pandas as pd
 import lib.ollama_api as llm
 from lib.utils import (
     interest_markers,
-    columns_to_user_view_dict,
     set_format_interest,
+    get_current_year
 )
 from lib.streamlit_api import (
     thick_divider,
@@ -57,6 +57,7 @@ reset_managers_widget_key = f"{page_name}_reset_managers_widget_key"
 reset_boughts_button_key = f"{page_name}_reset_boughts_button_key"
 show_ai_predictions_key = f"{page_name}_show_ai_predictions_key"
 show_ai_explainations_key = f"{page_name}_show_ai_explainations_key"
+show_ai_plots_key = f"{page_name}_show_ai_plots_key"
 hide_other_fantamanagers_key = f"{page_name}_hide_other_fantamanagers_key"
 
 bought_player_columns = ["id", "player", "team", "role", "mantra_role", "manager", "mln"]
@@ -194,13 +195,24 @@ def player_filters(fanta_players: pd.DataFrame, columns_list: list, widget_types
         wrap=True,
     )
 
-    # Checkbox to show the Ai explaination
+    # Checkbox to show the AI explaination
     fantacalcio_keys_set.add(show_ai_explainations_key)
     st.session_state.setdefault(show_ai_explainations_key, False)
     st.checkbox(
         "Enable AI explainations",
         help="Select a single player to see the predictions and their explainations",
         key=show_ai_explainations_key,
+        persist_state="session",
+        wrap=True,
+    )
+
+    # Checkbox to show the AI plots
+    fantacalcio_keys_set.add(show_ai_plots_key)
+    st.session_state.setdefault(show_ai_plots_key, False)
+    st.checkbox(
+        "Enable AI plots",
+        help="Select a single player to see the predictions and their plots",
+        key=show_ai_plots_key,
         persist_state="session",
         wrap=True,
     )
@@ -254,11 +266,7 @@ def load_player_preferences(path: str) -> dict:
     return preferences
 
 
-def update_player_boughts(
-    players: pd.DataFrame,
-    fanta_manager_players_dict: dict,
-    fanta_managers: list,
-) -> None:
+def update_player_boughts(players: pd.DataFrame, fanta_manager_players_dict: dict, fanta_managers: list) -> None:
     """Update auction data using only the manager and price columns."""
     for _, player_row in players.iterrows():
         selected_manager = player_row["bought"]
@@ -720,8 +728,9 @@ history_players = load_dataset("data/filtered_history_players.csv")
 # Filters + players table
 fanta_players = load_dataset("data/filtered_history_players.csv", filter_by_current_year=True)
 
-
-st.title("⚽ Fantacalcio 26-27 - Create your own team")
+# Title
+year = get_current_year()
+st.title(f"⚽ Fantacalcio {year}-{year+1}")
 st.caption(
     "Filter players, display your saved preferences and assign purchases and prices. "
     "The page automatically tracks the remaining budget, purchased players and role limits."
@@ -732,7 +741,7 @@ thick_divider()
 
 # Filters
 with st.sidebar:
-    
+
     st.markdown("### Filters")
     filtered_players = player_filters(
         fanta_players,
@@ -766,11 +775,13 @@ if st.session_state[show_ai_predictions_key] and filtered_players.shape[0] == 1:
     ]
     print_models_predictions(
         models_packages_dict=models_packages_dict,
+        history_players=history_players,
         history_of_the_player=history_of_the_player,
         player_row=filtered_players.iloc[0],
         top_k=4,
         worst_k=2,
-        explainability_enabled=st.session_state[show_ai_explainations_key]
+        explainability_enabled=st.session_state[show_ai_explainations_key],
+        plots_enebled=st.session_state[show_ai_plots_key],
     )
 
 thick_divider()

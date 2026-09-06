@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -96,12 +97,18 @@ interest_markers = {
 }
 
 def get_ai_icon():
-    return f"![AI](data:image/png;base64,{b64encode(Path('icons/icons8-bardo-48.png').read_bytes()).decode('ascii')})"
+    return f"![AI](data:image/png;base64,{b64encode(Path('icons/icons_ai.png').read_bytes()).decode('ascii')})"
+
+def get_ai_player_selection_icon():
+    return f"![AI](data:image/png;base64,{b64encode(Path('icons/icons_ai_chatgpt_players_selection2.png').read_bytes()).decode('ascii')})"
 
 def set_format_interest(interest):
     if interest is None:
         return None
     return interest_markers.get(interest, interest)
+
+def get_current_year():
+    return datetime.now().year
 
 def highlight_player_role(row: pd.Series) -> list[str]:
     """Apply the Fantacalcio role color to every read-only player cell."""

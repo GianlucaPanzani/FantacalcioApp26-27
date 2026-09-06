@@ -462,7 +462,6 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
             editor_data,
             hide_index=True,
             width="stretch",
-            height=450,
             column_order=column_order,
             disabled=visible_columns,
             column_config=column_config,

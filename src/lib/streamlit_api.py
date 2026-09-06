@@ -101,6 +101,7 @@ def print_ai_icon_with_markdown_title(markdown_text = f"### AI predictions"):
 
 def print_models_predictions(
         models_packages_dict: dict,
+        history_players: pd.DataFrame,
         history_of_the_player: pd.DataFrame,
         player_row: pd.Series,
         top_k=5,
@@ -109,10 +110,11 @@ def print_models_predictions(
         plots_enebled=True
     ):
     features_explainability = load_dataset("data/features_explainability.csv")
+    role_column_means = compute_role_column_means(history_players)
 
     thick_divider()
 
-    print_ai_icon_with_markdown_title(f"### AI predictions")
+    print_ai_icon_with_markdown_title(markdown_text=f"### AI predictions")
 
     with st.container():
         col1, _, col2 = st.columns([9,1,40])
@@ -138,8 +140,12 @@ def print_models_predictions(
         with col2:
 
             with st.container(border=True, width="stretch"):
-                cols = st.columns([9,1,9,1,9,1,9])
-                n_cols = 8
+                if explainability_enabled or plots_enebled:
+                    cols = st.columns([9,1,9])
+                else:
+                    cols = st.columns([9,1,9,1,9,1,9])
+                
+                n_cols = len(cols) + 1
 
                 # Predict the minutes (used to do some calculus)
                 minutes_package = models_packages_dict["minutes"]
@@ -153,9 +159,9 @@ def print_models_predictions(
                         player_history=minutes_input,
                     )
                 )
-                predicted_minutes = max(0.0, min(predicted_minutes, 38 * 90))
+                predicted_minutes = max(0, min(predicted_minutes, 38 * 90))
 
-                n_iters = len(models_packages_dict.items())
+                n_iters = len(features_to_predict_per_role_dict[fanta_role])
                 for i, feature in enumerate(features_to_predict_per_role_dict[fanta_role]):
                     model_package = models_packages_dict[feature]
 
@@ -164,9 +170,8 @@ def print_models_predictions(
                         player_history=history_of_the_player,
                         features=model_package["features"],
                     )
-                    available_lags = model_input.attrs["available_lags"]
                     required_lags = model_input.attrs["required_lags"]
-
+                    available_lags = model_input.attrs["available_lags"]
                     if available_lags == 0:
                         with cols[i*2 % n_cols]:
                             st.info(f"No historical seasons available for {columns_to_user_view_dict[feature]}.")
@@ -177,18 +182,28 @@ def print_models_predictions(
                         player_history=model_input,
                     )
 
-                    # AI prediction
                     with cols[i*2 % n_cols]:
+
+                        # AI prediction
+                        mean_value = role_column_means[fanta_role][feature]
+                        _, mean_transformed_value = get_transformed_feature_and_value(
+                            feature=feature,
+                            pred_value=mean_value,
+                            pred_minutes=predicted_minutes
+                        )
                         transformed_feature, tranformed_value = get_transformed_feature_and_value(
                             feature=feature,
                             pred_value=prediction,
                             pred_minutes=predicted_minutes
                         )
-                        st.metric(
-                            label=f"**:blue[_{transformed_feature}_]**",
-                            value=f":blue[{tranformed_value:.2f}]  \n",
-                            width="stretch"
-                        )
+                        with st.container(horizontal_alignment="center", border=True if plots_enebled else False):
+                            st.metric(
+                                label=f"**:blue[_{transformed_feature}_]**",
+                                value=f":blue[{tranformed_value:.2f}]",
+                                delta=f"{tranformed_value - mean_transformed_value:+.2f} [Mean: {mean_transformed_value}]",
+                                delta_color="normal",
+                                width="content",
+                            )
                         if available_lags < required_lags:
                             st.caption(f"Based on {available_lags} of {required_lags} historical seasons available.")
 
@@ -198,9 +213,10 @@ def print_models_predictions(
                                 history_players=load_dataset("data/filtered_history_players.csv"),
                                 player=player_name,
                                 feature=feature,
+                                seasons_to_plot=4,
                                 disable_player_name=True
                             )
-                    
+
                         # Case of SHAP explainability enabled
                         if explainability_enabled:
                             st.markdown(
@@ -214,8 +230,10 @@ def print_models_predictions(
                                 )
                             )
                     
-                    if i > 0 and i < n_iters - 1 and i*2 % n_cols == 0:
-                        st.divider()
+                        if (explainability_enabled or plots_enebled) and i < n_iters-1 and i*2 % (n_cols/2) == 0:
+                            st.divider()
+                        elif i > 0 and i < n_iters-1 and i*2 % (n_cols/2) == 0:
+                            st.divider()
 
     return
 
@@ -737,7 +755,7 @@ def plot_comparison_between_players(history_players: pd.DataFrame, filtered_play
     return
 
 
-def plot_player_history(history_players: pd.DataFrame, player: str, feature=None, seasons_to_plot=4, disable_player_name=False) -> None:
+def plot_player_history(history_players: pd.DataFrame, player: str, feature=None, seasons_to_plot=None, disable_player_name=False) -> None:
     """
     Display the selected historical statistics for a single player.
 
@@ -762,6 +780,11 @@ def plot_player_history(history_players: pd.DataFrame, player: str, feature=None
     if player_roles.empty:
         st.info(f"No Fantacalcio role available for {player}.")
         return
+    
+    # Filters only last seasons
+    if seasons_to_plot is not None:
+        recent_seasons = player_history["season"].dropna().drop_duplicates().sort_values().tail(seasons_to_plot)
+        player_history = player_history[player_history["season"].isin(recent_seasons)].sort_values("season")
 
     fanta_role = player_roles.iloc[-1]
 
