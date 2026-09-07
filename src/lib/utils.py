@@ -147,6 +147,24 @@ def get_color_per_role(role: str, color_version=True) -> str:
     }
     return role_colors_dict.get(str(role).strip().upper(), "")
 
+def get_circular_role_icon(role: str):
+    return f"""
+    <div style="
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background-color: {get_color_per_role(role)};
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: white;
+        font-size: 14px;
+    ">
+        {role}
+    </div>
+    """
+
 def normalize_name(name: str) -> str:
     """Normalize a player name for fuzzy comparison."""
     name = unicodedata.normalize("NFD", str(name))

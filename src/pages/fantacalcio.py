@@ -1,24 +1,26 @@
-import time
 import streamlit as st
 import pandas as pd
-import lib.ollama_api as llm
+from lib.xgboost_predictor import (
+    features_to_predict_list
+)
 from lib.utils import (
     interest_markers,
     set_format_interest,
-    get_current_year
+    get_current_year,
+    get_circular_role_icon,
+    get_color_per_role
 )
 from lib.streamlit_api import (
     thick_divider,
     highlight_bought_rows,
     sync_filter,
-    apply_filters,
     load_dataset,
     load_models,
     print_models_predictions,
+    get_roles_dict,
     get_role_limits,
     get_role_budget_limits,
-    get_default_value,
-    get_condition_by,
+    get_role_limits,
     set_text_size,
     load_env,
     load_models,
@@ -26,9 +28,6 @@ from lib.streamlit_api import (
     restore_bought_players,
     has_full_team,
     generate_pdf_with_bought_players
-)
-from lib.xgboost_predictor import (
-    features_to_predict_list
 )
 
 
@@ -70,51 +69,9 @@ bought_player_columns = ["id", "player", "team", "role", "mantra_role", "manager
 def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
     filtered_df = fanta_players.copy()
 
-    player_filter_key = f"{page_name}_player_key"
-    player_widget_key = f"{page_name}_player_widget_key"
-    fantacalcio_keys_set.add(player_filter_key)
-    st.session_state.setdefault(player_filter_key, None)
-    selected_player = st.session_state[player_filter_key]
-    player_options = sorted(fanta_players["player"].dropna().astype(str).unique())
-    st.session_state[player_widget_key] = selected_player if selected_player in player_options else None
+    cols = st.columns([8,12,6,1,8,1,8])
 
-    # Player filter
-    selected_player = st.selectbox(
-        "Search a player",
-        options=player_options,
-        index=None,
-        placeholder="Select a player...",
-        key=player_widget_key,
-        on_change=sync_filter,
-        args=(player_filter_key, player_widget_key),
-    )
-    if selected_player:
-        filtered_df = filtered_df[filtered_df["player"].eq(selected_player)]
-
-    team_filter_key = f"{page_name}_team_key"
-    team_widget_key = f"{page_name}_team_widget_key"
-    fantacalcio_keys_set.add(team_filter_key)
-    st.session_state.setdefault(team_filter_key, None)
-    team_options = sorted(fanta_players["team"].dropna().astype(str).unique())
-    st.session_state[team_widget_key] = (
-        st.session_state[team_filter_key]
-        if st.session_state[team_filter_key] in team_options
-        else None
-    )
-
-    # Team filter
-    selected_team = st.selectbox(
-        "Select a team",
-        options=team_options,
-        index=None,
-        placeholder="Select a team...",
-        key=team_widget_key,
-        on_change=sync_filter,
-        args=(team_filter_key, team_widget_key),
-    )
-    if selected_team:
-        filtered_df = filtered_df[filtered_df["team"].eq(selected_team)]
-
+    # Role filter
     role_filter_key = f"{page_name}_fanta_role_key"
     role_widget_key = f"{page_name}_fanta_role_widget_key"
     fantacalcio_keys_set.add(role_filter_key)
@@ -125,19 +82,19 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
         if st.session_state[role_filter_key] in role_options
         else None
     )
-
-    # Fantacalcio role filter
-    selected_role = st.pills(
-        "Select fanta role",
-        options=role_options,
-        selection_mode="single",
-        key=role_widget_key,
-        on_change=sync_filter,
-        args=(role_filter_key, role_widget_key),
-    )
+    with cols[0]:
+        selected_role = st.pills(
+            "Select fanta role",
+            options=role_options,
+            selection_mode="single",
+            key=role_widget_key,
+            on_change=sync_filter,
+            args=(role_filter_key, role_widget_key),
+        )
     if selected_role:
         filtered_df = filtered_df[filtered_df["fanta_role"].eq(selected_role)]
 
+    # Fanta Manager filter
     manager_filter_key = f"{page_name}_selected_manager_key"
     manager_widget_key = f"{page_name}_selected_manager_widget_key"
     fantacalcio_keys_set.add(manager_filter_key)
@@ -148,17 +105,62 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
         if st.session_state[manager_filter_key] in manager_options
         else None
     )
+    with cols[1]:
+        selected_fanta_manager = st.pills(
+            "Select a Fanta Manager",
+            options=manager_options,
+            selection_mode="single",
+            key=manager_widget_key,
+            on_change=sync_filter,
+            args=(manager_filter_key, manager_widget_key),
+        )
 
-    # Fanta Manager filter
-    selected_fanta_manager = st.pills(
-        "Select a Fanta Manager",
-        options=manager_options,
-        selection_mode="single",
-        key=manager_widget_key,
-        on_change=sync_filter,
-        args=(manager_filter_key, manager_widget_key),
+    # Player filter
+    player_filter_key = f"{page_name}_player_key"
+    player_widget_key = f"{page_name}_player_widget_key"
+    fantacalcio_keys_set.add(player_filter_key)
+    st.session_state.setdefault(player_filter_key, None)
+    selected_player = st.session_state[player_filter_key]
+    player_options = sorted(fanta_players["player"].dropna().astype(str).unique())
+    st.session_state[player_widget_key] = selected_player if selected_player in player_options else None
+    with cols[4]:
+        selected_player = st.selectbox(
+            "Search a player",
+            options=player_options,
+            index=None,
+            placeholder="Select a player...",
+            key=player_widget_key,
+            on_change=sync_filter,
+            args=(player_filter_key, player_widget_key),
+        )
+    if selected_player:
+        filtered_df = filtered_df[filtered_df["player"].eq(selected_player)]
+
+    # Team filter
+    team_filter_key = f"{page_name}_team_key"
+    team_widget_key = f"{page_name}_team_widget_key"
+    fantacalcio_keys_set.add(team_filter_key)
+    st.session_state.setdefault(team_filter_key, None)
+    team_options = sorted(fanta_players["team"].dropna().astype(str).unique())
+    st.session_state[team_widget_key] = (
+        st.session_state[team_filter_key]
+        if st.session_state[team_filter_key] in team_options
+        else None
     )
+    with cols[6]:
+        selected_team = st.selectbox(
+            "Select a team",
+            options=team_options,
+            index=None,
+            placeholder="Select a team...",
+            key=team_widget_key,
+            on_change=sync_filter,
+            args=(team_filter_key, team_widget_key),
+        )
+    if selected_team:
+        filtered_df = filtered_df[filtered_df["team"].eq(selected_team)]
 
+    # Handle cases of free players and not
     fanta_manager_players_dict = st.session_state[f"{page_name}_manager_players_dict_key"]
     if selected_fanta_manager == "Free":
         bought_player_ids = set()
@@ -174,6 +176,27 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
             else set()
         )
         filtered_df = filtered_df[filtered_df["id"].astype(str).isin(bought_player_ids)]
+
+    # Order the player field per role
+    filtered_df = (
+        filtered_df.assign(
+            _role_order=pd.Categorical(
+                filtered_df["fanta_role"],
+                categories=get_roles_dict().keys(),
+                ordered=True,
+            ),
+            _player_order=filtered_df["player"].astype("string").str.casefold(),
+        )
+        .sort_values(["_role_order", "_player_order"], na_position="last")
+        .drop(columns=["_role_order", "_player_order"])
+    )
+
+    st.session_state[f"{page_name}_filtered_players"] = filtered_df
+    return filtered_df
+
+
+def checkbox_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
+    filtered_df = fanta_players.copy()
 
     # Checkbox to show the Manager's prefered players
     fantacalcio_keys_set.add(enable_player_preferences_key)
@@ -228,15 +251,12 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
         wrap=False,
     )
 
-    st.divider()
-
     # Order the player field per role
-    role_order = ["P", "D", "C", "A"]
     filtered_df = (
         filtered_df.assign(
             _role_order=pd.Categorical(
                 filtered_df["fanta_role"],
-                categories=role_order,
+                categories=get_roles_dict().keys(),
                 ordered=True,
             ),
             _player_order=filtered_df["player"].astype("string").str.casefold(),
@@ -538,7 +558,100 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
     return
 
 
+def create_shrinked_current_teams(fanta_manager_players_dict: dict):
+    """Display one compact team column for each Fanta Manager."""
+    fanta_managers = st.session_state.get("settings_managers_key", [])
+    if not fanta_managers:
+        return
+
+    # Put my Fanta Manager in the first column
+    my_fanta_manager = st.session_state["settings_my_manager_key"]
+    ordered_fanta_managers = [my_fanta_manager] + [
+        fanta_manager
+        for fanta_manager in fanta_managers
+        if fanta_manager != my_fanta_manager
+    ]
+
+    starting_budget = st.session_state.get("settings_budget_key", 500)
+    manager_columns = st.columns(len(ordered_fanta_managers))
+
+    for manager_column, fanta_manager in zip(manager_columns, ordered_fanta_managers):
+        bought_players = fanta_manager_players_dict.get(fanta_manager, pd.DataFrame()).copy()
+        if bought_players.empty:
+            bought_players = pd.DataFrame(columns=["player", "role", "mln"])
+
+        bought_players["mln"] = pd.to_numeric(bought_players["mln"], errors="coerce").fillna(1).astype(int)
+        
+        tot_spent = bought_players["mln"].sum()
+        available_budget = starting_budget - tot_spent
+        
+        role_budget_limits_dict = get_role_budget_limits()
+        role_number_limits_dict = get_role_limits()
+
+        tot_spent_per_role = {}
+        for role, role_budget_limit in role_budget_limits_dict.items():
+            bought_players_role = bought_players.loc[bought_players["role"] == role]
+            tot_spent_per_role[role] = bought_players_role['mln'].sum()
+
+        with manager_column:
+
+            set_text_size(text_size=1.1, class_name="shrinked-team")
+            with st.container(key=f"{fanta_manager}-shrinked-team", border=True, height="stretch"):
+                st.metric(
+                    label=f":blue[{fanta_manager}]",
+                    value=f":green[+{available_budget} mln available]",
+                    delta=f"-{tot_spent} mln" if tot_spent > 0 else "0 mln",
+                    delta_color="blue" if tot_spent > 0 else "gray",
+                    icon="💰",
+                )
+
+                st.divider()
+                
+                for i, role in enumerate(get_roles_dict()):
+
+                    if bought_players.empty:
+                        break
+
+                    players_of_role = bought_players[bought_players["role"].eq(role)]
+                    if players_of_role.empty:
+                        continue
+
+                    # Stats of the boughts
+                    spent_color = "green" if role_budget_limits_dict[role] > tot_spent_per_role[role] \
+                        else "grey" if role_budget_limits_dict[role] == tot_spent_per_role[role] \
+                        else "red"
+                    badge_color = get_color_per_role(role, color_version=False)
+                    
+                    st.markdown(
+                        f":{badge_color}-badge[Bought: {players_of_role.shape[0]}/{role_number_limits_dict[role]}] "
+                        f":{badge_color}-badge[Spent: {tot_spent_per_role[role]}/{role_budget_limits_dict[role]} mln]"
+                    )
+
+                    for _, player in players_of_role.iterrows():
+                        sub_col1, sub_col2, sub_col3 = st.columns([1,5,2])
+                        with sub_col1:
+                            st.markdown(f"{get_circular_role_icon(role)}", unsafe_allow_html=True)
+                        with sub_col2:
+                            st.markdown(f"**{player['player']}**")
+                        with sub_col3:
+                            st.markdown(f":gray[{player['mln']} mln]")
+
+                    if i < len(get_roles_dict()) - 1:
+                        st.divider()
+                
+                if available_budget < 0:
+                    st.error("Budget exceeded")
+
+                if bought_players.empty:
+                    st.caption("No players purchased")
+                    continue
+                
+
+    return
+
+
 def create_current_teams(fanta_manager_players_dict: dict, fanta_manager=None):
+
     # Create the df
     if fanta_manager is None:
         fanta_manager = st.session_state["settings_my_manager_key"]
@@ -547,7 +660,7 @@ def create_current_teams(fanta_manager_players_dict: dict, fanta_manager=None):
         bought_players_df = pd.DataFrame(columns=["player", "team", "role", "mantra_role", "manager", "mln"])
     bought_players_df["mln"] = pd.to_numeric(bought_players_df["mln"], errors="coerce").fillna(0).astype(int)
 
-    # Compute some budget metric
+    # Compute values used in the budget metric
     starting_budget = st.session_state.get("settings_budget_key", 500)
     tot_spent = bought_players_df["mln"].sum()
     available_budget = starting_budget - tot_spent
@@ -565,7 +678,7 @@ def create_current_teams(fanta_manager_players_dict: dict, fanta_manager=None):
 
     # Create the bought of the budget
     with budget_col:
-        set_text_size(text_size=1.25)
+        set_text_size(text_size=1.25, class_name="budget-metric")
         with st.container(key=f"{fanta_manager}-budget-metric", border=True):
             st.markdown(f":blue[**{fanta_manager}**]")
             st.metric(
@@ -743,6 +856,14 @@ history_players = load_dataset("data/filtered_history_players.csv")
 # Filters + players table
 fanta_players = load_dataset("data/filtered_history_players.csv", filter_by_current_year=True)
 
+# Filters
+with st.sidebar:
+    st.markdown("### View settings")
+    filtered_players = checkbox_filters(fanta_players)
+    st.divider()
+    st.markdown("### Reset teams")
+    reset_teams_filters(fanta_managers)
+
 # Title
 year = get_current_year()
 st.title(f"⚽ Fantacalcio {year}-{year+1}")
@@ -752,15 +873,10 @@ st.caption(
     "At the end of the auction it will allows you to download the pdf with all the created teams."
 )
 
-thick_divider()
+st.divider()
 
 # Filters
-with st.sidebar:
-    st.markdown("### Filters")
-    filtered_players = player_filters(fanta_players)
-    st.divider()
-    st.markdown("### Reset teams")
-    reset_teams_filters(fanta_managers)
+filtered_players = player_filters(filtered_players)
 
 # Create editable df
 col1, _, col2 = st.columns([52,1,7])
@@ -793,14 +909,13 @@ if st.session_state[show_ai_predictions_key] and filtered_players.shape[0] == 1:
         plots_enebled=st.session_state[show_ai_plots_key],
     )
 
-thick_divider()
+st.divider()
 
 # Teams of the Fanta Managers
 st.header("Teams")
 st.divider()
-for fanta_manager in st.session_state[settings_managers_key]:
-    create_current_teams(fanta_manager_players_dict, fanta_manager)
-    st.divider()
+create_shrinked_current_teams(fanta_manager_players_dict)
+st.divider()
 
 # Store persistent Session State values
 fantacalcio_bought_players_df_key = f"{page_name}_bought_players_df_key"

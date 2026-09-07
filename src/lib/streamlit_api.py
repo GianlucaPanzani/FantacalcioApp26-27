@@ -80,11 +80,11 @@ def apply_filters(df: pd.DataFrame, exclude=None, columns_to_filter_list=[], com
     return result
 
 
-def set_text_size(text_size):
+def set_text_size(text_size, class_name):
     return st.html(
         f"""
         <style>
-        [class*="budget-metric"] [data-testid="stMetricLabel"] p {{
+        [class*="{class_name}"] [data-testid="stMetricLabel"] p {{
             font-size: {str(text_size)}rem;
         }}
         </style>
@@ -534,11 +534,11 @@ def store_env(data_dict: dict, path: str = ".env") -> dict:
     return stored_values
 
 def restore_bought_players(bought_players_df_key: str, settings_managers_key: str, fanta_manager_players_dict_key:str):
-    '''Rebuild of the bought players dict by from csv'''
+    '''Rebuild of the bought players dict by csv'''
     fanta_manager_players_dict = {}
 
     # Restore data from csv
-    restored_players = st.session_state.get(bought_players_df_key, pd.DataFrame())
+    restored_players: pd.DataFrame = st.session_state.get(bought_players_df_key, pd.DataFrame())
 
     # Rebuilt of the bought players dict
     if not restored_players.empty and "manager" in restored_players.columns:

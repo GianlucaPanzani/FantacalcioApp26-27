@@ -1,7 +1,5 @@
-import time
 import streamlit as st
 import pandas as pd
-import lib.ollama_api as llm
 from lib.utils import (
     interest_markers,
     get_ai_icon
@@ -21,7 +19,6 @@ from lib.streamlit_api import (
 )
 from lib.xgboost_predictor import (
     features_to_predict_list,
-    features_to_predict_per_role_dict
 )
 
 
