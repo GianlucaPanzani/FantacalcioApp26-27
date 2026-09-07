@@ -493,7 +493,7 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
 # =============================== SCRIPT ======================================
 # =============================================================================
 
-fanta_players = load_dataset("data/Listone_Fantacalcio_Stagione_2026_27.csv")
+fanta_players = load_dataset("data/predicted_fanta_players.csv")
 history_players = load_dataset("data/filtered_history_players.csv")
 loaded_env_values = load_env(path=".env")
 selection_keys_set = {key for key in loaded_env_values if key.startswith(f"{page_name}_")}

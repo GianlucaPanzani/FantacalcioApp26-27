@@ -248,10 +248,7 @@ def build_temporal_player_input(
     return model_input
 
 
-def get_model_prediction(
-        model_package: dict,
-        player_history: pd.DataFrame,
-    ) -> str:
+def predict(model_package: dict, player_history: pd.DataFrame) -> str:
 
     features = model_package["features"]
     model = model_package["model"]

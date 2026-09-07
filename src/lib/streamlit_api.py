@@ -21,7 +21,7 @@ from lib.shap_explainability import (
 )
 from lib.xgboost_predictor import (
     build_temporal_player_input,
-    get_model_prediction,
+    predict,
     get_transformed_feature_and_value,
     features_to_predict_per_role_dict
 )
@@ -155,7 +155,7 @@ def print_models_predictions(
                     features=minutes_package["features"],
                 )
                 predicted_minutes = float(
-                    get_model_prediction(
+                    predict(
                         model_package=minutes_package,
                         player_history=minutes_input,
                     )
@@ -177,7 +177,7 @@ def print_models_predictions(
                             st.info(f"No historical seasons available for {columns_to_user_view_dict[feature]}.")
                         continue
 
-                    prediction = get_model_prediction(
+                    prediction = predict(
                         model_package=model_package,
                         player_history=model_input,
                     )
