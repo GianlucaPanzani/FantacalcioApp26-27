@@ -351,6 +351,9 @@ def get_roles_list(enable_aka=False) -> list:
     ]
 
 def get_roles_dict() -> dict:
+    '''
+    { "P": "golkeeper", "D": "defender", "C": "midfielder", "A": "attacker" }
+    '''
     return {
         "P": "golkeeper",
         "D": "defender",

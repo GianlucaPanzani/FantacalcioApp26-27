@@ -100,6 +100,16 @@ interest_markers = {
 def get_ai_icon():
     return f"![AI](data:image/png;base64,{b64encode(Path('icons/icons_ai.png').read_bytes()).decode('ascii')})"
 
+def get_role_icon(fanta_role: str):
+    role_icons = {
+        "P": "🧤",
+        "D": "🛡️",
+        "C": "⚽",
+        "A": "🎯"
+    }
+    return role_icons[fanta_role]
+
+
 def get_ai_player_selection_icon():
     return f"![AI](data:image/png;base64,{b64encode(Path('icons/icons_ai_chatgpt_players_selection2.png').read_bytes()).decode('ascii')})"
 
