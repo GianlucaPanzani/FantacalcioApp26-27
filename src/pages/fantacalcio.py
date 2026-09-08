@@ -698,18 +698,20 @@ def create_shrinked_teams(fanta_manager_players_dict: dict, n_cols: int):
                     height="content",
                     icon="💰"
                 )
-                
-                # Case of view of the number of bought players per role enabled
-                if st.session_state[enable_bought_players_stats_key]:
-                    st.divider()
 
-                    role_col, mln_col = st.columns([6,4], gap="small", vertical_alignment="center")
-                    with role_col:
-                        st.markdown("_Roles_", text_alignment="left")
-                    with mln_col:
-                        st.markdown("_Mln_", text_alignment="right")
-                    
-                    for role in get_roles_dict():
+                st.divider()
+
+                if bought_players.empty:
+                    st.caption("No players purchased")
+                    continue
+
+                for i, role in enumerate(get_roles_dict()):
+                    players_of_role = bought_players[bought_players["role"].eq(role)]
+                    if players_of_role.empty:
+                        continue
+
+                    # Case of view of the number of bought players per role enabled
+                    if st.session_state[enable_bought_players_stats_key]:
 
                         players_of_role = bought_players[bought_players["role"].eq(role)]
 
@@ -721,6 +723,14 @@ def create_shrinked_teams(fanta_manager_players_dict: dict, n_cols: int):
                             "violet": ("rgba(140,65,155,1)", "rgba(140,65,155,0.15)"),
                             "gray": ("rgba(100,100,100,1)", "rgba(100,100,100,0.15)"),
                         }
+                        colors = {
+                            "orange": ("rgba(255,255,255,1)", "rgba(255,165,0,0.80)"),
+                            "green": ("rgba(255,255,255,1)", "rgba(0,128,0,0.80)"),
+                            "blue": ("rgba(255,255,255,1)", "rgba(0,0,255,0.80)"),
+                            "red": ("rgba(255,255,255,1)", "rgba(255,0,0,0.80)"),
+                            "violet": ("rgba(255,255,255,1)", "rgba(128,0,128,0.80)"),
+                            "gray": ("rgba(255,255,255,1)", "rgba(128,128,128,0.80)"),
+                        }
 
                         badge_color = get_color_per_role(role, color_version=False)
 
@@ -729,15 +739,19 @@ def create_shrinked_teams(fanta_manager_players_dict: dict, n_cols: int):
 
                         # Cases of warinings
                         if players_of_role.shape[0] > role_number_limits_dict[role]:
-                            warning_bought_number_foreground = "rgba(244,67,54,0.95)"
+                            warning_bought_number_background = "rgba(0,0,0,0.85)"
+                            warning_bought_number_foreground = "rgba(255,75,75,1)"
                             warning_bought_number_icon = "⚠️"
                         else:
+                            warning_bought_number_background = bought_number_background
                             warning_bought_number_foreground = bought_number_foreground
                             warning_bought_number_icon = ""
 
                         if tot_spent_per_role[role]  > role_budget_limits_dict[role]:
-                            warning_budget_spent_foreground = "rgba(200,50,54,0.95)"
+                            warning_budget_spent_background = "rgba(0,0,0,0.85)"
+                            warning_budget_spent_foreground = "rgba(255,75,75,1)"
                         else:
+                            warning_budget_spent_background = budget_spent_background
                             warning_budget_spent_foreground = budget_spent_foreground
 
                         role_col, mln_col = st.columns([6,4], gap="small", vertical_alignment="center")
@@ -746,12 +760,13 @@ def create_shrinked_teams(fanta_manager_players_dict: dict, n_cols: int):
                                 st.markdown(
                                     f'{warning_bought_number_icon} :color[**{get_roles_dict()[role].capitalize()}s** '
                                     f'{players_of_role.shape[0]}/{role_number_limits_dict[role]}]'
-                                    f'{{foreground="{warning_bought_number_foreground}" background="{bought_number_background}"}}',
+                                    f'{{foreground="{warning_bought_number_foreground}" background="{warning_bought_number_background}"}}',
                                     text_alignment="left",
                                 )
                             with mln_col:
                                 st.markdown(
-                                    f':color[{tot_spent_per_role[role]}/{role_budget_limits_dict[role]} mln]{{foreground="{warning_budget_spent_foreground}" background="{budget_spent_background}"}}',
+                                    f':color[{tot_spent_per_role[role]}/{role_budget_limits_dict[role]} mln]'
+                                    f'{{foreground="{warning_budget_spent_foreground}" background="{warning_budget_spent_background}"}}',
                                     text_alignment="right",
                                 )
                         else:
@@ -768,25 +783,8 @@ def create_shrinked_teams(fanta_manager_players_dict: dict, n_cols: int):
                                     text_alignment="right",
                                 )
 
-                st.divider()
-
-                if bought_players.empty:
-                    st.caption("No players purchased")
-                    continue
-                
-                sub_col1, sub_col2, sub_col3, sub_col4 = st.columns([1,5,2,2], vertical_alignment="center")
-                with sub_col2:
-                    st.markdown("_Players_", text_alignment="left")
-                with sub_col3:
-                    st.markdown("_Mln_", text_alignment="right")
-
-                for role in get_roles_dict():
-
-                    players_of_role = bought_players[bought_players["role"].eq(role)]
-                    if players_of_role.empty:
-                        continue
-
                     for _, player in players_of_role.iterrows():
+
                         sub_col1, sub_col2, sub_col3, sub_col4 = st.columns([1,5,2,2], vertical_alignment="center")
                         with sub_col1:
                             st.markdown(f"{get_circular_role_icon(role)}", unsafe_allow_html=True)
@@ -804,6 +802,10 @@ def create_shrinked_teams(fanta_manager_players_dict: dict, n_cols: int):
                                 on_click=remove_bought_player,
                                 args=(player.to_dict(),),
                             )
+                    
+                    if st.session_state[enable_bought_players_stats_key]:
+                        if i < len(get_roles_dict()) - 1:
+                            st.divider()
                 
                 if available_budget < 0:
                     st.error("Budget exceeded")
