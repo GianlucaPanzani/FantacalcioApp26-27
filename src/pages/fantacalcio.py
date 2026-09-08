@@ -597,12 +597,16 @@ def create_shrinked_current_teams(fanta_manager_players_dict: dict):
 
             set_text_size(text_size=1.1, class_name="shrinked-team")
             with st.container(key=f"{fanta_manager}-shrinked-team", border=True, height="stretch"):
+                st.markdown(f"#### :blue[{fanta_manager}]")
                 st.metric(
-                    label=f":blue[{fanta_manager}]",
-                    value=f":green[+{available_budget} mln available]",
+                    label="**Budget**",
+                    value=f":green[+{available_budget} $]",
                     delta=f"-{tot_spent} mln" if tot_spent > 0 else "0 mln",
                     delta_color="blue" if tot_spent > 0 else "gray",
-                    icon="💰",
+                    delta_arrow="off" if tot_spent == 0 else "down",
+                    width="content",
+                    height="content",
+                    icon="💰"
                 )
 
                 st.divider()
@@ -616,25 +620,73 @@ def create_shrinked_current_teams(fanta_manager_players_dict: dict):
                     if players_of_role.empty:
                         continue
 
-                    # Stats of the boughts
-                    spent_color = "green" if role_budget_limits_dict[role] > tot_spent_per_role[role] \
-                        else "grey" if role_budget_limits_dict[role] == tot_spent_per_role[role] \
-                        else "red"
+                    # Colors settings
+                    colors = {
+                        "orange": ("rgba(255,152,0,0.95)", "rgba(255,250,50,0.20)"),
+                        "green": ("rgba(76,175,80,0.95)", "rgba(76,175,80,0.15)"),
+                        "blue": ("rgba(33,150,243,0.95)", "rgba(33,150,243,0.15)"),
+                        "red": ("rgba(244,67,54,0.95)", "rgba(244,67,54,0.15)"),
+                        "violet": ("rgba(156,39,176,1)", "rgba(156,39,176,0.15)"),
+                        "gray": ("rgba(100,100,100,1.00)", "rgba(100,100,100,0.15)"),
+                    }
+
                     badge_color = get_color_per_role(role, color_version=False)
-                    
-                    st.markdown(
-                        f":{badge_color}-badge[Bought: {players_of_role.shape[0]}/{role_number_limits_dict[role]}] "
-                        f":{badge_color}-badge[Spent: {tot_spent_per_role[role]}/{role_budget_limits_dict[role]} mln]"
-                    )
+
+                    bought_number_foreground, bought_number_background = colors[badge_color]
+                    budget_spent_foreground, budget_spent_background = colors["violet"]
+
+                    # Cases of warinings
+                    if players_of_role.shape[0] > role_number_limits_dict[role]:
+                        warning_bought_number_foreground = "rgba(244,67,54,0.95)"
+                        warning_icon = "⚠️"
+                    else:
+                        warning_bought_number_foreground = bought_number_foreground
+                        warning_icon = ""
+
+                    if tot_spent_per_role[role]  > role_budget_limits_dict[role]:
+                        warning_budget_spent_foreground = "rgba(244,67,54,0.95)"
+                        warning_icon = "⚠️"
+                    else:
+                        warning_budget_spent_foreground = budget_spent_foreground
+                        warning_icon = ""
+
+                    badge_col1, badge_col2 = st.columns(2)
+
+                    if fanta_manager == my_fanta_manager:
+                        with badge_col1:
+                            st.markdown(
+                                f'{warning_icon} :color[{get_roles_dict()[role].capitalize()}s:]{{foreground="{bought_number_foreground}" background="{bought_number_background}"}}'
+                                f':color[{players_of_role.shape[0]}/{role_number_limits_dict[role]}]{{foreground="{warning_bought_number_foreground}" background="{bought_number_background}"}}',
+                                text_alignment="left",
+                            )
+                        with badge_col2:
+                            st.markdown(
+                                f'{warning_icon} :color[Spent: {tot_spent_per_role[role]}/{role_budget_limits_dict[role]} mln]{{foreground="{budget_spent_foreground}" background="{budget_spent_background}"}}',
+                                text_alignment="right",
+                            )
+                    else:
+                        with badge_col1:
+                            st.markdown(
+                                f':color[{get_roles_dict()[role].capitalize()}s:]{{foreground="{bought_number_foreground}" background="{bought_number_background}"}}'
+                                f':color[{players_of_role.shape[0]}/{role_number_limits_dict[role]}]{{foreground="{bought_number_foreground}" background="{bought_number_background}"}}',
+                                text_alignment="left",
+                            )
+                        with badge_col2:
+                            st.markdown(
+                                f':color[Spent: {tot_spent_per_role[role]} mln]{{foreground="{budget_spent_foreground}" background="{budget_spent_background}"}}',
+                                text_alignment="right",
+                            )
+
 
                     for _, player in players_of_role.iterrows():
-                        sub_col1, sub_col2, sub_col3 = st.columns([1,5,2])
+                        sub_col1, sub_col2, sub_col3, sub_col4 = st.columns([1,5,2,2])
                         with sub_col1:
                             st.markdown(f"{get_circular_role_icon(role)}", unsafe_allow_html=True)
                         with sub_col2:
                             st.markdown(f"**{player['player']}**")
                         with sub_col3:
                             st.markdown(f":gray[{player['mln']} mln]")
+                        
 
                     if i < len(get_roles_dict()) - 1:
                         st.divider()
@@ -912,10 +964,7 @@ if st.session_state[show_ai_predictions_key] and filtered_players.shape[0] == 1:
 st.divider()
 
 # Teams of the Fanta Managers
-st.header("Teams")
-st.divider()
 create_shrinked_current_teams(fanta_manager_players_dict)
-st.divider()
 
 # Store persistent Session State values
 fantacalcio_bought_players_df_key = f"{page_name}_bought_players_df_key"
@@ -934,3 +983,7 @@ for fanta_manager in fanta_manager_players_dict:
 if auction_completed:
     with st.spinner("Building the teams file..."):
         generate_pdf_with_bought_players()
+
+
+with st.bottom:
+    st.caption("© 2026 GP · All rights reserved")

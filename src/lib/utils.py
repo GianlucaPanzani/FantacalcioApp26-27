@@ -153,7 +153,7 @@ def get_circular_role_icon(role: str):
         width: 24px;
         height: 24px;
         border-radius: 50%;
-        background-color: {get_color_per_role(role)};
+        background-color: {get_color_per_role(role, color_version=False)};
         display: flex;
         align-items: center;
         justify-content: center;
