@@ -149,20 +149,22 @@ def get_color_per_role(role: str, color_version=True) -> str:
 
 def get_circular_role_icon(role: str):
     return f"""
-    <div style="
+    <span style="
         width: 24px;
         height: 24px;
         border-radius: 50%;
         background-color: {get_color_per_role(role, color_version=False)};
-        display: flex;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
+        vertical-align: middle;
+        transform: translateY(-2px);
+        line-height: 1;
+        margin: 0;
         font-weight: bold;
         color: white;
         font-size: 14px;
-    ">
-        {role}
-    </div>
+    ">{role}</span>
     """
 
 def normalize_name(name: str) -> str:

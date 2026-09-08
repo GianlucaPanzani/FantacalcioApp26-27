@@ -558,11 +558,35 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
     return
 
 
-def create_shrinked_current_teams(fanta_manager_players_dict: dict):
+def create_shrinked_teams(fanta_manager_players_dict: dict):
     """Display one compact team column for each Fanta Manager."""
     fanta_managers = st.session_state.get("settings_managers_key", [])
     if not fanta_managers:
         return
+
+    def remove_bought_player(player: dict) -> None:
+        free_player = pd.DataFrame(
+            [
+                {
+                    "bought": "",
+                    "mln": 1,
+                    "id": player["id"],
+                    "player": player["player"],
+                    "team": player["team"],
+                    "fanta_role": player["role"],
+                    "mantra_role": player.get("mantra_role"),
+                }
+            ]
+        )
+        update_player_boughts(
+            free_player,
+            fanta_manager_players_dict,
+            fanta_managers,
+        )
+
+        for key in list(st.session_state):
+            if str(key).startswith(f"{page_name}_purchase_editor_"):
+                del st.session_state[key]
 
     # Put my Fanta Manager in the first column
     my_fanta_manager = st.session_state["settings_my_manager_key"]
@@ -597,12 +621,12 @@ def create_shrinked_current_teams(fanta_manager_players_dict: dict):
 
             set_text_size(text_size=1.1, class_name="shrinked-team")
             with st.container(key=f"{fanta_manager}-shrinked-team", border=True, height="stretch"):
-                st.markdown(f"#### :blue[{fanta_manager}]")
+                st.markdown(f"#### :blue[{fanta_manager}]", text_alignment="center")
                 st.metric(
                     label="**Budget**",
                     value=f":green[+{available_budget} $]",
                     delta=f"-{tot_spent} mln" if tot_spent > 0 else "0 mln",
-                    delta_color="blue" if tot_spent > 0 else "gray",
+                    delta_color="gray",
                     delta_arrow="off" if tot_spent == 0 else "down",
                     width="content",
                     height="content",
@@ -610,17 +634,12 @@ def create_shrinked_current_teams(fanta_manager_players_dict: dict):
                 )
 
                 st.divider()
-                
+
+                # Colors settings
                 for i, role in enumerate(get_roles_dict()):
 
-                    if bought_players.empty:
-                        break
-
                     players_of_role = bought_players[bought_players["role"].eq(role)]
-                    if players_of_role.empty:
-                        continue
 
-                    # Colors settings
                     colors = {
                         "orange": ("rgba(255,152,0,0.95)", "rgba(255,250,50,0.20)"),
                         "green": ("rgba(76,175,80,0.95)", "rgba(76,175,80,0.15)"),
@@ -638,58 +657,75 @@ def create_shrinked_current_teams(fanta_manager_players_dict: dict):
                     # Cases of warinings
                     if players_of_role.shape[0] > role_number_limits_dict[role]:
                         warning_bought_number_foreground = "rgba(244,67,54,0.95)"
-                        warning_icon = "⚠️"
+                        warning_bought_number_icon = "⚠️"
                     else:
                         warning_bought_number_foreground = bought_number_foreground
-                        warning_icon = ""
+                        warning_bought_number_icon = ""
 
                     if tot_spent_per_role[role]  > role_budget_limits_dict[role]:
-                        warning_budget_spent_foreground = "rgba(244,67,54,0.95)"
-                        warning_icon = "⚠️"
+                        warning_budget_spent_foreground = "rgba(200,50,54,0.95)"
                     else:
                         warning_budget_spent_foreground = budget_spent_foreground
-                        warning_icon = ""
 
-                    badge_col1, badge_col2 = st.columns(2)
+                    badge_col1, badge_col2 = st.columns([2,1])
 
                     if fanta_manager == my_fanta_manager:
                         with badge_col1:
                             st.markdown(
-                                f'{warning_icon} :color[{get_roles_dict()[role].capitalize()}s:]{{foreground="{bought_number_foreground}" background="{bought_number_background}"}}'
-                                f':color[{players_of_role.shape[0]}/{role_number_limits_dict[role]}]{{foreground="{warning_bought_number_foreground}" background="{bought_number_background}"}}',
+                                f'{warning_bought_number_icon} :color[**{get_roles_dict()[role].capitalize()}s**:]{{foreground="{bought_number_foreground}" background="{bought_number_background}"}}'
+                                f'  :color[{players_of_role.shape[0]}/{role_number_limits_dict[role]}]{{foreground="{warning_bought_number_foreground}" background="{bought_number_background}"}}',
                                 text_alignment="left",
                             )
                         with badge_col2:
                             st.markdown(
-                                f'{warning_icon} :color[Spent: {tot_spent_per_role[role]}/{role_budget_limits_dict[role]} mln]{{foreground="{budget_spent_foreground}" background="{budget_spent_background}"}}',
+                                f':color[{tot_spent_per_role[role]}/{role_budget_limits_dict[role]} mln]{{foreground="{warning_budget_spent_foreground}" background="{budget_spent_background}"}}',
                                 text_alignment="right",
                             )
                     else:
                         with badge_col1:
                             st.markdown(
-                                f':color[{get_roles_dict()[role].capitalize()}s:]{{foreground="{bought_number_foreground}" background="{bought_number_background}"}}'
-                                f':color[{players_of_role.shape[0]}/{role_number_limits_dict[role]}]{{foreground="{bought_number_foreground}" background="{bought_number_background}"}}',
+                                f':color[**{get_roles_dict()[role].capitalize()}s**:]{{foreground="{bought_number_foreground}" background="{bought_number_background}"}}'
+                                f'  :color[{players_of_role.shape[0]}/{role_number_limits_dict[role]}]{{foreground="{bought_number_foreground}" background="{bought_number_background}"}}',
                                 text_alignment="left",
                             )
                         with badge_col2:
                             st.markdown(
-                                f':color[Spent: {tot_spent_per_role[role]} mln]{{foreground="{budget_spent_foreground}" background="{budget_spent_background}"}}',
+                                f':color[{tot_spent_per_role[role]} mln]{{foreground="{budget_spent_foreground}" background="{budget_spent_background}"}}',
                                 text_alignment="right",
                             )
 
+                st.divider()
+                
+                for i, role in enumerate(get_roles_dict()):
+
+                    if bought_players.empty:
+                        break
+
+                    players_of_role = bought_players[bought_players["role"].eq(role)]
+                    if players_of_role.empty:
+                        continue
+
+                    #if i < len(get_roles_dict()):
+                    #    st.divider()
 
                     for _, player in players_of_role.iterrows():
-                        sub_col1, sub_col2, sub_col3, sub_col4 = st.columns([1,5,2,2])
+                        sub_col1, sub_col2, sub_col3, sub_col4 = st.columns([1,5,2,2], vertical_alignment="center")
                         with sub_col1:
                             st.markdown(f"{get_circular_role_icon(role)}", unsafe_allow_html=True)
                         with sub_col2:
                             st.markdown(f"**{player['player']}**")
                         with sub_col3:
                             st.markdown(f":gray[{player['mln']} mln]")
-                        
-
-                    if i < len(get_roles_dict()) - 1:
-                        st.divider()
+                        with sub_col4:
+                            st.button(
+                                ":material/delete:",
+                                key=f"{page_name}_{fanta_manager}_{player['id']}_remove_player_key",
+                                help=f"Remove {player['player']} from {fanta_manager}.",
+                                type="tertiary",
+                                width="stretch",
+                                on_click=remove_bought_player,
+                                args=(player.to_dict(),),
+                            )
                 
                 if available_budget < 0:
                     st.error("Budget exceeded")
@@ -939,17 +975,21 @@ with col1:
         create_editor_dataframe(filtered_players, fanta_manager_players_dict, player_preferences)
 with col2:
     if st.session_state[enable_player_preferences_key]:
-        st.markdown("**Interest column symbols meanings**:")
-        for key, value in interest_markers.items():
-            st.markdown(f"{value} :small[{key}]")
+        with st.container(border=True, width="content"):
+            st.markdown("**Symbols meanings**:")
+            for key, value in interest_markers.items():
+                st.markdown(f"{value} :small[{key}]")
 
 # Case of AI enabled
 if st.session_state[show_ai_predictions_key] and filtered_players.shape[0] == 1:
+    st.divider()
+
     selected_player = filtered_players.iloc[0]
     history_of_the_player = history_players[
         history_players["player"].eq(selected_player["player"])
         & history_players["season"].lt(selected_player["season"])
     ]
+
     print_models_predictions(
         models_packages_dict=models_packages_dict,
         history_players=history_players,
@@ -964,7 +1004,7 @@ if st.session_state[show_ai_predictions_key] and filtered_players.shape[0] == 1:
 st.divider()
 
 # Teams of the Fanta Managers
-create_shrinked_current_teams(fanta_manager_players_dict)
+create_shrinked_teams(fanta_manager_players_dict)
 
 # Store persistent Session State values
 fantacalcio_bought_players_df_key = f"{page_name}_bought_players_df_key"

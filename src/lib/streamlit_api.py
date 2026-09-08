@@ -113,8 +113,6 @@ def print_models_predictions(
     features_explainability = load_dataset("data/features_explainability.csv")
     role_column_means = compute_role_column_means(history_players)
 
-    thick_divider()
-
     print_ai_icon_with_markdown_title(markdown_text=f"### AI predictions")
 
     with st.container():
