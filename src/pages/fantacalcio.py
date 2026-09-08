@@ -747,7 +747,7 @@ def create_shrinked_teams(fanta_manager_players_dict: dict, n_cols: int):
                             warning_bought_number_foreground = bought_number_foreground
                             warning_bought_number_icon = ""
 
-                        if tot_spent_per_role[role]  > role_budget_limits_dict[role]:
+                        if tot_spent_per_role[role] > role_budget_limits_dict[role]:
                             warning_budget_spent_background = "rgba(0,0,0,0.85)"
                             warning_budget_spent_foreground = "rgba(255,75,75,1)"
                         else:
