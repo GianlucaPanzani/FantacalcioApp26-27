@@ -148,7 +148,7 @@ def get_configured_statistics_columns(selected_roles: list[str]) -> list[str]:
 
     for role in roles:
         role_columns = st.session_state.get(
-            f"settings_{roles_dict[role]}_graphical_cols_key",
+            f"settings_{role}_graphical_cols_key",
             [],
         )
         for column in role_columns:

@@ -335,7 +335,7 @@ for selected_player in selected_players:
     fanta_role = player_roles.iloc[-1]
     selected_roles.add(fanta_role)
     role_name = get_roles_dict()[fanta_role]
-    graphical_columns = st.session_state.get(f"settings_{role_name}_graphical_cols_key", [])
+    graphical_columns = st.session_state.get(f"settings_{fanta_role}_graphical_cols_key", [])
     for column in graphical_columns:
         if column in history_players.columns and column not in columns_to_plot:
             columns_to_plot.append(column)

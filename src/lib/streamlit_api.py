@@ -335,15 +335,15 @@ def get_col_from_user_view(user_view: str):
 
 def get_role_limits() -> dict:
     return {
-        "P": st.session_state.get("settings_golkeeper_limit_key", 3),
-        "D": st.session_state.get("settings_defender_limit_key", 8),
-        "C": st.session_state.get("settings_midfielder_limit_key", 8),
-        "A": st.session_state.get("settings_attacker_limit_key", 6),
+        "P": st.session_state.get("settings_P_limit_key", 3),
+        "D": st.session_state.get("settings_D_limit_key", 8),
+        "C": st.session_state.get("settings_C_limit_key", 8),
+        "A": st.session_state.get("settings_A_limit_key", 6),
     }
 
 def get_roles_list(enable_aka=False) -> list:
     return [
-        "golkeeper" + f"{' (P)' if enable_aka else ''}",
+        "goalkeeper" + f"{' (P)' if enable_aka else ''}",
         "defender" + f"{' (D)' if enable_aka else ''}",
         "midfielder" + f"{' (C)' if enable_aka else ''}", 
         "attacker" + f"{' (A)' if enable_aka else ''}"
@@ -351,10 +351,10 @@ def get_roles_list(enable_aka=False) -> list:
 
 def get_roles_dict() -> dict:
     '''
-    { "P": "golkeeper", "D": "defender", "C": "midfielder", "A": "attacker" }
+    { "P": "goalkeeper", "D": "defender", "C": "midfielder", "A": "attacker" }
     '''
     return {
-        "P": "golkeeper",
+        "P": "goalkeeper",
         "D": "defender",
         "C": "midfielder",
         "A": "attacker"
@@ -362,10 +362,10 @@ def get_roles_dict() -> dict:
 
 def get_role_budget_limits() -> dict:
     return {
-        "P": st.session_state.get("settings_golkeeper_budget_limit_key", 50),
-        "D": st.session_state.get("settings_defender_budget_limit_key", 100),
-        "C": st.session_state.get("settings_midfielder_budget_limit_key", 200),
-        "A": st.session_state.get("settings_attacker_budget_limit_key", 150),
+        "P": st.session_state.get("settings_P_budget_limit_key", 50),
+        "D": st.session_state.get("settings_D_budget_limit_key", 100),
+        "C": st.session_state.get("settings_C_budget_limit_key", 200),
+        "A": st.session_state.get("settings_A_budget_limit_key", 150),
     }
 
 def get_fanta_manager_players_dict() -> dict:
@@ -687,7 +687,7 @@ def plot_comparison_between_players(history_players: pd.DataFrame, filtered_play
 
         fanta_role = player_df["fanta_role"].dropna().iloc[0]
         role_name = get_roles_dict()[fanta_role]
-        columns = st.session_state.get(f"settings_{role_name}_graphical_cols_key", [])
+        columns = st.session_state.get(f"settings_{fanta_role}_graphical_cols_key", [])
 
         for col in columns:
             if col in filtered_players.columns and col not in columns_to_plot:
@@ -832,7 +832,7 @@ def plot_player_history(
         requested_columns = list(columns_to_plot)
     else:
         role_name = get_roles_dict()[fanta_role]
-        requested_columns = st.session_state.get(f"settings_{role_name}_graphical_cols_key", [])
+        requested_columns = st.session_state.get(f"settings_{fanta_role}_graphical_cols_key", [])
 
     selected_columns = list(dict.fromkeys(
         column
@@ -958,8 +958,8 @@ def plot_player_history(history_players: pd.DataFrame, filtered_players: pd.Data
     roles_dict = get_roles_dict()
     fanta_role = filtered_players["fanta_role"].dropna().iloc[0]
 
-    st.session_state.setdefault(f"settings_{roles_dict[fanta_role]}_graphical_cols_key", [])
-    columns_to_plot = st.session_state.get(f"settings_{roles_dict[fanta_role]}_graphical_cols_key")
+    st.session_state.setdefault(f"settings_{fanta_role}_graphical_cols_key", [])
+    columns_to_plot = st.session_state.get(f"settings_{fanta_role}_graphical_cols_key")
 
     # Case of no fields selected
     if not columns_to_plot:
@@ -1020,10 +1020,10 @@ def has_full_team(fanta_manager: str) -> bool:
     fanta_manager_players_dict = st.session_state.get("fantacalcio_manager_players_dict_key", {})
     bought_players = fanta_manager_players_dict.get(fanta_manager, pd.DataFrame())
     role_limit_keys_dict = {
-        "P": "settings_golkeeper_limit_key",
-        "D": "settings_defender_limit_key",
-        "C": "settings_midfielder_limit_key",
-        "A": "settings_attacker_limit_key",
+        "P": "settings_P_limit_key",
+        "D": "settings_D_limit_key",
+        "C": "settings_C_limit_key",
+        "A": "settings_A_limit_key",
     }
 
     if not isinstance(bought_players, pd.DataFrame) or "role" not in bought_players.columns:
