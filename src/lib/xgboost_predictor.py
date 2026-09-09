@@ -17,6 +17,8 @@ features_to_predict_per_role_dict: dict = {
         "goals_against_per90",
     ],
     "D": [
+        "goals_per90",
+        "assists_per90",
         "minutes",
         "tackles_won_per90",
     ],
