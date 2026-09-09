@@ -5,7 +5,7 @@ from lib.utils import (
     highlight_player_role,
     set_format_interest,
     get_ai_icon,
-    get_role_icon,
+    get_teams_dict,
     get_circular_role_icon,
     get_color_per_role,
     interest_markers
@@ -976,6 +976,36 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
         on_edited_change=update_edited_player,
         on_removed_change=remove_player,
     )
+
+
+def eval_players(players: pd.DataFrame):
+
+    '''def eval_player(player: pd.DataFrame, team: dict) -> tuple:
+        score = score_with_team = 0.0
+        # Switch-case on player role
+        if player['R'] == 'P':
+            score = ((player['90s_stats_keeper']/38) * 0.50) + (player['CS%'] * 0.20) + (player['Save%'] * 0.10) + (player['Qt.A']/500)
+            #print(f"score = {score} = {((player['90s_stats_keeper']/38) * 0.50)} + {(player['CS%'] * 0.20)} + {(player['Save%'] * 0.10)} + {(player['Qt.A']/500)}")
+            score_with_team = score - score * 0.40 * (1 - (team['valutazione']/100)) - score * 0.40 * (team['gol_subiti']/max_team_gol_subiti)
+        elif player['R'] == 'D':
+            score = int('MF' in player['Pos']) * 10 + int('FW' in player['Pos']) * 20 + player['Gls'] * 3 + player['Ast'] * 2 + player['Tkl+Int'] * 0.50 + player['Diff.'] * 3 + player['Qt.A']
+            score -= player['Err'] * 2 + player['CrdY'] * 0.50 + player['CrdR'] * 2
+            score_with_team = score + score * 0.25 * (team['valutazione']/100) - score * 0.25 * (team['gol_subiti']/max_team_gol_subiti) + score * 0.10 * (team['gol_fatti']/100)
+        elif player['R'] == 'C':
+            score = int('FW' in player['Pos']) * 30 + player['Gls'] * 3 + player['Ast'] * 2 + player['Tkl+Int'] * 0.50 + player['Diff.'] * 3 + player['Qt.A']
+            score -= player['Err'] * 2 + player['CrdY'] * 0.50 + player['CrdR'] * 2
+            score_with_team = score + score * 0.30 * (team['valutazione']/100) + score * 0.20 * (team['gol_fatti']/100)
+        elif player['R'] == 'A':
+            score = player['Gls'] * 3 + player['Ast'] * 2 + player['Diff.'] + player['Qt.A']
+            score -= player['Err'] * 2 + player['CrdY'] * 0.50 + player['CrdR'] * 2
+            score_with_team = score + score * 0.30 * (team['valutazione']/100) - score * 0.20 * (team['gol_subiti']/max_team_gol_subiti) + score * 0.20 * (team['gol_fatti']/100)
+        return score, score_with_team'''
+    
+    # Evaluation based on AI predictions + own team evaluation
+    players
+    teams_df = pd.DataFrame(get_teams_dict())
+
+    return
 
 
 def create_selected_players_table(players: pd.DataFrame, visible_columns: list[str]) -> None:

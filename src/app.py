@@ -5,7 +5,6 @@ from lib.streamlit_api import (
 )
 from lib.utils import (
     get_ai_icon,
-    get_ai_player_selection_icon
 )
 
 sidebar_navigation_size(font_size=1.25)
