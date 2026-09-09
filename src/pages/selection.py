@@ -6,6 +6,8 @@ from lib.utils import (
     set_format_interest,
     get_ai_icon,
     get_role_icon,
+    get_circular_role_icon,
+    get_color_per_role,
     interest_markers
 )
 from lib.streamlit_api import (
@@ -413,9 +415,7 @@ def create_player_selection_table2(players: pd.DataFrame, visible_columns: list[
         player_id = selection["id"]
         if isinstance(player_id, float) and player_id.is_integer():
             player_id = int(player_id)
-        st.session_state[get_stats_player_key("selected", player_id)] = bool(
-            selection["value"]
-        )
+        st.session_state[get_stats_player_key("selected", player_id)] = bool(selection["value"])
 
     component_renderer = getattr(
         create_player_selection_table2,
@@ -1121,8 +1121,6 @@ filtered_players_with_statistics = add_latest_player_statistics(
     statistics_columns,
 )
 
-
-
 # Select the visible columns
 base_visible_selection_columns = [
     col
@@ -1150,30 +1148,35 @@ create_player_selection_table2(filtered_players_with_statistics, visible_selecti
 st.divider()
 
 # Create the selection table
-table_col, _, legend_col = st.columns([26, 1, 3])
-with legend_col:
-    for interest, marker in interest_markers.items():
-        st.markdown(f"{marker} :small[{interest}]")
-with table_col:
-    for fanta_role, role_name in get_roles_dict().items():
-        st.subheader(f"{get_role_icon(fanta_role)} {role_name.capitalize()}s selected")
-        tmp_df = fanta_players[fanta_players["R"] == fanta_role]
-        if tmp_df.empty:
-            st.info(f"Absent players with role {fanta_role}.")
-            continue
+for fanta_role, role_name in get_roles_dict().items():
 
-        # Select the visible columns
-        role_visible_selection_columns = [
-            col
-            for col in base_visible_selection_columns
-            if col in tmp_df.columns
-            and not (
-                str(col).lower().startswith("pred_")
-                and tmp_df[col].isna().all()
-            )
-        ]
+    color_role = get_color_per_role(fanta_role, rgba=True)
+    col1, col2= st.columns([1,29], vertical_alignment="center")
+    with col1:
+        st.markdown(f"{get_circular_role_icon(fanta_role, font_size=20, height=32, width=32, y_translation=5)}", unsafe_allow_html=True)
+    with col2:
+        st.markdown(
+            f'### :color[{role_name.capitalize()}s selected]'
+            f'{{foreground="{color_role}"}}',
+        )
 
-        create_selected_players_table_css(tmp_df, role_visible_selection_columns)
+    tmp_df = fanta_players[fanta_players["R"] == fanta_role]
+    if tmp_df.empty:
+        st.info(f"Absent players with role {fanta_role}.")
+        continue
+
+    # Select the visible columns
+    role_visible_selection_columns = [
+        col
+        for col in base_visible_selection_columns
+        if col in tmp_df.columns
+        and not (
+            str(col).lower().startswith("pred_")
+            and tmp_df[col].isna().all()
+        )
+    ]
+
+    create_selected_players_table_css(tmp_df, role_visible_selection_columns)
 
 # Store the selected players in a csv file
 store_selected_players(fanta_players, st.session_state[selection_players_key])

@@ -137,7 +137,7 @@ def highlight_player_role(row: pd.Series) -> list[str]:
         return [""] * len(row)
     return [f"background-color: {role_color}; color: #212121"] * len(row)
 
-def get_color_per_role(role: str, color_version=True) -> str:
+def get_color_per_role(role: str, color_version=True, rgba=False) -> str:
     """Return a soft Material Design color for a Fantacalcio role."""
     role_colors_dict = {
         "P": "#EACD6D" if color_version else "orange",  # Previous: "#FFD54F"
@@ -145,25 +145,34 @@ def get_color_per_role(role: str, color_version=True) -> str:
         "C": "#73B3E7" if color_version else "blue",  # Previous: "#64B5F6"
         "A": "#DE7D7D" if color_version else "red",  # Previous: "#E57373"
     }
+    role_colors_rgba_dict = {
+        "P": "rgba(240,165,0,0.80)",
+        "D": "rgba(88,185,92,0.80)",
+        "C": "rgba(33,150,243,0.80)",
+        "A": "rgba(230,70,60,0.80)",
+    }
+    if rgba:
+        return role_colors_rgba_dict.get(role, "")
     return role_colors_dict.get(str(role).strip().upper(), "")
+    
 
-def get_circular_role_icon(role: str):
+def get_circular_role_icon(role: str, font_size=14, height=24, width=24, y_translation=-2):
     return f"""
     <span style="
-        width: 24px;
-        height: 24px;
+        width: {width}px;
+        height: {height}px;
         border-radius: 50%;
         background-color: {get_color_per_role(role, color_version=False)};
         display: inline-flex;
         align-items: center;
         justify-content: center;
         vertical-align: middle;
-        transform: translateY(-2px);
+        transform: translateY({y_translation}px);
         line-height: 1;
         margin: 0;
         font-weight: bold;
         color: white;
-        font-size: 14px;
+        font-size: {font_size}px;
     ">{role}</span>
     """
 

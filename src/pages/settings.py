@@ -1,9 +1,12 @@
 import streamlit as st
 import pandas as pd
+from lib.utils import (
+    get_circular_role_icon
+)
 from lib.streamlit_api import (
     get_user_view_of_column,
     get_fanta_manager_players_dict,
-    get_roles_list,
+    get_roles_dict,
     sync_filter,
     add_graphical_columns,
     load_dataset,
@@ -52,8 +55,6 @@ st.session_state[f"{page_name}_managers_key"] = fanta_managers
 
 # Getting data
 fanta_manager_players_dict = get_fanta_manager_players_dict()
-roles_list = get_roles_list()
-roles_with_aka_list = get_roles_list(enable_aka=True)
 history_players = load_dataset("data/filtered_history_players.csv")
 
 
@@ -63,7 +64,11 @@ with st.container(border=True):
     cols = st.columns([8,1,8,1,8,1,8,1,8])
 
     with cols[0]:
-        st.markdown("#### **Fanta Managers**")
+        col1, col2 = st.columns([1,8])
+        with col1:
+            st.markdown("#### 👥")
+        with col2:
+            st.markdown("#### **Fanta Managers**")
 
     with cols[2]:
 
@@ -185,9 +190,13 @@ with st.container(border=True):
     cols = st.columns([8,1,8,1,8,1,8,1,8])
 
     with cols[0]:
-        st.markdown("#### **Players per role**")
+        col1, col2 = st.columns([1,8])
+        with col1:
+            st.markdown("#### ⚽")
+        with col2:
+            st.markdown("#### **Players per role**")
 
-    for i, role, role_with_aka, default_value in zip(range(2,9,2), roles_list, roles_with_aka_list, [3,8,8,6]):
+    for i, (role, role_name), default_value in zip(range(2,9,2), get_roles_dict().items(), [3,8,8,6]):
         role_limit_key = f"{page_name}_{role}_limit_key"
         st.session_state.setdefault(role_limit_key, default_value)
         settings_keys_set.add(role_limit_key)
@@ -198,7 +207,7 @@ with st.container(border=True):
 
         with cols[i]:
             st.number_input(
-                f"Number of {str(role).capitalize()} {str(role_with_aka).split(' ')[1]}",
+                f"Number of maximum {str(role_name).capitalize()}s",
                 min_value=0,
                 step=1,
                 key=role_limit_widget_key,
@@ -212,7 +221,11 @@ with st.container(border=True):
     cols = st.columns([8,1,6,1,6,1,6,1,6,1,6])
 
     with cols[0]:
-        st.markdown("#### **Budget limits per role**")
+        col1, col2 = st.columns([1,8])
+        with col1:
+            st.markdown("#### 💰")
+        with col2:
+            st.markdown("#### **Budget limits per role**")
 
     with cols[2]:
         budget_key = f"{page_name}_budget_key"
@@ -235,7 +248,7 @@ with st.container(border=True):
     cols = st.columns([8,1,6,1,6,1,6,1,6,1,6], vertical_alignment="center")
 
     budget_limits = []
-    for i, role, role_with_aka, default_value in zip(range(2,9,2), roles_list, roles_with_aka_list, [50,100,200,150]):
+    for i, (role, role_name), default_value in zip(range(2,9,2), get_roles_dict().items(), [50,100,200,150]):
         role_budget_limit_key = f"{page_name}_{role}_budget_limit_key"
         st.session_state.setdefault(role_budget_limit_key, default_value)
         settings_keys_set.add(role_budget_limit_key)
@@ -247,7 +260,7 @@ with st.container(border=True):
         with cols[i]:
             budget_limits.append(
                 st.number_input(
-                    f"Budget for {str(role).capitalize()}s",
+                    f"Budget for {str(role_name).capitalize()}s",
                     min_value=0,
                     max_value=500,
                     step=5,
@@ -282,15 +295,25 @@ with st.container(border=True):
 
 # Graphics settings
 with st.container(border=True):
+    role_title_icons = {
+        "P": ":material/sports_handball:",
+        "D": ":material/shield:",
+        "C": ":material/sports_soccer:",
+        "A": ":material/adjust:",
+    }
 
     cols = st.columns([8,1,8,1,8,1,8,1,8])
 
     with cols[0]:
-        st.markdown("#### **Graphics per role**")
+        col1, col2 = st.columns([1,8])
+        with col1:
+            st.markdown("#### 📊")
+        with col2:
+            st.markdown("#### **Graphics per role**")
 
-    for i, role in zip(range(2,9,2), roles_list):
+    for i, (role, role_name) in zip(range(2,9,2), get_roles_dict().items()):
         with cols[i]:
-            st.markdown(f"**{str(role).capitalize()} statistics**")
+            st.markdown(f"{role_title_icons[role]} **{str(role_name).capitalize()} statistics**")
 
             graphical_cols_key = f"{page_name}_{role}_graphical_cols_key"
             st.session_state.setdefault(graphical_cols_key, [])
@@ -316,7 +339,7 @@ with st.container(border=True):
 
 
     cols = st.columns([8,1,8,1,8,1,8,1,8])
-    for i, role in zip(range(2,9,2), roles_list):
+    for i, role in zip(range(2,9,2), get_roles_dict().keys()):
         graphical_cols_key = f"{page_name}_{role}_graphical_cols_key"
         graphical_cols_widget_key = f"{page_name}_add_{role}_graphical_col_widget_key"
 

@@ -716,14 +716,6 @@ def create_shrinked_teams(fanta_manager_players_dict: dict, n_cols: int):
                         players_of_role = bought_players[bought_players["role"].eq(role)]
 
                         colors = {
-                            "orange": ("rgba(255,152,0,1)", "rgba(255,250,50,0.10)"),
-                            "green": ("rgba(76,175,80,1)", "rgba(76,175,80,0.10)"),
-                            "blue": ("rgba(33,150,243,1)", "rgba(33,150,243,0.10)"),
-                            "red": ("rgba(244,67,54,1)", "rgba(244,67,54,0.10)"),
-                            "violet": ("rgba(140,65,155,1)", "rgba(140,65,155,0.15)"),
-                            "gray": ("rgba(100,100,100,1)", "rgba(100,100,100,0.15)"),
-                        }
-                        colors = {
                             "orange": ("rgba(255,255,255,1)", "rgba(255,165,0,0.80)"),
                             "green": ("rgba(255,255,255,1)", "rgba(0,128,0,0.80)"),
                             "blue": ("rgba(255,255,255,1)", "rgba(0,0,255,0.80)"),

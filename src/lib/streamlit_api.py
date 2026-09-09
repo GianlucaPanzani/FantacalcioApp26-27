@@ -210,7 +210,8 @@ def print_models_predictions(
                                 player=player_name,
                                 feature=feature,
                                 seasons_to_plot=4,
-                                disable_player_name=True
+                                disable_player_name=True,
+                                models_packages_dict=models_packages_dict,
                             )
 
                         # Case of SHAP explainability enabled
@@ -561,13 +562,24 @@ def add_graphical_columns(graphical_cols_key, widget_key):
     st.session_state[widget_key] = []
 
 
-def create_player_history_chart(data: pd.DataFrame, statistic_name: str, y_limits=None, mean_value: float | None = None):
+def create_player_history_chart(
+        data: pd.DataFrame,
+        statistic_name: str,
+        y_limits=None,
+        mean_value: float | None = None,
+        prediction_data: pd.DataFrame | None = None,
+    ):
     """Create a player history chart with season, team and value tooltips."""
     y_scale = alt.Scale(zero=False)
     if y_limits is not None:
         y_scale = alt.Scale(domain=list(y_limits), zero=False)
 
     season_order = data["season"].drop_duplicates().tolist()
+    if prediction_data is not None and not prediction_data.empty:
+        for season in prediction_data["season"].drop_duplicates():
+            if season not in season_order:
+                season_order.append(season)
+
     chart = alt.Chart(data).mark_line(point=True).encode(
         x=alt.X("season:N", title="Season", sort=season_order),
         y=alt.Y("value:Q", title=statistic_name, scale=y_scale),
@@ -578,20 +590,38 @@ def create_player_history_chart(data: pd.DataFrame, statistic_name: str, y_limit
         ],
     )
 
-    if mean_value is None:
-        return chart
+    chart_layers = [chart]
 
-    mean_data = pd.DataFrame({"mean": [mean_value]})
-    mean_line = alt.Chart(mean_data).mark_rule(
-        color="#8A8A8A",
-        opacity=0.75,
-        strokeDash=[6, 4],
-        strokeWidth=1.5,
-    ).encode(
-        y=alt.Y("mean:Q", scale=y_scale),
-        tooltip=[alt.Tooltip("mean:Q", title="Role average", format=".2f")],
-    )
-    return chart + mean_line
+    if mean_value is not None:
+        mean_data = pd.DataFrame({"mean": [mean_value]})
+        mean_line = alt.Chart(mean_data).mark_rule(
+            color="#8A8A8A",
+            opacity=0.75,
+            strokeDash=[6, 4],
+            strokeWidth=1.5,
+        ).encode(
+            y=alt.Y("mean:Q", scale=y_scale),
+            tooltip=[alt.Tooltip("mean:Q", title="Role average", format=".2f")],
+        )
+        chart_layers.append(mean_line)
+
+    if prediction_data is not None and not prediction_data.empty:
+        prediction_point = alt.Chart(prediction_data).mark_point(
+            color="#9C27B0",
+            filled=True,
+            shape="diamond",
+            size=130,
+        ).encode(
+            x=alt.X("season:N", title="Season", sort=season_order),
+            y=alt.Y("value:Q", title=statistic_name, scale=y_scale),
+            tooltip=[
+                alt.Tooltip("season:N", title="Season"),
+                alt.Tooltip("value:Q", title=f"AI {statistic_name}", format=".2f"),
+            ],
+        )
+        chart_layers.append(prediction_point)
+
+    return alt.layer(*chart_layers)
 
 
 def compute_role_column_means(history_players: pd.DataFrame) -> dict[str, dict[str, float | None]]:
@@ -758,61 +788,73 @@ def plot_comparison_between_players(history_players: pd.DataFrame, filtered_play
     return
 
 
-def plot_player_history(history_players: pd.DataFrame, player: str, feature=None, seasons_to_plot=None, disable_player_name=False) -> None:
+def plot_player_history(
+        history_players: pd.DataFrame,
+        player: str,
+        columns_to_plot=None,
+        feature=None,
+        seasons_to_plot=None,
+        disable_player_name=False,
+        enable_ai_predictions=True,
+        models_packages_dict=None,
+    ) -> None:
     """
     Display the selected historical statistics for a single player.
 
-    Each chart represents the evolution of one statistic across seasons.
-    Charts are arranged alternately in two columns.
+    Each chart represents the evolution of one statistic across the requested
+    number of recent seasons.
 
     Parameters
     ----------
-    filtered_players:
-        DataFrame containing the historical records of one player.
+    history_players:
+        DataFrame containing the historical records of the players.
     """
-    player_history = history_players[history_players["player"] == player].copy()
     role_column_means = compute_role_column_means(history_players)
-    player_history = history_players[history_players["player"].eq(player)].copy()
+    full_player_history = history_players[history_players["player"].eq(player)].copy()
 
-    if player_history.empty:
+    if full_player_history.empty:
         st.info(f"No history available for {player}.")
         return
 
-    player_history = player_history.sort_values("season")
+    full_player_history = full_player_history.sort_values("season")
+    player_history = full_player_history.copy()
     player_roles = player_history["fanta_role"].dropna()
     if player_roles.empty:
         st.info(f"No Fantacalcio role available for {player}.")
         return
     
-    # Filters only last seasons
-    if seasons_to_plot is not None:
-        recent_seasons = player_history["season"].dropna().drop_duplicates().sort_values().tail(seasons_to_plot)
-        player_history = player_history[player_history["season"].isin(recent_seasons)].sort_values("season")
-
     fanta_role = player_roles.iloc[-1]
 
-    if feature is None:
-        role_name = get_roles_dict()[fanta_role]
-        st.session_state.setdefault(f"settings_{role_name}_graphical_cols_key", [])
-        columns_to_plot = st.session_state[f"settings_{role_name}_graphical_cols_key"]
+    # A specific feature takes precedence over a list of columns.
+    if isinstance(feature, str) and feature:
+        requested_columns = [feature]
+    elif columns_to_plot is not None:
+        requested_columns = list(columns_to_plot)
     else:
-        columns_to_plot = [feature]
+        role_name = get_roles_dict()[fanta_role]
+        requested_columns = st.session_state.get(f"settings_{role_name}_graphical_cols_key", [])
+
+    selected_columns = list(dict.fromkeys(
+        column
+        for column in requested_columns
+        if isinstance(column, str) and column and column in player_history.columns
+    ))
 
     # Case of no fields selected
-    if not [column for column in columns_to_plot if column in player_history.columns]:
+    if not selected_columns:
         st.info("Select at least one statistic for this role in the Settings page.")
         return
 
     # Convert selected statistics to numeric values.
-    player_history = player_history.sort_values("season")
-    for col in columns_to_plot:
+    for col in selected_columns:
         player_history[col] = pd.to_numeric(player_history[col], errors="coerce")
 
     # Player header
     player_name = player_history["player"].dropna().iloc[0]
     role_name = get_roles_dict()[fanta_role].capitalize()
     role_badge_color = get_color_per_role(role=fanta_role, color_version=False)
-    latest_team = player_history["team"].dropna().iloc[-1]
+    player_teams = player_history["team"].dropna()
+    latest_team = player_teams.iloc[-1] if not player_teams.empty else "Unknown team"
     if not disable_player_name:
         with st.container(border=True):
             st.markdown(
@@ -825,47 +867,71 @@ def plot_player_history(history_players: pd.DataFrame, player: str, feature=None
                 text_alignment="center",
             )
 
-    # Create the graphics in columns_to_plot in 2 columns
-    if feature is None:
-        col1, _, col2 = st.columns([9,1,9])
-        for index, col in enumerate(columns_to_plot):
-            container = col1 if index % 2 == 0 else col2
-            data = player_history[["season", "team", col]].dropna(subset=["season", col])
-            data = data.rename(columns={col: "value"})
-            data["team"] = data["team"].fillna("Unknown team")
-            user_view_col = get_user_view_of_column(col)
-
-            with container:
-                st.markdown(
-                    f"<h4 style='text-align: center;'>{user_view_col}</h4>",
-                    unsafe_allow_html=True
-                )
-                mean_value = role_column_means[fanta_role][col]
-                chart = create_player_history_chart(
-                    data,
-                    user_view_col,
-                    mean_value=mean_value,
-                )
-                st.altair_chart(
-                    chart,
-                    width="stretch",
-                )
-    # Case of single plot
-    else:
-        data = player_history[["season", "team", feature]].dropna(subset=["season", feature])
-        data = data.rename(columns={feature: "value"})
+    # Create one graphic for every selected column.
+    for column in selected_columns:
+        data = player_history[["season", "team", column]].dropna(subset=["season", column])
+        data = data.rename(columns={column: "value"})
         data["team"] = data["team"].fillna("Unknown team")
-        user_view_col = get_user_view_of_column(feature)
+        user_view_col = get_user_view_of_column(column)
+
+        prediction_data = None
+        can_predict_column = (
+            enable_ai_predictions
+            and column.endswith("_per90")
+            and column in features_to_predict_per_role_dict.get(fanta_role, [])
+            and models_packages_dict is not None
+            and column in models_packages_dict
+        )
+        if can_predict_column:
+            available_seasons = history_players["season"].dropna().astype(str).sort_values()
+            if not available_seasons.empty:
+                current_season = available_seasons.iloc[-1]
+                prediction_history = full_player_history[
+                    full_player_history["season"].astype(str).ne(current_season)
+                ]
+                model_package = models_packages_dict[column]
+                model_input = build_temporal_player_input(
+                    player_history=prediction_history,
+                    features=model_package["features"],
+                )
+                if model_input.attrs["available_lags"] > 0:
+                    prediction = max(0.0, float(predict(
+                        model_package=model_package,
+                        player_history=model_input,
+                    )))
+                    prediction_data = pd.DataFrame({
+                        "season": [current_season],
+                        "value": [prediction],
+                    })
+
+        # Keep the requested number of historical seasons. For predicted
+        # features, the current season is added separately as an extra point.
+        if prediction_data is not None:
+            data = data[data["season"].astype(str).ne(current_season)]
+        if seasons_to_plot is not None:
+            recent_seasons = (
+                data["season"]
+                .drop_duplicates()
+                .sort_values()
+                .tail(int(seasons_to_plot))
+            )
+            data = data[data["season"].isin(recent_seasons)].sort_values("season")
 
         st.markdown(
-            f"<h4 style='text-align: center;'>{user_view_col}</h4>",
-            unsafe_allow_html=True
+            f"#### {user_view_col}",
+            text_alignment="center",
+            anchors=False,
         )
-        mean_value = role_column_means[fanta_role][feature]
+        if data.empty and prediction_data is None:
+            st.info("No data available for this statistic.")
+            continue
+
+        mean_value = role_column_means.get(fanta_role, {}).get(column)
         chart = create_player_history_chart(
             data,
             user_view_col,
             mean_value=mean_value,
+            prediction_data=prediction_data,
         )
         st.altair_chart(
             chart,

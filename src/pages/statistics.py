@@ -14,6 +14,7 @@ from lib.streamlit_api import (
     load_env,
     load_models,
     store_env,
+    get_roles_dict,
     plot_comparison_between_players,
     plot_player_history
 )
@@ -32,7 +33,6 @@ st.set_page_config(
 page_name = "statistics"
 
 columns_to_filter_list = [
-    "player",
     "fanta_role",
     "season",
     "team",
@@ -122,11 +122,29 @@ def get_column_width(players: pd.DataFrame, column: str) -> int:
     return (max(max_content_length, label_length) + 1) * 8
 
 
-def create_multiselect_filters(players: pd.DataFrame, columns=["player", "fanta_role", "season", "team", "competition"]) -> pd.DataFrame:
+def players_filters(players: pd.DataFrame) -> pd.DataFrame:
     """Display the player filters vertically in the sidebar."""
 
+    st.number_input(
+        label="Choose the number of player to inspect",
+        value=2,
+        max_value=4,
+        min_value=1,
+        key=number_of_players_key,
+    )
+
+    st.number_input(
+        label="Choose the number of seasons to plot",
+        value=5,
+        max_value=10,
+        min_value=1,
+        key=seasons_to_plot_key,
+    )
+
+    multiselect_columns = ["team", "competition"]
+
     # Initialize multiselect values using the inferred column defaults.
-    for column in columns:
+    for column in multiselect_columns:
         default_value = get_default_value(players[column])
         default_value = default_value if isinstance(default_value, list) else []
         filter_key = f"{page_name}_{column}_key"
@@ -141,7 +159,7 @@ def create_multiselect_filters(players: pd.DataFrame, columns=["player", "fanta_
 
     # Each column receives the DataFrame filtered by all the other fields.
     col_name_df_dict = {}
-    for column in columns:
+    for column in multiselect_columns:
         col_name_df_dict[column] = apply_filters(
             players,
             exclude=column,
@@ -150,20 +168,8 @@ def create_multiselect_filters(players: pd.DataFrame, columns=["player", "fanta_
             page=page_name
         )
     
-    st.multiselect(
-        f"Select {get_user_view_of_column('player').lower()}",
-        options=sorted(col_name_df_dict["player"]["player"].dropna().unique(), key=str),
-        placeholder=f"Select one or more elements...",
-        help="- Select 1 player to see deeper statistics  \n- Select 2 players to compare them",
-        key=f"{page_name}_player_widget_key",
-        on_change=sync_filter,
-        args=(f"{page_name}_player_key", f"{page_name}_player_widget_key"),
-    )
-
     # Create the multiselect widgets
-    for column in columns:
-        if column == "player":
-            continue
+    for column in multiselect_columns:
         options = sorted(col_name_df_dict[column][column].dropna().unique(), key=str)
         selected_values = [value for value in st.session_state[f"{page_name}_{column}_key"] if value in options]
         st.session_state[f"{page_name}_{column}_key"] = selected_values
@@ -178,21 +184,9 @@ def create_multiselect_filters(players: pd.DataFrame, columns=["player", "fanta_
             args=(f"{page_name}_{column}_key", f"{page_name}_{column}_widget_key"),
         )
 
-    # Multiple values from the same field are combined through isin (OR).
-    filtered_df = apply_filters(
-        players,
-        columns_to_filter_list=columns_to_filter_list,
-        compare_op_for_columns_to_filter_dict=compare_op_for_columns_to_filter_dict,
-        page=page_name
-    )
-    st.session_state[f"{page_name}_filtered_players_key"] = filtered_df
-    return filtered_df
+    slider_columns = ["goals_per90", "nineties"]
 
-
-def create_sliders_filters(players: pd.DataFrame, columns=["goals_per90", "nineties"]):
-    """Create the statistics sliders dynamically."""
-
-    for column in columns:
+    for column in slider_columns:
         options_df = apply_filters(
             players,
             exclude=column,
@@ -215,6 +209,7 @@ def create_sliders_filters(players: pd.DataFrame, columns=["goals_per90", "ninet
             args=(f"{page_name}_{column}_key", f"{page_name}_{column}_widget_key"),
         )
 
+    # Multiple values from the same field are combined through isin (OR).
     filtered_df = apply_filters(
         players,
         columns_to_filter_list=columns_to_filter_list,
@@ -223,6 +218,7 @@ def create_sliders_filters(players: pd.DataFrame, columns=["goals_per90", "ninet
     )
     st.session_state[f"{page_name}_filtered_players_key"] = filtered_df
     return filtered_df
+
 
 def create_dataframe(statistics_table, displayed_table):
     fantacalcio_visible_columns = [col for col in fantacalcio_dataset_columns if col in statistics_table.columns]
@@ -275,8 +271,20 @@ statistics_keys_set = {
     if key.startswith(f"{page_name}_")
 }
 history_players = load_dataset("data/filtered_history_players.csv")
+filtered_players = history_players.copy()
 model_packages_dict = load_models(target_features=features_to_predict_list)
 
+role_widget_key = f"{page_name}_role_key"
+number_of_players_key = f"{page_name}_number_of_players_key"
+seasons_to_plot_key = f"{page_name}_seasons_to_plot_key"
+statistics_keys_set.update({number_of_players_key, seasons_to_plot_key})
+st.session_state.setdefault(number_of_players_key, 2)
+st.session_state.setdefault(seasons_to_plot_key, 3)
+
+# Filters on the sidebar
+with st.sidebar:
+    st.markdown("### Filters")
+    filtered_players = players_filters(history_players)
 
 st.title("📊 Statistics")
 st.caption(
@@ -285,73 +293,81 @@ st.caption(
     that you can see in the graphics as an horizontal row."
 )
 
-# Filters on the sidebar
-with st.sidebar:
-    st.markdown("### Filters")
-    filtered_players = create_multiselect_filters(history_players)
-    filtered_players = create_sliders_filters(filtered_players)
-
 st.divider()
 
-# Case of NO statistics: one specific season or team selected (no plots possible with this)
-if filtered_players["season"].nunique() <= 2 and (
-        st.session_state[f"{page_name}_season_widget_key"] or st.session_state[f"{page_name}_team_widget_key"]
-    ):
-    st.info("You have selected 1 specific season or a specific team: deselect it to see the statistics accross years.")
+# Filters per role
+selected_role = st.pills(
+    "Select fanta role",
+    options=get_roles_dict().keys(),
+    selection_mode="single",
+    key=role_widget_key,
+)
+if selected_role:
+    filtered_players = filtered_players[filtered_players["fanta_role"].eq(selected_role)]
 
-# Count of the players
-selected_player_count = filtered_players["player"].nunique()
+# Select the players before building the union of their graphical columns
+n_cols = st.session_state[number_of_players_key]
+cols = st.columns(n_cols)
+selected_players = []
+for i, col in enumerate(cols):
+    with col:
+        selected_player = st.selectbox(
+            f"Search player {i+1}",
+            options=sorted(filtered_players["player"].dropna().unique(), key=str),
+            index=None,
+            placeholder="Select a player...",
+            key=f"{page_name}_player_selected_{i+1}_key",
+        )
+        selected_players.append(selected_player)
 
-# Case of 2 players selected
-if selected_player_count == 2:
-    plot_comparison_between_players(history_players, filtered_players)
-    thick_divider()
-# Case of 1 player selected
-elif selected_player_count == 1:
-    selected_player = filtered_players["player"].dropna().iloc[0]
-    plot_player_history(history_players, selected_player)
-    thick_divider()
+# Use the union of the graphical columns configured for the selected roles
+columns_to_plot = []
+selected_roles = set()
+for selected_player in selected_players:
+    if selected_player is None:
+        continue
 
+    player_history = history_players[history_players["player"].eq(selected_player)].sort_values("season")
+    player_roles = player_history["fanta_role"].dropna()
+    if player_roles.empty:
+        continue
 
-statistics_table = build_statistics_table(filtered_players)
+    fanta_role = player_roles.iloc[-1]
+    selected_roles.add(fanta_role)
+    role_name = get_roles_dict()[fanta_role]
+    graphical_columns = st.session_state.get(f"settings_{role_name}_graphical_cols_key", [])
+    for column in graphical_columns:
+        if column in history_players.columns and column not in columns_to_plot:
+            columns_to_plot.append(column)
 
-cols = st.columns([1,1,1,3,2,1])
-with cols[0]:
-    st.metric("Rows", len(filtered_players))
-with cols[1]:
-    st.metric("Columns", len(statistics_table.columns))
-with cols[2]:
-    st.metric("Total Players", filtered_players["player"].nunique())
-with cols[5]:
-    rows_per_page = 1000
-    total_table_pages = max(0, int(float(statistics_table.shape[0] / rows_per_page))) + 1
-    table_page_key = f"{page_name}_table_page_key"
-    st.session_state[table_page_key] = min(st.session_state.get(table_page_key, 1), total_table_pages)
-    table_page = st.number_input(
-        f"Table {st.session_state.get(table_page_key, 1)}/{total_table_pages}",
-        min_value=1,
-        max_value=total_table_pages,
-        key=table_page_key,
-    )
-    start = (table_page - 1) * rows_per_page
-    end = min(start + rows_per_page, statistics_table.shape[0])
-    displayed_table = statistics_table.iloc[start:end]
-with cols[4]:
-    st.metric(
-        label="Range of rows for this table",
-        value=f"{start}-{end}",
-        help=f"Dataset is segmented in multiple tables of {rows_per_page} rows because \
-            of its length to avoid lagging.\n\
-            Anyways, the filters on the sidebar will be applied to the entire dataset.",
-        label_visibility="visible"
-    )
+# Show first the columns having an AI prediction for the selected roles
+ai_prediction_columns = {
+    feature
+    for fanta_role in selected_roles
+    for feature in features_to_predict_per_role_dict.get(fanta_role, [])
+    if feature.endswith("_per90") and feature in model_packages_dict
+}
+columns_to_plot.sort(key=lambda column: column not in ai_prediction_columns)
+
+# Plot each player below their selectbox
+for selected_player, col in zip(selected_players, cols):
+    if selected_player is not None:
+        with col:
+            plot_player_history(
+                history_players=history_players,
+                player=selected_player,
+                columns_to_plot=columns_to_plot,
+                seasons_to_plot=st.session_state[seasons_to_plot_key],
+                enable_ai_predictions=st.session_state.get("settings_ai_enabled_key", False),
+                models_packages_dict=model_packages_dict,
+            )
+
 
 # Create the dataframe
-create_dataframe(statistics_table, displayed_table)
+#create_dataframe(statistics_table, displayed_table)
 
 statistics_keys_list = list(statistics_keys_set)
 store_env(
     data_dict={key: st.session_state[key] for key in statistics_keys_list if key in st.session_state},
     path=".env",
 )
-
