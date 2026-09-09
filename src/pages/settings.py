@@ -342,6 +342,7 @@ with st.container(border=True):
     for i, role in zip(range(2,9,2), get_roles_dict().keys()):
         graphical_cols_key = f"{page_name}_{role}_graphical_cols_key"
         graphical_cols_widget_key = f"{page_name}_add_{role}_graphical_col_widget_key"
+        settings_keys_set.add(graphical_cols_key)
 
         numeric_columns = [
             column for column in history_players.select_dtypes(include="number").columns.tolist()

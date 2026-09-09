@@ -469,66 +469,92 @@ def reset_fanta_manager_boughts(selection_key: str) -> None:
     return
 
 
-def sync_purchase_editor(players_editor_df: pd.DataFrame, fanta_manager_players_dict: dict, fanta_managers: list, editor_key: str) -> None:
-    """Apply purchase edits before Streamlit rebuilds the table."""
+def sync_purchase_editor(
+    players_editor_df: pd.DataFrame,
+    fanta_manager_players_dict: dict,
+    fanta_managers: list,
+    editor_key: str,
+) -> None:
+    """Apply purchase edits and update the last budget transaction."""
+
     editor_changes = st.session_state.get(editor_key, {}).get("edited_rows", {})
+
     changed_row_positions = set()
     purchase_events = []
     price_updates = []
 
+    # Build the boughts before the modifications
     bought_players_by_id = {}
     for fanta_manager, bought_players in fanta_manager_players_dict.items():
-        if not isinstance(bought_players, pd.DataFrame) or "id" not in bought_players.columns:
+        if not isinstance(bought_players, pd.DataFrame) or bought_players.empty or "id" not in bought_players.columns:
             continue
         for _, bought_player in bought_players.iterrows():
             bought_players_by_id[str(bought_player["id"])] = {
                 "manager": fanta_manager,
+                "mln": int(
+                    pd.to_numeric(
+                        bought_player.get("mln"),
+                        errors="coerce",
+                    )
+                ),
             }
 
     for row_position, changes in editor_changes.items():
         row_position = int(row_position)
+        if row_position < 0 or row_position >= len(players_editor_df):
+            continue
+
         player_id = str(players_editor_df.iloc[row_position]["id"])
         previous_purchase = bought_players_by_id.get(player_id, {})
         previous_manager = previous_purchase.get("manager", "")
 
+        # Apply to the dataframe the modifies in the editor
         for column in ("bought", "mln"):
-            if column in changes:
-                players_editor_df.iloc[
-                    row_position,
-                    players_editor_df.columns.get_loc(column),
-                ] = changes[column]
-                changed_row_positions.add(row_position)
+            if column not in changes:
+                continue
+            players_editor_df.iloc[row_position, players_editor_df.columns.get_loc(column)] = changes[column]
+            changed_row_positions.add(row_position)
 
         selected_manager = players_editor_df.iloc[row_position]["bought"]
         selected_manager = "" if pd.isna(selected_manager) else str(selected_manager).strip()
+
         mln_value = pd.to_numeric(players_editor_df.iloc[row_position]["mln"], errors="coerce")
         mln_value = 0 if pd.isna(mln_value) else int(mln_value)
 
-        if (
-            "bought" in changes
-            and selected_manager in fanta_managers
-            and selected_manager != previous_manager
-        ):
+        # New purchase
+        if "bought" in changes and selected_manager in fanta_managers and selected_manager != previous_manager:
             purchase_events.append((selected_manager, player_id, mln_value))
         elif "mln" in changes and selected_manager in fanta_managers:
             price_updates.append((selected_manager, player_id, mln_value))
 
-    if changed_row_positions:
-        update_player_boughts(
-            players_editor_df.iloc[sorted(changed_row_positions)],
-            fanta_manager_players_dict,
-            fanta_managers,
-        )
+    if not changed_row_positions:
+        return
 
-        for fanta_manager, player_id, mln_value in price_updates:
-            last_player_key = f"{page_name}_{fanta_manager}_last_spent_player_id_key"
-            if str(st.session_state.get(last_player_key, "")) == player_id:
-                st.session_state[f"{page_name}_{fanta_manager}_last_spent_amount_key"] = mln_value
+    update_player_boughts(
+        players_editor_df.iloc[sorted(changed_row_positions)],
+        fanta_manager_players_dict,
+        fanta_managers,
+    )
 
-        for fanta_manager, player_id, mln_value in purchase_events:
-            st.session_state[f"{page_name}_{fanta_manager}_last_spent_amount_key"] = mln_value
-            st.session_state[f"{page_name}_{fanta_manager}_last_spent_player_id_key"] = player_id
-            st.session_state[f"{page_name}_{fanta_manager}_purchase_delta_highlight_key"] = True
+    # Update the price if the player is equal to the last transaction player
+    for fanta_manager, player_id, mln_value in price_updates:
+        last_transaction_amount_key = f"{page_name}_{fanta_manager}_last_transaction_amount_key"
+        last_transaction_player_id_key = f"{page_name}_{fanta_manager}_last_transaction_player_id_key"
+
+        last_transaction_amount = st.session_state.get(last_transaction_amount_key, 0)
+
+        # Purchase done
+        if str(st.session_state.get(last_transaction_player_id_key, "")) == player_id and last_transaction_amount < 0:
+            st.session_state[last_transaction_amount_key] = -abs(mln_value)
+
+    # Update new purchases
+    for fanta_manager, player_id, mln_value in purchase_events:
+        last_transaction_amount_key = f"{page_name}_{fanta_manager}_last_transaction_amount_key"
+        last_transaction_player_id_key = f"{page_name}_{fanta_manager}_last_transaction_player_id_key"
+
+        st.session_state[last_transaction_amount_key] = -abs(mln_value)
+        st.session_state[last_transaction_player_id_key] = player_id
+    return
 
 
 def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_players_dict: dict, player_preferences: dict | None = None,):
@@ -688,17 +714,12 @@ def remove_bought_player(player: dict) -> None:
         )
 
         fanta_manager = str(player.get("manager", ""))
-        last_player_key = f"{page_name}_{fanta_manager}_last_spent_player_id_key"
-        if str(st.session_state.get(last_player_key, "")) == str(player["id"]):
-            remaining_players = all_fanta_manager_players_dict.get(fanta_manager, pd.DataFrame())
-            if isinstance(remaining_players, pd.DataFrame) and not remaining_players.empty:
-                last_player = remaining_players.iloc[-1]
-                st.session_state[last_player_key] = str(last_player["id"])
-                st.session_state[f"{page_name}_{fanta_manager}_last_spent_amount_key"] = int(last_player["mln"])
-            else:
-                st.session_state[last_player_key] = ""
-                st.session_state[f"{page_name}_{fanta_manager}_last_spent_amount_key"] = 0
-            st.session_state[f"{page_name}_{fanta_manager}_purchase_delta_highlight_key"] = False
+
+        last_transaction_amount_key = f"{page_name}_{fanta_manager}_last_transaction_amount_key"
+        last_transaction_player_id_key = f"{page_name}_{fanta_manager}_last_transaction_player_id_key"
+
+        st.session_state[last_transaction_amount_key] = abs(int(player["mln"]))
+        st.session_state[last_transaction_player_id_key] = int(player["id"])
 
         for key in list(st.session_state):
             if str(key).startswith(f"{page_name}_purchase_editor_"):
@@ -742,27 +763,37 @@ def create_vertical_teams(fanta_manager_players_dict: dict, n_cols: int):
         available_budget = starting_budget - tot_spent
         role_budget_limits_dict = get_role_budget_limits()
         role_number_limits_dict = get_role_limits()
-        last_spent_amount_key = f"{page_name}_{fanta_manager}_last_spent_amount_key"
-        last_spent_player_key = f"{page_name}_{fanta_manager}_last_spent_player_id_key"
-        purchase_delta_highlight_key = f"{page_name}_{fanta_manager}_purchase_delta_highlight_key"
-
-        if last_spent_player_key not in st.session_state:
+        last_transaction_amount_key = f"{page_name}_{fanta_manager}_last_transaction_amount_key"
+        last_transaction_player_id_key = f"{page_name}_{fanta_manager}_last_transaction_player_id_key"
+        
+        # Initialize variables for the available budget metric
+        if last_transaction_amount_key not in st.session_state:
             if not bought_players.empty and "id" in bought_players.columns:
                 last_bought_player = bought_players.iloc[-1]
-                st.session_state[last_spent_player_key] = str(last_bought_player["id"])
-                st.session_state[last_spent_amount_key] = int(last_bought_player["mln"])
+                st.session_state[last_transaction_player_id_key] = str(last_bought_player["id"])
+                st.session_state[last_transaction_amount_key] = -int(last_bought_player["mln"])
             else:
-                st.session_state[last_spent_player_key] = ""
-                st.session_state[last_spent_amount_key] = 0
+                st.session_state[last_transaction_player_id_key] = ""
+                st.session_state[last_transaction_amount_key] = 0
         else:
-            st.session_state.setdefault(last_spent_amount_key, 0)
-        st.session_state.setdefault(purchase_delta_highlight_key, False)
-
-        last_spent_amount = st.session_state[last_spent_amount_key]
-        highlight_purchase_delta = (
-            st.session_state[purchase_delta_highlight_key]
-            and last_spent_amount > 0
-        )
+            st.session_state.setdefault(last_transaction_amount_key, 0)
+        
+        # Prepare variables for the available budget metric
+        budget_value_color = "green" if available_budget >= 0 else "red"
+        budget_value = f"+{available_budget}" if available_budget >= 0 else f"-{available_budget}"
+        last_transaction_amount = st.session_state[last_transaction_amount_key]
+        if last_transaction_amount > 0:
+            budget_delta = f"+{last_transaction_amount} mln"
+            budget_delta_color = "green"
+            budget_delta_arrow = "up"
+        elif last_transaction_amount < 0:
+            budget_delta = f"{last_transaction_amount} mln"
+            budget_delta_color = "red"
+            budget_delta_arrow = "down"
+        else:
+            budget_delta = "0 mln"
+            budget_delta_color = "gray"
+            budget_delta_arrow = "off"
 
         # Compute the dictionary with the total mln spent per role
         tot_spent_per_role = {}
@@ -786,10 +817,10 @@ def create_vertical_teams(fanta_manager_players_dict: dict, n_cols: int):
                 with col2:
                     st.metric(
                         label="**Budget**",
-                        value=f":green[+{available_budget} $]",
-                        delta=f"-{last_spent_amount} mln" if last_spent_amount > 0 else "0 mln",
-                        delta_color="red" if highlight_purchase_delta else "gray",
-                        delta_arrow="down" if last_spent_amount > 0 else "off",
+                        value=f":{budget_value_color}[{budget_value} $]",
+                        delta=budget_delta,
+                        delta_color=budget_delta_color,
+                        delta_arrow=budget_delta_arrow,
                         width="content",
                         height="content",
                         icon="💰"
@@ -841,16 +872,13 @@ def create_vertical_teams(fanta_manager_players_dict: dict, n_cols: int):
   
 
                         for j, (_, player) in enumerate(players_of_role.iterrows()):
+                            error_color = "red" if j+1 > role_number_limits_dict[role] else "white"
 
                             sub_col1, sub_col2, sub_col3, sub_col4 = st.columns([1,5,2,2], vertical_alignment="center")
                             with sub_col1:
                                 st.markdown(f"{get_circular_role_icon(role, font_size=13, height=21, width=21)}", unsafe_allow_html=True)
                             with sub_col2:
-                                error_color = "red" if j+1 > role_number_limits_dict[role] else "white"
-                                st.markdown(
-                                    f':color[**{player["player"]}**]'
-                                    f'{{foreground="{error_color}"}}'
-                                )
+                                st.markdown(f':color[**{player["player"]}**]{{foreground="{error_color}"}}')
                             with sub_col3:
                                 st.caption(f"{player['mln']}", text_alignment="right")
                             with sub_col4:
@@ -923,27 +951,37 @@ def create_horizontal_teams(fanta_manager_players_dict: dict):
         available_budget = starting_budget - tot_spent
         role_budget_limits_dict = get_role_budget_limits()
         role_number_limits_dict = get_role_limits()
-        last_spent_amount_key = f"{page_name}_{fanta_manager}_last_spent_amount_key"
-        last_spent_player_key = f"{page_name}_{fanta_manager}_last_spent_player_id_key"
-        purchase_delta_highlight_key = f"{page_name}_{fanta_manager}_purchase_delta_highlight_key"
-
-        if last_spent_player_key not in st.session_state:
+        last_transaction_amount_key = f"{page_name}_{fanta_manager}_last_transaction_amount_key"
+        last_transaction_player_id_key = f"{page_name}_{fanta_manager}_last_transaction_player_id_key"
+        
+        # Initialize variables for the available budget metric
+        if last_transaction_amount_key not in st.session_state:
             if not bought_players.empty and "id" in bought_players.columns:
                 last_bought_player = bought_players.iloc[-1]
-                st.session_state[last_spent_player_key] = str(last_bought_player["id"])
-                st.session_state[last_spent_amount_key] = int(last_bought_player["mln"])
+                st.session_state[last_transaction_player_id_key] = str(last_bought_player["id"])
+                st.session_state[last_transaction_amount_key] = -int(last_bought_player["mln"])
             else:
-                st.session_state[last_spent_player_key] = ""
-                st.session_state[last_spent_amount_key] = 0
+                st.session_state[last_transaction_player_id_key] = ""
+                st.session_state[last_transaction_amount_key] = 0
         else:
-            st.session_state.setdefault(last_spent_amount_key, 0)
-
-        st.session_state.setdefault(purchase_delta_highlight_key, False)
-        last_spent_amount = st.session_state[last_spent_amount_key]
-        highlight_purchase_delta = (
-            st.session_state[purchase_delta_highlight_key]
-            and last_spent_amount > 0
-        )
+            st.session_state.setdefault(last_transaction_amount_key, 0)
+        
+        # Prepare variables for the available budget metric
+        budget_value_color = "green" if available_budget >= 0 else "red"
+        budget_value = f"+{available_budget}" if available_budget >= 0 else f"-{available_budget}"
+        last_transaction_amount = st.session_state[last_transaction_amount_key]
+        if last_transaction_amount > 0:
+            budget_delta = f"+{last_transaction_amount} mln"
+            budget_delta_color = "green"
+            budget_delta_arrow = "up"
+        elif last_transaction_amount < 0:
+            budget_delta = f"{last_transaction_amount} mln"
+            budget_delta_color = "red"
+            budget_delta_arrow = "down"
+        else:
+            budget_delta = "0 mln"
+            budget_delta_color = "gray"
+            budget_delta_arrow = "off"
 
         # Compute the dictionary with the total mln spent per role
         tot_spent_per_role = {}
@@ -954,7 +992,7 @@ def create_horizontal_teams(fanta_manager_players_dict: dict):
 
         st.markdown(f"## :blue[{fanta_manager}]", text_alignment="left")
 
-        with st.container(border=True, height="stretch", width="stretch"):
+        with st.container(height="stretch", width="stretch"):
 
             col_fanta_manager, col_players = st.columns([1,7])
             with col_fanta_manager:
@@ -969,10 +1007,10 @@ def create_horizontal_teams(fanta_manager_players_dict: dict):
                     with st.container(border=True):
                         st.metric(
                             label="**Budget**",
-                            value=f":green[+{available_budget} $]",
-                            delta=f"-{last_spent_amount} mln" if last_spent_amount > 0 else "0 mln",
-                            delta_color="red" if highlight_purchase_delta else "gray",
-                            delta_arrow="down" if last_spent_amount > 0 else "off",
+                            value=f":{budget_value_color}[{budget_value} $]",
+                            delta=budget_delta,
+                            delta_color=budget_delta_color,
+                            delta_arrow=budget_delta_arrow,
                             width="stretch",
                             height="stretch",
                             icon="💰"
