@@ -176,6 +176,9 @@ def get_circular_role_icon(role: str, font_size=14, height=24, width=24, y_trans
     ">{role}</span>
     """
 
+def get_background_img_path(page: str):
+    return f"img/background/{page}.jpeg"
+
 def get_teams_dict():
     return {
         'Atalanta':   {'rate': 75, 'goals_done': 55, 'goals_against': 39, 'n_matches': 41, 'goals_done_per90': 1.34, 'goals_against_per90': 0.95},

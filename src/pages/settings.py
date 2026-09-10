@@ -1,10 +1,13 @@
 import streamlit as st
 import pandas as pd
 from lib.utils import (
-    get_circular_role_icon
+    get_circular_role_icon,
+    get_background_img_path
 )
 from lib.streamlit_api import (
     bottom_caption,
+    set_page_background,
+    set_dark_background,
     get_user_view_of_column,
     get_fanta_manager_players_dict,
     get_roles_dict,
@@ -23,6 +26,10 @@ st.set_page_config(
 )
 
 page_name = "settings"
+
+img_path = get_background_img_path(page_name)
+set_page_background(img_path)
+set_dark_background()
 
 
 st.title("⚙️ Settings")

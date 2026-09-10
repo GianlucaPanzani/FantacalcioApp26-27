@@ -8,11 +8,14 @@ from lib.utils import (
     set_format_interest,
     get_current_year,
     get_circular_role_icon,
-    get_color_per_role
+    get_color_per_role,
+    get_background_img_path
 )
 from lib.streamlit_api import (
     thick_divider,
     bottom_caption,
+    set_page_background,
+    set_dark_background,
     highlight_bought_rows,
     sync_filter,
     load_dataset,
@@ -39,6 +42,10 @@ st.set_page_config(
 )
 
 page_name = "fantacalcio"
+
+img_path = get_background_img_path(page_name)
+set_page_background(img_path)
+set_dark_background()
 
 columns_to_filter_list = [
     "player",
@@ -204,7 +211,7 @@ def general_filters():
     # Set the number of columns of the view of the teams made by the fanta managers
     fantacalcio_keys_set.add(fanta_manager_split_value_key)
     st.session_state.setdefault(fanta_manager_split_value_key, False)
-    st.number_input(
+    n_cols_selected = st.number_input(
         label=f"Set the number of columns used for the teams:",
         min_value=1,
         max_value=5,
@@ -230,6 +237,7 @@ def general_filters():
         key=enable_bought_players_stats_key,
         persist_state="session",
         wrap=True,
+        disabled=True if n_cols_selected == 1 else False
     )
 
     return
@@ -258,6 +266,7 @@ def checkbox_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
         key=show_ai_explainations_key,
         persist_state="session",
         wrap=True,
+        disabled=False if st.session_state[show_ai_predictions_key] else True
     )
 
     # Checkbox to show the AI plots
@@ -269,6 +278,7 @@ def checkbox_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
         key=show_ai_plots_key,
         persist_state="session",
         wrap=True,
+        disabled=False if st.session_state[show_ai_predictions_key] else True
     )
 
     # Order the player field per role
@@ -804,17 +814,20 @@ def create_vertical_teams(fanta_manager_players_dict: dict, n_cols: int):
 
         with col:
 
-            st.markdown(f"### :blue[{fanta_manager}]", text_alignment="left")
+            st.markdown(
+                f'### :color[{fanta_manager}]{{foreground="rgba(255,255,255,1)"}}',
+                text_alignment="left",
+            )
 
             set_text_size(text_size=1.1, class_name="shrinked-team")
-            with st.container(key=f"{fanta_manager}-shrinked-team", border=True, height="stretch", width="stretch"):
+            with st.container(key=f"dark-card-{fanta_manager}-shrinked-team_vertical_teams", border=True, height="stretch", width="stretch"):
                     
                 col1, col2 = st.columns([9,10])
                 with col1:
                     try:
-                        st.image(f"img/codex_gen/{fanta_manager.lower()}.png", output_format="PNG")
+                        st.image(f"img/managers/{fanta_manager.lower()}.png", output_format="PNG")
                     except:
-                        st.image("img/codex_gen/unknown.png", output_format="PNG")
+                        st.image("img/managers/unknown.png", output_format="PNG")
                 with col2:
                     st.metric(
                         label="**Budget**",
@@ -990,10 +1003,12 @@ def create_horizontal_teams(fanta_manager_players_dict: dict):
             bought_players_role = bought_players.loc[bought_players["role"] == role]
             tot_spent_per_role[role] = bought_players_role['mln'].sum()
         
+        st.markdown(
+            f'## :color[{fanta_manager}]{{foreground="rgba(255,255,255,1)"}}',
+            text_alignment="left",
+        )
 
-        st.markdown(f"## :blue[{fanta_manager}]", text_alignment="left")
-
-        with st.container(height="stretch", width="stretch"):
+        with st.container(key=f"dark-card-{fanta_manager}_vertical_teams", height="stretch", width="stretch"):
 
             col_fanta_manager, col_players = st.columns([1,7])
             with col_fanta_manager:
@@ -1001,9 +1016,9 @@ def create_horizontal_teams(fanta_manager_players_dict: dict):
                 set_text_size(text_size=1.1, class_name="shrinked-team")
                 with st.container(key=f"{fanta_manager}-shrinked-team", height="stretch", width="stretch"):
                     try:
-                        st.image(f"img/codex_gen/{fanta_manager.lower()}.png", output_format="PNG")
+                        st.image(f"img/managers/{fanta_manager.lower()}.png", output_format="PNG")
                     except:
-                        st.image("img/codex_gen/unknown.png", output_format="PNG")
+                        st.image("img/managers/unknown.png", output_format="PNG")
 
                     with st.container(border=True):
                         st.metric(
@@ -1166,11 +1181,15 @@ fanta_players = load_dataset("data/filtered_history_players.csv", filter_by_curr
 
 # Filters
 with st.sidebar:
+
     st.markdown("### General settings")
     general_filters()
+    st.divider()
+
     st.markdown("### AI settings")
     filtered_players = checkbox_filters(fanta_players)
     st.divider()
+
     st.markdown("### Reset teams")
     reset_teams_filters(fanta_managers)
 
@@ -1197,7 +1216,7 @@ else:
         create_editor_dataframe(filtered_players, fanta_manager_players_dict, player_preferences)
     with col2:
         if st.session_state[enable_player_preferences_key]:
-            with st.container(border=True, width="content"):
+            with st.container(border=True, width="content", key=f"dark-card-interest_container_key"):
                 st.markdown("**Symbols meanings**:")
                 for key, value in interest_markers.items():
                     st.markdown(f"{value} :small[{key}]")

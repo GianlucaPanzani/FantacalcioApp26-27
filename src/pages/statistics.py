@@ -4,10 +4,13 @@ import pandas as pd
 from lib.utils import (
     get_default_value,
     highlight_player_role,
+    get_background_img_path
 )
 from lib.streamlit_api import (
     thick_divider,
     bottom_caption,
+    set_dark_background,
+    set_page_background,
     sync_filter,
     apply_filters,
     get_user_view_of_column,
@@ -32,6 +35,10 @@ st.set_page_config(
 )
 
 page_name = "statistics"
+
+img_path = get_background_img_path(page_name)
+set_page_background(img_path)
+set_dark_background()
 
 columns_to_filter_list = [
     "fanta_role",

@@ -8,10 +8,13 @@ from lib.utils import (
     get_teams_dict,
     get_circular_role_icon,
     get_color_per_role,
+    get_background_img_path,
     interest_markers
 )
 from lib.streamlit_api import (
     bottom_caption,
+    set_page_background,
+    set_dark_background,
     sync_filter,
     apply_filters,
     get_roles_dict,
@@ -33,6 +36,10 @@ st.set_page_config(
 )
 
 page_name = "selection"
+
+img_path = get_background_img_path(page_name)
+set_page_background(img_path)
+set_dark_background()
 
 columns_to_filter_list = [
     "R",
