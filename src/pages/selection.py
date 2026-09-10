@@ -1116,7 +1116,8 @@ st.caption(
     "Build and manage your personal shortlist by selecting players, comparing the configured statistics, "
     "setting expected prices and interest levels, and adding notes for the auction."
 )
-st.divider()
+
+st.space(30)
 
 # Create filters on the sidebar
 filtered_players = players_filters(fanta_players, columns_to_filter_list)
@@ -1155,7 +1156,7 @@ visible_selection_columns = [
 # Create the full table
 create_player_selection_table(filtered_players_with_statistics, visible_selection_columns)
 
-st.divider()
+st.space(30)
 
 # Create the selection table
 for fanta_role, role_name in get_roles_dict().items():
