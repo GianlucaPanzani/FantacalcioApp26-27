@@ -68,6 +68,7 @@ def load_models(target_features: list) -> dict:
 
 
 def bottom_caption():
+    st.space(100)
     with st.bottom:
         st.caption("© 2026 GP · All rights reserved")
     return
@@ -173,7 +174,7 @@ def print_models_predictions(
         role_badge_color = get_color_per_role(role=fanta_role, color_version=False)
 
         with col1:
-            with st.container(border=True, horizontal_alignment="center", width="stretch"):
+            with st.container(border=True, horizontal_alignment="center", width="stretch", key=f"dark-card-{player_name}_col1"):
                 st.markdown(
                     f"### :material/person: {player_name}",
                     text_alignment="center",
@@ -185,12 +186,16 @@ def print_models_predictions(
 
         with col2:
 
-            with st.container(border=True, width="stretch"):
+            with st.container(border=True, width="stretch", key=f"dark-card-{player_name}_col2"):
+                n_iters = len(features_to_predict_per_role_dict[fanta_role])
+
                 if explainability_enabled or plots_enebled:
-                    cols = st.columns([9,1,9])
+                    cols = st.columns([9,1,9,1,9])
+                elif n_iters <= 5:
+                    cols = st.columns([9,1] * (n_iters-1) + [9])
                 else:
                     cols = st.columns([9,1,9,1,9,1,9])
-                
+                    
                 n_cols = len(cols) + 1
 
                 # Predict the minutes (used to do some calculus)
@@ -207,7 +212,6 @@ def print_models_predictions(
                 )
                 predicted_minutes = max(0, min(predicted_minutes, 38 * 90))
 
-                n_iters = len(features_to_predict_per_role_dict[fanta_role])
                 for i, feature in enumerate(features_to_predict_per_role_dict[fanta_role]):
                     model_package = models_packages_dict[feature]
 
@@ -241,7 +245,7 @@ def print_models_predictions(
                             pred_value=prediction,
                             pred_minutes=predicted_minutes
                         )
-                        with st.container(horizontal_alignment="center", border=True if plots_enebled else False):
+                        with st.container(horizontal_alignment="center", border=True if plots_enebled or explainability_enabled else False):
                             st.metric(
                                 label=f"**:blue[_{transformed_feature}_]**",
                                 value=f":blue[{tranformed_value:.2f}]",
@@ -278,10 +282,10 @@ def print_models_predictions(
                             else:
                                 st.markdown(explaination_response)
                     
-                        if (explainability_enabled or plots_enebled) and i < n_iters-1 and i*2 % (n_cols/2) == 0:
-                            st.divider()
-                        elif i > 0 and i < n_iters-1 and i*2 % (n_cols/2) == 0:
-                            st.divider()
+                        #if (explainability_enabled or plots_enebled) and i < n_iters-1 and i*2 % (n_cols/2) == 0:
+                        #    st.divider()
+                        #elif i > 0 and i < n_iters-1 and i*2 % (n_cols/2) == 0:
+                        #    st.divider()
 
     return
 
@@ -942,7 +946,7 @@ def plot_player_history(
     player_teams = player_history["team"].dropna()
     latest_team = player_teams.iloc[-1] if not player_teams.empty else "Unknown team"
 
-    with st.container(border=True, key=f"dark-card-{player_name}"):
+    with st.container(border=True, key=f"dark-card-{player_name}{f'_{feature}' if feature is not None else ''}"):
         
         if not disable_player_name:
             with st.container(border=True):

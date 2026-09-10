@@ -80,28 +80,25 @@ bought_player_columns = ["id", "player", "team", "role", "mantra_role", "manager
 def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
     filtered_df = fanta_players.copy()
 
-    cols = st.columns([8,12,6,1,8,1,8])
-
     # Role filter
     role_filter_key = f"{page_name}_fanta_role_key"
     role_widget_key = f"{page_name}_fanta_role_widget_key"
     fantacalcio_keys_set.add(role_filter_key)
     st.session_state.setdefault(role_filter_key, None)
-    role_options = sorted(fanta_players["fanta_role"].dropna().astype(str).unique())
+    role_options = get_roles_dict().keys()
     st.session_state[role_widget_key] = (
         st.session_state[role_filter_key]
         if st.session_state[role_filter_key] in role_options
         else None
     )
-    with cols[0]:
-        selected_role = st.pills(
-            "Select fanta role",
-            options=role_options,
-            selection_mode="single",
-            key=role_widget_key,
-            on_change=sync_filter,
-            args=(role_filter_key, role_widget_key),
-        )
+    selected_role = st.pills(
+        "Select fanta role",
+        options=role_options,
+        selection_mode="single",
+        key=role_widget_key,
+        on_change=sync_filter,
+        args=(role_filter_key, role_widget_key),
+    )
     if selected_role:
         filtered_df = filtered_df[filtered_df["fanta_role"].eq(selected_role)]
 
@@ -116,15 +113,14 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
         if st.session_state[manager_filter_key] in manager_options
         else None
     )
-    with cols[1]:
-        selected_fanta_manager = st.pills(
-            "Select a Fanta Manager",
-            options=manager_options,
-            selection_mode="single",
-            key=manager_widget_key,
-            on_change=sync_filter,
-            args=(manager_filter_key, manager_widget_key),
-        )
+    selected_fanta_manager = st.pills(
+        "Select a Fanta Manager",
+        options=manager_options,
+        selection_mode="single",
+        key=manager_widget_key,
+        on_change=sync_filter,
+        args=(manager_filter_key, manager_widget_key),
+    )
 
     # Player filter
     player_filter_key = f"{page_name}_player_key"
@@ -134,16 +130,15 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
     selected_player = st.session_state[player_filter_key]
     player_options = sorted(fanta_players["player"].dropna().astype(str).unique())
     st.session_state[player_widget_key] = selected_player if selected_player in player_options else None
-    with cols[4]:
-        selected_player = st.selectbox(
-            "Search a player",
-            options=player_options,
-            index=None,
-            placeholder="Select a player...",
-            key=player_widget_key,
-            on_change=sync_filter,
-            args=(player_filter_key, player_widget_key),
-        )
+    selected_player = st.selectbox(
+        "Search a player",
+        options=player_options,
+        index=None,
+        placeholder="Select a player...",
+        key=player_widget_key,
+        on_change=sync_filter,
+        args=(player_filter_key, player_widget_key),
+    )
     if selected_player:
         filtered_df = filtered_df[filtered_df["player"].eq(selected_player)]
 
@@ -158,16 +153,15 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
         if st.session_state[team_filter_key] in team_options
         else None
     )
-    with cols[6]:
-        selected_team = st.selectbox(
-            "Select a team",
-            options=team_options,
-            index=None,
-            placeholder="Select a team...",
-            key=team_widget_key,
-            on_change=sync_filter,
-            args=(team_filter_key, team_widget_key),
-        )
+    selected_team = st.selectbox(
+        "Select a team",
+        options=team_options,
+        index=None,
+        placeholder="Select a team...",
+        key=team_widget_key,
+        on_change=sync_filter,
+        args=(team_filter_key, team_widget_key),
+    )
     if selected_team:
         filtered_df = filtered_df[filtered_df["team"].eq(selected_team)]
 
@@ -210,12 +204,11 @@ def general_filters():
 
     # Set the number of columns of the view of the teams made by the fanta managers
     fantacalcio_keys_set.add(fanta_manager_split_value_key)
-    st.session_state.setdefault(fanta_manager_split_value_key, False)
+    st.session_state.setdefault(fanta_manager_split_value_key, 5)
     n_cols_selected = st.number_input(
         label=f"Set the number of columns used for the teams:",
         min_value=1,
         max_value=5,
-        value=4,
         key=fanta_manager_split_value_key
     )
 
@@ -689,7 +682,7 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
         players_editor_df.style.apply(highlight_bought_rows, axis=1, fanta_managers=fanta_managers),
         hide_index=True,
         width="stretch",
-        height=380,
+        height="stretch",
         column_order=column_order,
         disabled=[column for column in players_editor_df.columns if column not in editable_columns],
         column_config=column_config,
@@ -755,7 +748,7 @@ def create_vertical_teams(fanta_manager_players_dict: dict, n_cols: int):
         "green": ("rgba(255,255,255,1)", "rgba(0,128,0,0.80)"),
         "blue": ("rgba(255,255,255,1)", "rgba(0,0,255,0.80)"),
         "red": ("rgba(255,255,255,1)", "rgba(255,0,0,0.80)"),
-        "violet": ("rgba(255,255,255,1)", "rgba(128,0,128,0.80)"),
+        "dark_green": ("rgba(255,255,255,1)", "rgba(45,90,65,1.0)"),
         "gray": ("rgba(255,255,255,1)", "rgba(128,128,128,0.80)"),
     }
 
@@ -815,7 +808,7 @@ def create_vertical_teams(fanta_manager_players_dict: dict, n_cols: int):
         with col:
 
             st.markdown(
-                f'### :color[{fanta_manager}]{{foreground="rgba(255,255,255,1)"}}',
+                f'### :color[{fanta_manager}]{{foreground="white"}}',
                 text_alignment="left",
             )
 
@@ -853,7 +846,7 @@ def create_vertical_teams(fanta_manager_players_dict: dict, n_cols: int):
 
                     badge_color = get_color_per_role(role, color_version=False)
                     bought_number_foreground, bought_number_background = colors[badge_color]
-                    budget_spent_foreground, budget_spent_background = colors["violet"]
+                    budget_spent_foreground, budget_spent_background = colors["dark_green"]
 
                     # Cases of warinings
                     if players_of_role.shape[0] > role_number_limits_dict[role]:
@@ -908,21 +901,16 @@ def create_vertical_teams(fanta_manager_players_dict: dict, n_cols: int):
                         
                         if not st.session_state[enable_bought_players_stats_key]:
                             if fanta_manager == my_fanta_manager:
-                                st.markdown(
-                                    f'###### :color[Spent: {tot_spent_per_role[role]}/{role_budget_limits_dict[role]} mln]'
-                                    f'{{foreground="{warning_budget_spent_foreground}" background="{warning_budget_spent_background}"}}',
-                                    width="stretch",
-                                    text_alignment="left",
-                                    anchors=False,
-                                )
+                                budget_per_role_str = f"/{role_budget_limits_dict[role]}"
                             else:
-                                st.markdown(
-                                    f'###### :color[Spent: {tot_spent_per_role[role]} mln]'
-                                    f'{{foreground="{budget_spent_foreground}" background="{budget_spent_background}"}}',
-                                    width="stretch",
-                                    text_alignment="left",
-                                    anchors=False,
-                                )
+                                budget_per_role_str = ""
+
+                            st.markdown(
+                                f'###### :color[Spent: {tot_spent_per_role[role]}{budget_per_role_str} mln]'
+                                f'{{foreground="{warning_budget_spent_foreground}" background="{warning_budget_spent_background}"}}',
+                                width="stretch",
+                                text_alignment="left",
+                            )
                     
                 if available_budget < 0:
                     st.error("Budget exceeded")
@@ -947,7 +935,7 @@ def create_horizontal_teams(fanta_manager_players_dict: dict):
         "green": ("rgba(255,255,255,1)", "rgba(0,128,0,0.80)"),
         "blue": ("rgba(255,255,255,1)", "rgba(0,0,255,0.80)"),
         "red": ("rgba(255,255,255,1)", "rgba(255,0,0,0.80)"),
-        "violet": ("rgba(255,255,255,1)", "rgba(128,0,128,0.80)"),
+        "dark_green": ("rgba(255,255,255,1)", "rgba(45,90,65,1.0)"),
         "gray": ("rgba(255,255,255,1)", "rgba(128,128,128,0.80)"),
     }
 
@@ -1039,7 +1027,7 @@ def create_horizontal_teams(fanta_manager_players_dict: dict):
 
                     badge_color = get_color_per_role(role, color_version=False)
                     bought_number_foreground, bought_number_background = colors[badge_color]
-                    budget_spent_foreground, budget_spent_background = colors["violet"]
+                    budget_spent_foreground, budget_spent_background = colors["dark_green"]
 
                     # Cases of warinings
                     if players_of_role.shape[0] > role_number_limits_dict[role]:
@@ -1102,15 +1090,13 @@ def create_horizontal_teams(fanta_manager_players_dict: dict):
                                     f'{{foreground="{warning_budget_spent_foreground}" background="{warning_budget_spent_background}"}}',
                                     width="stretch",
                                     text_alignment="center",
-                                    anchors=False,
                                 )
                             else:
                                 st.markdown(
                                     f'###### :color[Spent: {tot_spent_per_role[role]} mln]'
-                                    f'{{foreground="{budget_spent_foreground}" background="{budget_spent_background}"}}',
+                                    f'{{foreground="{warning_budget_spent_foreground}" background="{warning_budget_spent_background}"}}',
                                     width="stretch",
                                     text_alignment="center",
-                                    anchors=False,
                                 )
                         
                     if available_budget < 0:
@@ -1202,25 +1188,31 @@ st.caption(
     "At the end of the auction it will allows you to download the pdf with all the created teams."
 )
 
-st.divider()
-
-# Filters
-filtered_players = player_filters(filtered_players)
+st.space(15)
 
 # Create editable df
 if not st.session_state[enable_player_preferences_key]:
-    create_editor_dataframe(filtered_players, fanta_manager_players_dict, player_preferences)
-else:
-    col1, _, col2 = st.columns([52,1,7])
-    with col1:
+    cols = st.columns([7,1,52])
+    with cols[0]:
+        with st.container(border=True, key=f"dark-card-{page_name}_plyer_filters_key"):
+            st.markdown("#### Filters")
+            filtered_players = player_filters(filtered_players)
+    with cols[2]:
         create_editor_dataframe(filtered_players, fanta_manager_players_dict, player_preferences)
-    with col2:
+else:
+    cols = st.columns([11,1,40,1,7])
+    with cols[0]:
+        with st.container(border=True, key=f"dark-card-{page_name}_plyer_filters_key"):
+            st.markdown("#### Filters")
+            filtered_players = player_filters(filtered_players)
+    with cols[2]:
+        create_editor_dataframe(filtered_players, fanta_manager_players_dict, player_preferences)
+    with cols[4]:
         if st.session_state[enable_player_preferences_key]:
-            with st.container(border=True, width="content", key=f"dark-card-interest_container_key"):
+            with st.container(border=True, height="stretch", width="content", key=f"dark-card-interest_container_key"):
                 st.markdown("**Symbols meanings**:")
                 for key, value in interest_markers.items():
                     st.markdown(f"{value} :small[{key}]")
-
 
 # Case of AI enabled
 if st.session_state[show_ai_predictions_key] and filtered_players.shape[0] == 1:
@@ -1242,8 +1234,6 @@ if st.session_state[show_ai_predictions_key] and filtered_players.shape[0] == 1:
         explainability_enabled=st.session_state[show_ai_explainations_key],
         plots_enebled=st.session_state[show_ai_plots_key],
     )
-
-st.divider()
 
 # Teams of the Fanta Managers
 split_value = st.session_state[fanta_manager_split_value_key]

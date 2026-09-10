@@ -1074,7 +1074,21 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
         st.session_state[mln_key] = 0 if pd.isna(mln_value) else int(mln_value)
         st.session_state[interest_key] = interest
         st.session_state[description_key] = description
+    return
 
+def set_visible_cols(df: pd.DataFrame, key: str, expander_key: str):
+    if st.session_state.get(expander_key, False):
+        st.session_state[key] = [
+            col
+            for col in base_visible_selection_columns
+            if col in df.columns
+            and not (
+                str(col).lower().startswith("pred_")
+                and df[col].isna().all()
+            )
+        ]
+    else:
+        st.session_state[key] = []
 
 # =============================================================================
 # =============================== SCRIPT ======================================
@@ -1145,30 +1159,26 @@ st.divider()
 
 # Create the selection table
 for fanta_role, role_name in get_roles_dict().items():
-
-    col1, col2= st.columns([1,29], vertical_alignment="center")
-    with col1:
-        st.markdown(f"{get_circular_role_icon(fanta_role, font_size=20, height=32, width=32, y_translation=5)}", unsafe_allow_html=True)
-    with col2:
-        st.markdown(f'### :color[{role_name.capitalize()}s selected]{{foreground="white"}}')
+    visible_cols_key = f"table_{fanta_role}_visible_cols_key"
+    expander_key = f"expander_table_{fanta_role}_key"
+    st.session_state.setdefault(visible_cols_key, [])
 
     tmp_df = fanta_players[fanta_players["R"] == fanta_role]
     if tmp_df.empty:
         st.info(f"Absent players with role {fanta_role}.")
         continue
-
-    # Select the visible columns
-    role_visible_selection_columns = [
-        col
-        for col in base_visible_selection_columns
-        if col in tmp_df.columns
-        and not (
-            str(col).lower().startswith("pred_")
-            and tmp_df[col].isna().all()
-        )
-    ]
-
-    create_selected_players_table_css(tmp_df, role_visible_selection_columns)
+    
+    col1, col2, col3 = st.columns([1,1,29], vertical_alignment="center")
+    with col1:
+        with st.expander("", type="compact", on_change=set_visible_cols, args=(tmp_df, visible_cols_key, expander_key), key=expander_key):
+            pass
+    with col2:
+        st.markdown(f"{get_circular_role_icon(fanta_role, font_size=20, height=32, width=32, y_translation=5)}", unsafe_allow_html=True)
+    with col3:
+        st.markdown(f'### :color[{role_name.capitalize()}s selected]{{foreground="white"}}')
+    
+    if visible_cols_key in st.session_state and st.session_state[visible_cols_key] != []:
+        create_selected_players_table_css(tmp_df, st.session_state[visible_cols_key])
 
 # Store the selected players in a csv file
 store_selected_players(fanta_players, st.session_state[selection_players_key])

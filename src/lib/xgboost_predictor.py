@@ -12,25 +12,21 @@ from sklearn.metrics import (
 
 features_to_predict_per_role_dict: dict = {
     "P": [
-        "minutes",
         "clean_sheets_per90",
         "goals_against_per90",
     ],
     "D": [
         "goals_per90",
         "assists_per90",
-        "minutes",
         "tackles_won_per90",
     ],
     "C": [
         "goals_per90",
         "assists_per90",
-        "minutes",
     ],
     "A": [
         "goals_per90",
         "assists_per90",
-        "minutes",
     ],
 }
 
@@ -47,7 +43,7 @@ features_to_predict_list = [
 features_per_season_per_match = {
     "assists_per90": " per season",
     "clean_sheets_per90": " per season",
-    "goals_against_per90": " per match",
+    "goals_against_per90": " per season",
     "goals_per90": " per season",
     "minutes": " per match",
     "tackles_won_per90": " per match",
@@ -277,8 +273,8 @@ def get_transformed_feature_and_value(feature: str, pred_value, pred_minutes=Non
 
     pred_value = float(pred_value)
     if feature.endswith("_per90"):
-        return transform_feature(feature) + features_per_season_per_match[feature], transform_value_per90(pred_value)
+        return str(transform_feature(feature) + features_per_season_per_match[feature]), transform_value_per90(pred_value)
     if feature == "minutes":
-        return feature.capitalize() + features_per_season_per_match["minutes"], round(pred_value/90, 2)
+        return str(feature.capitalize() + features_per_season_per_match["minutes"]), round(pred_value/90, 2)
     else:
         raise ValueError(f"The model is not able to predict the feature \"{feature}\".")
