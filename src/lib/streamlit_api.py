@@ -618,6 +618,30 @@ def create_player_history_chart(
         enable_collapse_values=False
     ):
     """Create a player history chart with season, team and value tooltips."""
+    data = data.copy()
+    tooltip = [
+        alt.Tooltip("season:N", title="Season"),
+        alt.Tooltip("team:N", title="Team"),
+        alt.Tooltip("value:Q", title=statistic_name),
+    ]
+    if enable_collapse_values and not data.empty:
+        data["value"] = pd.to_numeric(data["value"], errors="coerce")
+        data = data.dropna(subset=["value"])
+        data["team"] = data["team"].fillna("Unknown team")
+        data["team_value"] = data.apply(
+            lambda row: f"{row['team']}: {row['value']:.2f}",
+            axis=1,
+        )
+        data = data.groupby("season", sort=False, as_index=False).agg(
+            value=("value", "mean"),
+            team_values=("team_value", " | ".join),
+        )
+        tooltip = [
+            alt.Tooltip("season:N", title="Season"),
+            alt.Tooltip("value:Q", title=f"Average {statistic_name}", format=".2f"),
+            alt.Tooltip("team_values:N", title="Values by team"),
+        ]
+
     y_scale = alt.Scale(zero=False)
     if y_limits is not None:
         y_scale = alt.Scale(domain=list(y_limits), zero=False)
@@ -631,11 +655,7 @@ def create_player_history_chart(
     chart = alt.Chart(data).mark_line(point=True).encode(
         x=alt.X("season:N", title="Season", sort=season_order),
         y=alt.Y("value:Q", title=statistic_name, scale=y_scale),
-        tooltip=[
-            alt.Tooltip("season:N", title="Season"),
-            alt.Tooltip("team:N", title="Team"),
-            alt.Tooltip("value:Q", title=statistic_name),
-        ],
+        tooltip=tooltip,
     )
 
     chart_layers = [chart]

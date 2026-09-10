@@ -362,7 +362,7 @@ def get_selection_column_config(columns: list[str], players: pd.DataFrame) -> di
     return column_config
 
 
-def create_player_selection_table2(players: pd.DataFrame, visible_columns: list[str]) -> None:
+def create_player_selection_table(players: pd.DataFrame, visible_columns: list[str]) -> None:
     """Display filtered players with persistent checkboxes and AI icons."""
     
     players_editor_df = players.set_index("Id")[visible_columns].copy()
@@ -426,7 +426,7 @@ def create_player_selection_table2(players: pd.DataFrame, visible_columns: list[
         st.session_state[get_stats_player_key("selected", player_id)] = bool(selection["value"])
 
     component_renderer = getattr(
-        create_player_selection_table2,
+        create_player_selection_table,
         "_component_renderer",
         None,
     )
@@ -585,7 +585,7 @@ def create_player_selection_table2(players: pd.DataFrame, visible_columns: list[
             }
             """,
         )
-        create_player_selection_table2._component_renderer = component_renderer
+        create_player_selection_table._component_renderer = component_renderer
 
     component_renderer(
         key=component_key,
@@ -597,49 +597,6 @@ def create_player_selection_table2(players: pd.DataFrame, visible_columns: list[
         width="stretch",
         height=450,
         on_selected_change=update_player_selection,
-    )
-
-
-def create_player_selection_table(players: pd.DataFrame, visible_columns: list[str]) -> None:
-    """Display the filtered Fantacalcio players with persistent checkboxes."""
-    players_editor_df = players.set_index("Id")[visible_columns].copy()
-
-    selected_values = []
-    for player_id in players_editor_df.index:
-        selected_key = get_stats_player_key("selected", player_id)
-        st.session_state.setdefault(selected_key, False)
-        selected_values.append(bool(st.session_state[selected_key]))
-
-    players_editor_df.insert(
-        0,
-        "selected",
-        pd.Series(
-            selected_values,
-            index=players_editor_df.index,
-            dtype=bool,
-        ),
-    )
-
-    column_order = ["selected"] + visible_columns
-    column_config = get_selection_column_config(column_order, players_editor_df)
-    editor_data = players_editor_df.style.apply(
-        highlight_player_role,
-        axis=1,
-        subset=visible_columns,
-    )
-
-    editor_key = f"{page_name}_players_selection_editor_key"
-    st.data_editor(
-        editor_data,
-        hide_index=True,
-        width="stretch",
-        height=450,
-        column_order=column_order,
-        disabled=visible_columns,
-        column_config=column_config,
-        key=editor_key,
-        on_change=update_player_selections,
-        args=(tuple(players_editor_df.index), editor_key),
     )
 
 
@@ -1181,22 +1138,18 @@ visible_selection_columns = [
 ]
 
 # Create the full table
-create_player_selection_table2(filtered_players_with_statistics, visible_selection_columns)
+create_player_selection_table(filtered_players_with_statistics, visible_selection_columns)
 
 st.divider()
 
 # Create the selection table
 for fanta_role, role_name in get_roles_dict().items():
 
-    color_role = get_color_per_role(fanta_role, rgba=True)
     col1, col2= st.columns([1,29], vertical_alignment="center")
     with col1:
         st.markdown(f"{get_circular_role_icon(fanta_role, font_size=20, height=32, width=32, y_translation=5)}", unsafe_allow_html=True)
     with col2:
-        st.markdown(
-            f'### :color[{role_name.capitalize()}s selected]'
-            f'{{foreground="{color_role}"}}',
-        )
+        st.markdown(f'### :color[{role_name.capitalize()}s selected]{{foreground="white"}}')
 
     tmp_df = fanta_players[fanta_players["R"] == fanta_role]
     if tmp_df.empty:
