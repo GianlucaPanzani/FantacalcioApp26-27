@@ -1183,9 +1183,8 @@ with st.sidebar:
 year = get_current_year()
 st.title(f"⚽ Fantacalcio {year}-{year+1}")
 st.caption(
-    "Filter players, display your saved preferences and assign purchases and prices. "
-    "The page automatically tracks the remaining budget, purchased players and role limits."
-    "At the end of the auction it will allows you to download the pdf with all the created teams."
+    "Run the auction by filtering players, reviewing saved preferences and AI predictions, assigning purchases "
+    "and prices, monitoring budgets and role limits, and exporting the completed teams to PDF."
 )
 
 st.space(15)

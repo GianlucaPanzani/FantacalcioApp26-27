@@ -364,8 +364,17 @@ def get_selection_column_config(columns: list[str], players: pd.DataFrame) -> di
 
 def create_player_selection_table(players: pd.DataFrame, visible_columns: list[str]) -> None:
     """Display filtered players with persistent checkboxes and AI icons."""
-    
-    players_editor_df = players.set_index("Id")[visible_columns].copy()
+    role_order = {role: index for index, role in enumerate(get_roles_dict().keys())}
+    players_editor_df = players.sort_values(
+        ["R", "Nome"],
+        key=lambda values: (
+            values.map(role_order)
+            if values.name == "R"
+            else values.astype("string").str.casefold()
+        ),
+        kind="stable",
+        na_position="last",
+    ).set_index("Id")[visible_columns].copy()
 
     rows = []
     for player_id, player_row in players_editor_df.iterrows():
@@ -612,7 +621,17 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
         return
 
     fanta_role = players["R"].iloc[0]
-    selected_players_df = players[players["Id"].isin(selected_player_ids)]
+    role_order = {role: index for index, role in enumerate(get_roles_dict().keys())}
+    selected_players_df = players[players["Id"].isin(selected_player_ids)].sort_values(
+        ["R", "Nome"],
+        key=lambda values: (
+            values.map(role_order)
+            if values.name == "R"
+            else values.astype("string").str.casefold()
+        ),
+        kind="stable",
+        na_position="last",
+    )
     selected_players_df = selected_players_df.set_index("Id")[visible_columns].copy()
 
     rows = []
@@ -1113,8 +1132,8 @@ if not st.session_state.get(selection_restored_key, False):
 
 st.title(f"{get_ai_icon()} Players Selection")
 st.caption(
-    "Build and manage your personal shortlist by selecting players, comparing the configured statistics, "
-    "setting expected prices and interest levels, and adding notes for the auction."
+    "Filter the player pool, build a shortlist by role, compare statistics and AI predictions, and record "
+    "expected prices, interest levels and auction notes."
 )
 
 st.space(30)

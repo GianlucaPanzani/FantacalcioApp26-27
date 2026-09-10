@@ -33,7 +33,7 @@ set_dark_background()
 
 
 st.title("⚙️ Settings")
-st.caption("Configure Fanta Managers, budgets, role limits and the statistics displayed throughout the application.")
+st.caption("Configure Fanta Managers, squad limits, total and role budgets, and the statistics displayed in player charts.")
 
 loaded_env_values = load_env(path=".env")
 settings_keys_set = {

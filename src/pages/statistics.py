@@ -296,9 +296,8 @@ with st.sidebar:
 
 st.title("📊 Statistics")
 st.caption(
-    "Use the sidebar filters to explore the data. Select one player to view their \
-    history or two to compare them, including the average values for their roles, \
-    that you can see in the graphics as an horizontal row."
+    "Filter historical data to inspect a player's season-by-season performance or compare two players "
+    "and their statistics against the respective role averages."
 )
 
 st.divider()
@@ -318,15 +317,16 @@ n_cols = st.session_state[number_of_players_key]
 cols = st.columns(n_cols)
 selected_players = []
 for i, col in enumerate(cols):
-    with col:
-        selected_player = st.selectbox(
-            f"Search player {i+1}",
-            options=sorted(filtered_players["player"].dropna().unique(), key=str),
-            index=None,
-            placeholder="Select a player...",
-            key=f"{page_name}_player_selected_{i+1}_key",
-        )
-        selected_players.append(selected_player)
+        with col:
+            with st.container(border=True, key=f"dark-card-{page_name}_columns_{i}"):
+                selected_player = st.selectbox(
+                    f"Search player {i+1}",
+                    options=sorted(filtered_players["player"].dropna().unique(), key=str),
+                    index=None,
+                    placeholder="Select a player...",
+                    key=f"{page_name}_player_selected_{i+1}_key",
+                )
+                selected_players.append(selected_player)
 
 # Use the union of the graphical columns configured for the selected roles
 columns_to_plot = []
