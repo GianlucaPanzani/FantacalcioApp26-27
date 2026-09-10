@@ -480,7 +480,7 @@ def create_player_selection_table(players: pd.DataFrame, visible_columns: list[s
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 6px;
+                gap: 5px;
             }
 
             .header-icon {
@@ -729,6 +729,7 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
             .table-wrapper {
                 width: 100%;
                 overflow-x: auto;
+                background-color: rgba(14, 17, 23, 0.90);
                 border: 1px solid var(--st-dataframe-border-color, var(--st-border-color));
                 border-radius: var(--st-base-radius);
             }
@@ -738,7 +739,7 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
                 min-width: 100%;
                 border-collapse: separate;
                 border-spacing: 0;
-                color: var(--st-text-color);
+                color: rgba(250, 250, 250, 1);
                 font-family: var(--st-font);
                 font-size: 0.875rem;
             }
@@ -755,7 +756,7 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
             }
 
             th {
-                background: var(--st-dataframe-header-background-color, var(--st-secondary-background-color));
+                background: rgba(14, 17, 23, 0.90);
                 font-weight: 600;
             }
 

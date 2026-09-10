@@ -67,7 +67,7 @@ history_players = load_dataset("data/filtered_history_players.csv")
 
 
 # Fanta Managers settings
-with st.container(border=True):
+with st.container(border=True, key=f"dark-card-{page_name}_fanta_managers_key"):
 
     cols = st.columns([8,1,8,1,8,1,8,1,8])
 
@@ -193,7 +193,7 @@ with st.container(border=True):
                 st.success("Fanta Manager removed")
 
 # Auction settings
-with st.container(border=True):
+with st.container(border=True, key=f"dark-card-{page_name}_auction_key"):
 
     cols = st.columns([8,1,8,1,8,1,8,1,8])
 
@@ -224,9 +224,15 @@ with st.container(border=True):
             )
 
 # Budget limits settings
-with st.container(border=True):
+with st.container(border=True, key=f"dark-card-{page_name}_budgets_key"):
+    budget_key = f"{page_name}_budget_key"
+    budget_widget_key = f"{page_name}_budget_widget_key"
+    budget_limits_sum_key = f"{page_name}_budget_limits_sum_key"
 
-    cols = st.columns([8,1,6,1,6,1,6,1,6,1,6])
+    st.session_state.setdefault(budget_key, 500)
+    st.session_state.setdefault(budget_limits_sum_key, 500)
+
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
 
     with cols[0]:
         col1, col2 = st.columns([1,8])
@@ -236,12 +242,10 @@ with st.container(border=True):
             st.markdown("#### **Budget limits per role**")
 
     with cols[2]:
-        budget_key = f"{page_name}_budget_key"
         st.session_state.setdefault(budget_key, 500)
         settings_keys_set.add(budget_key)
         
         # Restore data of the widget
-        budget_widget_key = f"{page_name}_budget_widget_key"
         st.session_state[budget_widget_key] = st.session_state[budget_key]
 
         budget = st.number_input(
@@ -253,10 +257,11 @@ with st.container(border=True):
             args=(budget_key, budget_widget_key)
         )
 
-    cols = st.columns([8,1,6,1,6,1,6,1,6,1,6], vertical_alignment="center")
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
 
     budget_limits = []
-    for i, (role, role_name), default_value in zip(range(2,9,2), get_roles_dict().items(), [50,100,200,150]):
+    availabel_budget_label = 0
+    for i, (role, role_name) in zip(range(2,9,2), get_roles_dict().items()):
         role_budget_limit_key = f"{page_name}_{role}_budget_limit_key"
         st.session_state.setdefault(role_budget_limit_key, default_value)
         settings_keys_set.add(role_budget_limit_key)
@@ -270,7 +275,7 @@ with st.container(border=True):
                 st.number_input(
                     f"Budget for {str(role_name).capitalize()}s",
                     min_value=0,
-                    max_value=500,
+                    max_value=1000,
                     step=5,
                     key=role_budget_limit_widget_key,
                     on_change=sync_filter,
@@ -278,37 +283,35 @@ with st.container(border=True):
                 )
             )
 
-    budget_limit_sum = sum(budget_limits)
-    tot_budget = int(st.session_state[f"{page_name}_budget_key"])
-    available_budget = tot_budget - budget_limit_sum
-    available_budget_color = "green" if available_budget > 0 else "red"
-    left_or_exceed = "left" if available_budget > 0 else "exceed"
-
-    with cols[10]:
-        if available_budget != 0:
-            available_budget_str = f"{available_budget}" if available_budget < 0 else f"+{available_budget}"
-            st.metric(
-                label=f"Available mln",
-                value=f":{available_budget_color}[{available_budget_str}] mln",
-                icon="💰",
-                border=True
-            )
-        else:
-            st.metric(
-                label=f"Available mln",
-                value=f":green[✓] 0 mln",
-                icon="💰",
-                border=True
-            )
+        st.session_state[budget_limits_sum_key] = sum(budget_limits)
+        availabel_budget_label += st.session_state[role_budget_limit_key]
+    
+    with cols[0]:
+        tot_budget = int(st.session_state[budget_key])
+        available_budget = tot_budget - st.session_state[budget_limits_sum_key]
+        available_budget_color = "green" if available_budget > 0 else "red"
+        left_or_exceed = "left" if available_budget > 0 else "exceed"
+        available_budget_str = f"{available_budget}" if available_budget < 0 else f"+{available_budget}"
+        
+        with st.container(border=True, height="stretch", width="stretch"):
+            
+            if available_budget != 0:
+                st.metric(
+                    label=f"Budget unbalanced: {tot_budget} - {availabel_budget_label} = ",
+                    value=f":{available_budget_color}[{available_budget_str}] mln",
+                    height="stretch",
+                    width="stretch",
+                )
+            else:
+                st.metric(
+                    label=f":green[✓] Budgets balanced",
+                    value=f"0 mln",
+                    height="stretch",
+                    width="stretch",
+                )
 
 # Graphics settings
-with st.container(border=True):
-    role_title_icons = {
-        "P": ":material/sports_handball:",
-        "D": ":material/shield:",
-        "C": ":material/sports_soccer:",
-        "A": ":material/adjust:",
-    }
+with st.container(border=True, key=f"dark-card-{page_name}_graphics_key"):
 
     cols = st.columns([8,1,8,1,8,1,8,1,8])
 
@@ -321,7 +324,10 @@ with st.container(border=True):
 
     for i, (role, role_name) in zip(range(2,9,2), get_roles_dict().items()):
         with cols[i]:
-            st.markdown(f"{role_title_icons[role]} **{str(role_name).capitalize()} statistics**")
+            st.markdown(
+                f"{get_circular_role_icon(role)} $\\quad$ **{str(role_name).capitalize()} statistics**",
+                unsafe_allow_html=True
+            )
 
             graphical_cols_key = f"{page_name}_{role}_graphical_cols_key"
             st.session_state.setdefault(graphical_cols_key, [])

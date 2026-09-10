@@ -635,12 +635,8 @@ def create_player_history_chart(
         data = data.groupby("season", sort=False, as_index=False).agg(
             value=("value", "mean"),
             team_values=("team_value", " | ".join),
+            team_count=("team", "nunique"),
         )
-        tooltip = [
-            alt.Tooltip("season:N", title="Season"),
-            alt.Tooltip("value:Q", title=f"Average {statistic_name}", format=".2f"),
-            alt.Tooltip("team_values:N", title="Values by team"),
-        ]
 
     y_scale = alt.Scale(zero=False)
     if y_limits is not None:
@@ -652,13 +648,35 @@ def create_player_history_chart(
             if season not in season_order:
                 season_order.append(season)
 
-    chart = alt.Chart(data).mark_line(point=True).encode(
+    chart = alt.Chart(data).mark_line(point=not enable_collapse_values).encode(
         x=alt.X("season:N", title="Season", sort=season_order),
         y=alt.Y("value:Q", title=statistic_name, scale=y_scale),
-        tooltip=tooltip,
     )
+    if not enable_collapse_values:
+        chart = chart.encode(tooltip=tooltip)
 
     chart_layers = [chart]
+
+    if enable_collapse_values and not data.empty:
+        single_team_points = alt.Chart(data[data["team_count"].eq(1)]).mark_point().encode(
+            x=alt.X("season:N", title="Season", sort=season_order),
+            y=alt.Y("value:Q", title=statistic_name, scale=y_scale),
+            tooltip=[
+                alt.Tooltip("season:N", title="Season"),
+                alt.Tooltip("value:Q", title=statistic_name, format=".2f"),
+                alt.Tooltip("team_values:N", title="Values by team"),
+            ],
+        )
+        multiple_team_points = alt.Chart(data[data["team_count"].gt(1)]).mark_point().encode(
+            x=alt.X("season:N", title="Season", sort=season_order),
+            y=alt.Y("value:Q", title=statistic_name, scale=y_scale),
+            tooltip=[
+                alt.Tooltip("season:N", title="Season"),
+                alt.Tooltip("value:Q", title=f"Average {statistic_name}", format=".2f"),
+                alt.Tooltip("team_values:N", title="Values by team"),
+            ],
+        )
+        chart_layers.extend([single_team_points, multiple_team_points])
 
     if mean_value is not None:
         mean_data = pd.DataFrame({"mean": [mean_value]})
