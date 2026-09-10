@@ -289,7 +289,6 @@ with st.container(border=True, key=f"dark-card-{page_name}_budgets_key"):
     with cols[0]:
         tot_budget = int(st.session_state[budget_key])
         available_budget = tot_budget - st.session_state[budget_limits_sum_key]
-        available_budget_color = "green" if available_budget > 0 else "red"
         left_or_exceed = "left" if available_budget > 0 else "exceed"
         available_budget_str = f"{available_budget}" if available_budget < 0 else f"+{available_budget}"
         
@@ -297,15 +296,15 @@ with st.container(border=True, key=f"dark-card-{page_name}_budgets_key"):
             
             if available_budget != 0:
                 st.metric(
-                    label=f"Budget unbalanced: {tot_budget} - {availabel_budget_label} = ",
-                    value=f":{available_budget_color}[{available_budget_str}] mln",
+                    label=f"**Budget unbalanced**: {tot_budget} - {availabel_budget_label}",
+                    value=f":red[{available_budget_str}] mln",
                     height="stretch",
                     width="stretch",
                 )
             else:
                 st.metric(
-                    label=f":green[✓] Budgets balanced",
-                    value=f"0 mln",
+                    label=f"**Budgets balanced**",
+                    value=f":green[0] mln",
                     height="stretch",
                     width="stretch",
                 )
