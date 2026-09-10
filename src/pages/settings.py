@@ -4,6 +4,7 @@ from lib.utils import (
     get_circular_role_icon
 )
 from lib.streamlit_api import (
+    bottom_caption,
     get_user_view_of_column,
     get_fanta_manager_players_dict,
     get_roles_dict,
@@ -391,3 +392,5 @@ store_env(
     data_dict={key: st.session_state[key] for key in settings_keys_list if key in st.session_state},
     path=".env"
 )
+
+bottom_caption()

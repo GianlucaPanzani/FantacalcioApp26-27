@@ -12,6 +12,7 @@ from lib.utils import (
 )
 from lib.streamlit_api import (
     thick_divider,
+    bottom_caption,
     highlight_bought_rows,
     sync_filter,
     load_dataset,
@@ -791,7 +792,7 @@ def create_vertical_teams(fanta_manager_players_dict: dict, n_cols: int):
             budget_delta_color = "red"
             budget_delta_arrow = "down"
         else:
-            budget_delta = "0 mln"
+            budget_delta = None
             budget_delta_color = "gray"
             budget_delta_arrow = "off"
 
@@ -1264,5 +1265,4 @@ if auction_completed:
         generate_pdf_with_bought_players()
 
 
-with st.bottom:
-    st.caption("© 2026 GP · All rights reserved")
+bottom_caption()

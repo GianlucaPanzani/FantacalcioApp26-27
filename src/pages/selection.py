@@ -11,6 +11,7 @@ from lib.utils import (
     interest_markers
 )
 from lib.streamlit_api import (
+    bottom_caption,
     sync_filter,
     apply_filters,
     get_roles_dict,
@@ -1220,3 +1221,5 @@ store_env(
     },
     path=".env",
 )
+
+bottom_caption()

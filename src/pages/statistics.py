@@ -7,6 +7,7 @@ from lib.utils import (
 )
 from lib.streamlit_api import (
     thick_divider,
+    bottom_caption,
     sync_filter,
     apply_filters,
     get_user_view_of_column,
@@ -371,3 +372,5 @@ store_env(
     data_dict={key: st.session_state[key] for key in statistics_keys_list if key in st.session_state},
     path=".env",
 )
+
+bottom_caption()

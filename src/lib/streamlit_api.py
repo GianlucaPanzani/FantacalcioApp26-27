@@ -65,6 +65,12 @@ def load_models(target_features: list) -> dict:
     return models_packages_dict
 
 
+def bottom_caption():
+    with st.bottom:
+        st.caption("© 2026 GP · All rights reserved")
+    return
+
+
 def apply_filters(df: pd.DataFrame, exclude=None, columns_to_filter_list=[], compare_op_for_columns_to_filter_dict={}, page="unknown_page") -> pd.DataFrame:
     """Apply session-state filters, excluding one filter when requested."""
     result = df.copy()
