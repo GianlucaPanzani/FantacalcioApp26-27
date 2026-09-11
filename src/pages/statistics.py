@@ -278,7 +278,7 @@ statistics_keys_set = {
     for key in loaded_env_values
     if key.startswith(f"{page_name}_")
 }
-history_players = load_dataset("data/csv/filtered_history_players.csv")
+history_players = load_dataset("data/csv/notebooks_generated/serie_a_players_history.csv")
 filtered_players = history_players.copy()
 model_packages_dict = load_models(target_features=features_to_predict_list)
 

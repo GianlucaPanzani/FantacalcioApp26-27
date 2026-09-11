@@ -1109,15 +1109,15 @@ def set_visible_cols(df: pd.DataFrame, key: str, expander_key: str):
 # =============================== SCRIPT ======================================
 # =============================================================================
 
-fanta_players = load_dataset("data/csv/predicted_fanta_players.csv")
-history_players = load_dataset("data/csv/filtered_history_players.csv")
+fanta_players = load_dataset("data/csv/ai_models_generated/predicted_fanta_players.csv")
+history_players = load_dataset("data/csv/notebooks_generated/serie_a_players_history.csv")
 loaded_env_values = load_env(path=".env")
 selection_keys_set = {key for key in loaded_env_values if key.startswith(f"{page_name}_")}
 models_packages_dict = load_models(target_features=features_to_predict_list)
 
 # Save the path to the csv file with selected players
 selection_players_key = f"{page_name}_selected_players_csv_path_key"
-st.session_state.setdefault(selection_players_key, "data/csv/selection_players.csv")
+st.session_state.setdefault(selection_players_key, "data/csv/pages/selection/selection_selected_players.csv")
 selection_keys_set.add(selection_players_key)
 
 # Load the selected players 

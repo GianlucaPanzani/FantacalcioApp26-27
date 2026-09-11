@@ -1117,7 +1117,7 @@ def create_horizontal_teams(fanta_manager_players_dict: dict):
 # Load stored persistent values before initializing Session State defaults
 loaded_env_values = load_env(path=".env")
 models_packages_dict = load_models(target_features=features_to_predict_list)
-feature_explanations = load_dataset("data/csv/features_explainability.csv")
+feature_explanations = load_dataset("data/csv/ai_models_generated/features_explainability.csv")
 
 # Set of keys whom value has to be stored (for next loaded)
 fantacalcio_keys_set = {
@@ -1160,15 +1160,15 @@ player_preferences = None
 if st.session_state[enable_player_preferences_key]:
     selection_players_path = st.session_state.get(
         "selection_selected_players_csv_path_key",
-        "data/csv/selection_players.csv",
+        "data/csv/pages/selection/selection_selected_players.csv",
     )
     player_preferences = load_player_preferences(selection_players_path)
 
 # History players
-history_players = load_dataset("data/csv/filtered_history_players.csv")
+history_players = load_dataset("data/csv/notebooks_generated/serie_a_players_history.csv")
 
 # Filters + players table
-fanta_players = load_dataset("data/csv/filtered_history_players.csv", filter_by_current_year=True)
+fanta_players = load_dataset("data/csv/notebooks_generated/serie_a_players_history.csv", filter_by_current_year=True)
 
 # Filters
 with st.sidebar:

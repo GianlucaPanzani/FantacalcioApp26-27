@@ -158,7 +158,7 @@ def print_models_predictions(
         explainability_enabled=True,
         plots_enebled=True
     ):
-    features_explainability = load_dataset("data/csv/features_explainability.csv")
+    features_explainability = load_dataset("data/csv/ai_models_generated/features_explainability.csv")
     role_column_means = compute_role_column_means(history_players)
 
     print_ai_icon_with_markdown_title(markdown_text=f"### AI predictions")
@@ -257,7 +257,7 @@ def print_models_predictions(
                         # Case of plot enabled
                         if plots_enebled:
                             plot_player_history(
-                                history_players=load_dataset("data/csv/filtered_history_players.csv"),
+                                history_players=load_dataset("data/csv/notebooks_generated/serie_a_players_history.csv"),
                                 player=player_name,
                                 feature=feature,
                                 seasons_to_plot=4,
@@ -1072,7 +1072,7 @@ def save_bought_players(default_file_name: str = "fantacalcio_teams.pdf", format
 
         with PdfPages(pdf_buffer) as pdf:
             for fanta_manager, bought_players in fanta_manager_players_dict.items():
-                players_df = bought_players.copy()
+                players_df: pd.DataFrame = bought_players.copy()
                 for column in must_have_columns:
                     if column not in players_df.columns:
                         players_df[column] = ""
@@ -1122,33 +1122,34 @@ def save_bought_players(default_file_name: str = "fantacalcio_teams.pdf", format
             ).strip()
 
             file_name = Path(file_name).name if file_name else default_file_name
-            if not file_name.lower().endswith(".pdf"):
-                file_name = f"{file_name}.pdf"
+            normalized_filename = "_".join(file_name.split('.')[0].split(" "))
 
-            st.checkbox(
-                f"Save also a {file_name}.csv version of the file",
-                value=True,
-                key="enabled_to_save_csv_key",
-                persist_state="session",
-                wrap=True,
-            )
-
-            def save_file(df: pd.DataFrame | None = None, file_name = ""):
-                if df is not None and file_name != "":
-                    df.to_csv(f"data/csv/{file_name}.csv")
+            def baloons(df: pd.DataFrame):
+                df.to_csv(f"../data/csv/pages/fantacalcio/{normalized_filename}.csv")
                 st.balloons()
                 st.session_state["show_auction_reset_confirmation_key"] = True
 
             st.download_button(
-                label="Save PDF",
+                label="Save as CSV",
+                data=players_df.to_csv(),
+                file_name=f"{normalized_filename}.csv",
+                mime="application/csv",
+                icon=":material/save:",
+                type="primary",
+                width="stretch",
+                on_click=baloons,
+                args=(players_df)
+            )
+
+            st.download_button(
+                label="Save as PDF",
                 data=pdf_data,
-                file_name=file_name,
+                file_name=f"{normalized_filename}.pdf",
                 mime="application/pdf",
                 icon=":material/save:",
                 type="primary",
                 width="stretch",
-                on_click=save_file,
-                args=(players_df, file_name)
+                on_click=baloons,
             )
 
         
