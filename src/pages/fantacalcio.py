@@ -31,7 +31,7 @@ from lib.streamlit_api import (
     store_env,
     restore_bought_players,
     has_full_team,
-    generate_pdf_with_bought_players
+    save_bought_players
 )
 
 
@@ -60,6 +60,7 @@ compare_op_for_columns_to_filter_dict = {
 }
 
 fanta_manager_split_value_key = f"{page_name}_fanta_managers_split_value"
+fanta_manager_split_value_widget_key = f"{page_name}_fanta_managers_split_value_widget"
 enable_bought_players_stats_key = f"{page_name}_bought_players_stats_key"
 enable_player_preferences_key = f"{page_name}_enable_player_preferences_key"
 reset_managers_widget_key = f"{page_name}_reset_managers_widget_key"
@@ -205,11 +206,15 @@ def general_filters():
     # Set the number of columns of the view of the teams made by the fanta managers
     fantacalcio_keys_set.add(fanta_manager_split_value_key)
     st.session_state.setdefault(fanta_manager_split_value_key, 5)
+    st.session_state[fanta_manager_split_value_widget_key] = st.session_state[fanta_manager_split_value_key]
     n_cols_selected = st.number_input(
         label=f"Set the number of columns used for the teams:",
         min_value=1,
         max_value=5,
-        key=fanta_manager_split_value_key
+        key=fanta_manager_split_value_widget_key,
+        on_change=sync_filter,
+        args=(fanta_manager_split_value_key, fanta_manager_split_value_widget_key),
+        persist_state="session",
     )
 
     # Checkbox to show the Manager's prefered players
@@ -1112,7 +1117,7 @@ def create_horizontal_teams(fanta_manager_players_dict: dict):
 # Load stored persistent values before initializing Session State defaults
 loaded_env_values = load_env(path=".env")
 models_packages_dict = load_models(target_features=features_to_predict_list)
-feature_explanations = load_dataset("data/features_explainability.csv")
+feature_explanations = load_dataset("data/csv/features_explainability.csv")
 
 # Set of keys whom value has to be stored (for next loaded)
 fantacalcio_keys_set = {
@@ -1155,15 +1160,15 @@ player_preferences = None
 if st.session_state[enable_player_preferences_key]:
     selection_players_path = st.session_state.get(
         "selection_selected_players_csv_path_key",
-        "data/selection_players.csv",
+        "data/csv/selection_players.csv",
     )
     player_preferences = load_player_preferences(selection_players_path)
 
 # History players
-history_players = load_dataset("data/filtered_history_players.csv")
+history_players = load_dataset("data/csv/filtered_history_players.csv")
 
 # Filters + players table
-fanta_players = load_dataset("data/filtered_history_players.csv", filter_by_current_year=True)
+fanta_players = load_dataset("data/csv/filtered_history_players.csv", filter_by_current_year=True)
 
 # Filters
 with st.sidebar:
@@ -1270,7 +1275,8 @@ for fanta_manager in fanta_manager_players_dict:
         auction_completed = False
 if auction_completed:
     with st.spinner("Building the teams file..."):
-        generate_pdf_with_bought_players()
+        st.divider()
+        save_bought_players()
 
 
 bottom_caption()

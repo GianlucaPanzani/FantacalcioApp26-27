@@ -83,53 +83,49 @@ interest_colors_dict = {
 
 def players_filters(players: pd.DataFrame, columns_to_filter_list: list[str]) -> pd.DataFrame:
     """Display independent Fantacalcio player filters in the sidebar."""
-    cols = st.columns([4,1,4,1,4,1,4,1,4])
 
     # Player selection
     player_filter_key = f"{page_name}_Nome_key"
     player_widget_key = f"{page_name}_Nome_widget_key"
     selection_keys_set.update({player_filter_key})
     player_options = sorted(players["Nome"].dropna().unique(), key=str)
-    with cols[6]:
-        st.selectbox(
-            "Search a player",
-            options=player_options,
-            index=None,
-            placeholder="Select a player...",
-            key=player_widget_key,
-            on_change=sync_player_filter,
-            args=(player_widget_key, player_filter_key)
-        )
+    st.selectbox(
+        "Search a player",
+        options=player_options,
+        index=None,
+        placeholder="Select a player...",
+        key=player_widget_key,
+        on_change=sync_player_filter,
+        args=(player_widget_key, player_filter_key)
+    )
 
     # Team selection
     team_filter_key = f"{page_name}_Squadra_key"
     team_widget_key = f"{page_name}_Squadra_widget_key"
     selection_keys_set.update({team_filter_key})
     team_options = sorted(players["Squadra"].dropna().unique(), key=str)
-    with cols[8]:
-        st.multiselect(
-            "Select teams",
-            options=team_options,
-            placeholder="Select one or more teams...",
-            key=team_widget_key,
-            on_change=sync_filter,
-            args=(team_filter_key, team_widget_key),
-        )
+    st.multiselect(
+        "Select teams",
+        options=team_options,
+        placeholder="Select one or more teams...",
+        key=team_widget_key,
+        on_change=sync_filter,
+        args=(team_filter_key, team_widget_key),
+    )
 
     # Fanta role selection
     role_filter_key = f"{page_name}_R_key"
     role_widget_key = f"{page_name}_R_widget_key"
     selection_keys_set.update({role_filter_key})
     role_options = get_roles_dict().keys()
-    with cols[0]:
-        st.pills(
-            "Select a role",
-            options=role_options,
-            selection_mode="multi",
-            key=role_widget_key,
-            on_change=sync_filter,
-            args=(role_filter_key, role_widget_key),
-        )
+    st.pills(
+        "Select a role",
+        options=role_options,
+        selection_mode="single",
+        key=role_widget_key,
+        on_change=sync_filter,
+        args=(role_filter_key, role_widget_key),
+    )
 
     # Apply filters only to the returned data
     filtered_players = apply_filters(
@@ -1113,15 +1109,15 @@ def set_visible_cols(df: pd.DataFrame, key: str, expander_key: str):
 # =============================== SCRIPT ======================================
 # =============================================================================
 
-fanta_players = load_dataset("data/predicted_fanta_players.csv")
-history_players = load_dataset("data/filtered_history_players.csv")
+fanta_players = load_dataset("data/csv/predicted_fanta_players.csv")
+history_players = load_dataset("data/csv/filtered_history_players.csv")
 loaded_env_values = load_env(path=".env")
 selection_keys_set = {key for key in loaded_env_values if key.startswith(f"{page_name}_")}
 models_packages_dict = load_models(target_features=features_to_predict_list)
 
 # Save the path to the csv file with selected players
 selection_players_key = f"{page_name}_selected_players_csv_path_key"
-st.session_state.setdefault(selection_players_key, "data/selection_players.csv")
+st.session_state.setdefault(selection_players_key, "data/csv/selection_players.csv")
 selection_keys_set.add(selection_players_key)
 
 # Load the selected players 
@@ -1139,7 +1135,19 @@ st.caption(
 st.space(30)
 
 # Create filters on the sidebar
-filtered_players = players_filters(fanta_players, columns_to_filter_list)
+cols = st.columns([9,1,50])
+with cols[0]:
+    with st.container(border=True, height="stretch", key=f"dark-card-{page_name}_plyer_filters_key"):
+        st.markdown("#### Filters")
+        filtered_players = players_filters(fanta_players, columns_to_filter_list)
+
+selected_tables_players = apply_filters(
+    fanta_players,
+    exclude="R",
+    columns_to_filter_list=columns_to_filter_list,
+    compare_op_for_columns_to_filter_dict=compare_op_for_columns_to_filter_dict,
+    page=page_name,
+)
 
 # Filter the visible columns
 selected_roles = st.session_state.setdefault(f"{page_name}_R_key", [])
@@ -1173,7 +1181,8 @@ visible_selection_columns = [
 ]
 
 # Create the full table
-create_player_selection_table(filtered_players_with_statistics, visible_selection_columns)
+with cols[2]:
+    create_player_selection_table(filtered_players_with_statistics, visible_selection_columns)
 
 st.space(30)
 
@@ -1183,7 +1192,7 @@ for fanta_role, role_name in get_roles_dict().items():
     expander_key = f"expander_table_{fanta_role}_key"
     st.session_state.setdefault(visible_cols_key, [])
 
-    tmp_df = fanta_players[fanta_players["R"] == fanta_role]
+    tmp_df = selected_tables_players[selected_tables_players["R"] == fanta_role]
     if tmp_df.empty:
         st.info(f"Absent players with role {fanta_role}.")
         continue

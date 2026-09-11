@@ -14,8 +14,8 @@ from lib.xgboost_predictor import (
 
 
 def main():
-    history_players = load_dataset("data/filtered_history_players.csv")
-    fanta_players = load_dataset("data/Listone_Fantacalcio_Stagione_2026_27.csv")
+    history_players = load_dataset("data/csv/filtered_history_players.csv")
+    fanta_players = load_dataset("data/csv/Listone_Fantacalcio_Stagione_2026_27.csv")
     models_packages_dict = load_models(features_to_predict_list)
 
     # Add the new prediction columns
@@ -51,7 +51,7 @@ def main():
         data_dict={"predicted_fanta_players_df_key": predicted_fanta_players},
         path=".env",
     )
-    predicted_fanta_players.to_csv("data/predicted_fanta_players.csv", index=False)
+    predicted_fanta_players.to_csv("data/csv/predicted_fanta_players.csv", index=False)
 
     return
 

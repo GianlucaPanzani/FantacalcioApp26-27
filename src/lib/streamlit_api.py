@@ -158,7 +158,7 @@ def print_models_predictions(
         explainability_enabled=True,
         plots_enebled=True
     ):
-    features_explainability = load_dataset("data/features_explainability.csv")
+    features_explainability = load_dataset("data/csv/features_explainability.csv")
     role_column_means = compute_role_column_means(history_players)
 
     print_ai_icon_with_markdown_title(markdown_text=f"### AI predictions")
@@ -257,7 +257,7 @@ def print_models_predictions(
                         # Case of plot enabled
                         if plots_enebled:
                             plot_player_history(
-                                history_players=load_dataset("data/filtered_history_players.csv"),
+                                history_players=load_dataset("data/csv/filtered_history_players.csv"),
                                 player=player_name,
                                 feature=feature,
                                 seasons_to_plot=4,
@@ -540,7 +540,7 @@ def store_env(data_dict: dict, path: str = ".env") -> dict:
         if isinstance(value, pd.DataFrame):
             value_type = "pd.DataFrame"
             default_name = key.removesuffix("_df_key")
-            csv_value = f"data/{default_name}.csv"
+            csv_value = f"data/csv/{default_name}.csv"
             if env_values.get(f"{key}_type") == "pd.DataFrame":
                 csv_value = env_values[key]
             csv_path = Path(csv_value)
@@ -1057,7 +1057,7 @@ def has_full_team(fanta_manager: str) -> bool:
     return True
 
 
-def generate_pdf_with_bought_players(default_file_name: str = "fantacalcio_teams.pdf"):
+def save_bought_players(default_file_name: str = "fantacalcio_teams.pdf", format=".pdf"):
     """Generate the teams PDF and display its download controls in the sidebar."""
     fanta_manager_players_dict = st.session_state.get("fantacalcio_manager_players_dict_key", {})
     budget = st.session_state.get("settings_budget_key", 500)
@@ -1112,32 +1112,44 @@ def generate_pdf_with_bought_players(default_file_name: str = "fantacalcio_teams
 
         pdf_data = pdf_buffer.getvalue()
 
-        st.sidebar.subheader("Auction PDF")
-        st.sidebar.caption("The completed teams are ready to download.")
-        file_name = st.sidebar.text_input(
-            "File name",
-            value=default_file_name,
-            key="auction_pdf_file_name_key",
-        ).strip()
+        with st.sidebar:
+            st.subheader("Auction PDF")
+            st.caption("The completed teams are ready to download.")
+            file_name = st.text_input(
+                "File name",
+                value=default_file_name,
+                key="auction_pdf_file_name_key",
+            ).strip()
 
-        file_name = Path(file_name).name if file_name else default_file_name
-        if not file_name.lower().endswith(".pdf"):
-            file_name = f"{file_name}.pdf"
+            file_name = Path(file_name).name if file_name else default_file_name
+            if not file_name.lower().endswith(".pdf"):
+                file_name = f"{file_name}.pdf"
 
-        def balloons():
-            st.balloons()
-            st.session_state["show_auction_reset_confirmation_key"] = True
+            st.checkbox(
+                f"Save also a {file_name}.csv version of the file",
+                value=True,
+                key="enabled_to_save_csv_key",
+                persist_state="session",
+                wrap=True,
+            )
 
-        st.sidebar.download_button(
-            label="Save PDF",
-            data=pdf_data,
-            file_name=file_name,
-            mime="application/pdf",
-            icon=":material/save:",
-            type="primary",
-            width="stretch",
-            on_click=balloons,
-        )
+            def save_file(df: pd.DataFrame | None = None, file_name = ""):
+                if df is not None and file_name != "":
+                    df.to_csv(f"data/csv/{file_name}.csv")
+                st.balloons()
+                st.session_state["show_auction_reset_confirmation_key"] = True
+
+            st.download_button(
+                label="Save PDF",
+                data=pdf_data,
+                file_name=file_name,
+                mime="application/pdf",
+                icon=":material/save:",
+                type="primary",
+                width="stretch",
+                on_click=save_file,
+                args=(players_df, file_name)
+            )
 
         
         if st.session_state.get("show_auction_reset_confirmation_key", False):
@@ -1145,7 +1157,7 @@ def generate_pdf_with_bought_players(default_file_name: str = "fantacalcio_teams
             with st.sidebar:
                 st.divider()
 
-                st.warning(
+                st.info(
                     "To do another auction is needed the reset of the purchase players. Do you want to do it? "
                     "The downloaded PDF will not be deleted."
                 )

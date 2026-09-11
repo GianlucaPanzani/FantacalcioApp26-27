@@ -63,7 +63,7 @@ st.session_state[f"{page_name}_managers_key"] = fanta_managers
 
 # Getting data
 fanta_manager_players_dict = get_fanta_manager_players_dict()
-history_players = load_dataset("data/filtered_history_players.csv")
+history_players = load_dataset("data/csv/filtered_history_players.csv")
 
 
 # Fanta Managers settings
