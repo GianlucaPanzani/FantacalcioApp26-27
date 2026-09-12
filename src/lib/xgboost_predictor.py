@@ -246,6 +246,64 @@ def build_temporal_player_input(
     return model_input
 
 
+
+def get_team_impact_score(teams_history: pd.DataFrame, team: str, seasons: int = 3) -> float:
+    """Calculate a team's recent strength relative to the league.
+
+    The score combines:
+    - results: 40%
+    - goals scored per match: 30%
+    - goals conceded per match: 30%
+
+    Each component is ranked within its season from -1 to 1.
+    Recent seasons receive progressively greater weight.
+
+    Returns:
+        A value between -1 and 1. Zero is returned when the team
+        has no available history.
+    """
+    def season_rank(data, column: str, ascending: bool) -> pd.Series:
+        grouped = data.groupby("season")[column]
+        ranks = grouped.rank(method="average", ascending=ascending)
+        counts = grouped.transform("count")
+        scores = 2 * (ranks - 1) / (counts - 1).replace(0, 1) - 1
+        return scores.where(counts > 1, 0.0)
+
+    numeric_columns = teams_history.select_dtypes(include="number").columns
+    required_columns = ["team", "season", *numeric_columns]
+    missing_columns = set(required_columns) - set(teams_history.columns)
+
+    if missing_columns:
+        raise ValueError(f"Missing columns: {sorted(missing_columns)}")
+
+    data = teams_history[required_columns].copy()
+    data[numeric_columns] = data[numeric_columns].apply(pd.to_numeric, errors="coerce")
+    data = data.dropna(subset=numeric_columns)
+
+    data["points_per_match"] = data["points"] / data["matches"]
+
+    data["points_score"] = season_rank(data, "points_per_match", True)
+    data["attack_score"] = season_rank(data, "goals_per90", True)
+    data["defence_score"] = season_rank(data, "goals_against_per90", False)
+
+    data["team_score"] = (
+        0.40 * data["points_score"]
+        + 0.30 * data["attack_score"]
+        + 0.30 * data["defence_score"]
+    )
+
+    team_history = data[data["team"] == team].sort_values("season").tail(seasons)
+
+    if team_history.empty:
+        return 0.0
+
+    scores = team_history["team_score"].tolist()
+    weights = list(range(1, len(scores) + 1))
+    weighted_score = sum(score * weight for score, weight in zip(scores, weights)) / sum(weights)
+
+    return max(-1.0, min(1.0, weighted_score))
+
+
 def predict(model_package: dict, player_history: pd.DataFrame) -> str:
 
     features = model_package["features"]

@@ -121,6 +121,13 @@ def set_format_interest(interest):
 def get_current_year():
     return datetime.now().year
 
+def get_current_date():
+    return datetime.now().date
+
+def get_current_season():
+    year = get_current_year()
+    return f"{year}-{str(year+1)[2:]}"
+
 def ai_data_stream(text: str):
     words = text.split(" ")
     n_words = len(words)
@@ -178,30 +185,6 @@ def get_circular_role_icon(role: str, font_size=14, height=24, width=24, y_trans
 
 def get_background_img_path(page: str):
     return f"img/background/{page}.jpeg"
-
-def get_teams_dict():
-    return {
-        'Atalanta':   {'rate': 75, 'goals_done': 55, 'goals_against': 39, 'n_matches': 41, 'goals_done_per90': 1.34, 'goals_against_per90': 0.95},
-        'Bologna':    {'rate': 55, 'goals_done': 51, 'goals_against': 50, 'n_matches': 41, 'goals_done_per90': 1.24, 'goals_against_per90': 1.22},
-        'Cagliari':   {'rate': 45, 'goals_done': 42, 'goals_against': 54, 'n_matches': 41, 'goals_done_per90': 1.02, 'goals_against_per90': 1.32},
-        'Como':       {'rate': 85, 'goals_done': 72, 'goals_against': 32, 'n_matches': 41, 'goals_done_per90': 1.76, 'goals_against_per90': 0.78},
-        'Fiorentina': {'rate': 55, 'goals_done': 42, 'goals_against': 59, 'n_matches': 41, 'goals_done_per90': 1.02, 'goals_against_per90': 1.44},
-        'Frosinone':  {'rate': 65, 'goals_done': 6,  'goals_against': 3,  'n_matches': 3,  'goals_done_per90': 2.00, 'goals_against_per90': 1.00},
-        'Genoa':      {'rate': 30, 'goals_done': 42, 'goals_against': 58, 'n_matches': 41, 'goals_done_per90': 1.02, 'goals_against_per90': 1.41},
-        'Juventus':   {'rate': 85, 'goals_done': 65, 'goals_against': 35, 'n_matches': 41, 'goals_done_per90': 1.59, 'goals_against_per90': 0.85},
-        'Inter':      {'rate': 100, 'goals_done': 97, 'goals_against': 38, 'n_matches': 41, 'goals_done_per90': 2.37, 'goals_against_per90': 0.93},
-        'Lazio':      {'rate': 65, 'goals_done': 45, 'goals_against': 41, 'n_matches': 41, 'goals_done_per90': 1.10, 'goals_against_per90': 1.00},
-        'Lecce':      {'rate': 45, 'goals_done': 30, 'goals_against': 55, 'n_matches': 41, 'goals_done_per90': 0.73, 'goals_against_per90': 1.34},
-        'Milan':      {'rate': 85, 'goals_done': 58, 'goals_against': 37, 'n_matches': 41, 'goals_done_per90': 1.41, 'goals_against_per90': 0.90},
-        'Monza':      {'rate': 35, 'goals_done': 4,  'goals_against': 8,  'n_matches': 3,  'goals_done_per90': 1.33, 'goals_against_per90': 2.67},
-        'Napoli':     {'rate': 80, 'goals_done': 63, 'goals_against': 41, 'n_matches': 41, 'goals_done_per90': 1.54, 'goals_against_per90': 1.00},
-        'Parma':      {'rate': 45, 'goals_done': 29, 'goals_against': 50, 'n_matches': 41, 'goals_done_per90': 0.71, 'goals_against_per90': 1.22},
-        'Roma':       {'rate': 90, 'goals_done': 69, 'goals_against': 32, 'n_matches': 41, 'goals_done_per90': 1.68, 'goals_against_per90': 0.78},
-        'Sassuolo':   {'rate': 55, 'goals_done': 51, 'goals_against': 55, 'n_matches': 41, 'goals_done_per90': 1.24, 'goals_against_per90': 1.34},
-        'Torino':     {'rate': 45, 'goals_done': 48, 'goals_against': 68, 'n_matches': 41, 'goals_done_per90': 1.17, 'goals_against_per90': 1.66},
-        'Udinese':    {'rate': 50, 'goals_done': 50, 'goals_against': 53, 'n_matches': 41, 'goals_done_per90': 1.22, 'goals_against_per90': 1.29},
-        'Venezia':    {'rate': 25, 'goals_done': 2,  'goals_against': 7,  'n_matches': 3, 'goals_done_per90': 0.67, 'goals_against_per90': 2.33},
-    }
 
 def normalize_name(name: str) -> str:
     """Normalize a player name for fuzzy comparison."""

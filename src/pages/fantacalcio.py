@@ -997,7 +997,7 @@ def create_horizontal_teams(fanta_manager_players_dict: dict):
             tot_spent_per_role[role] = bought_players_role['mln'].sum()
         
         st.markdown(
-            f'## :color[{fanta_manager}]{{foreground="rgba(255,255,255,1)"}}',
+            f'### :color[{fanta_manager}]{{foreground="rgba(255,255,255,1)"}}',
             text_alignment="left",
         )
 
@@ -1117,7 +1117,7 @@ def create_horizontal_teams(fanta_manager_players_dict: dict):
 # Load stored persistent values before initializing Session State defaults
 loaded_env_values = load_env(path=".env")
 models_packages_dict = load_models(target_features=features_to_predict_list)
-feature_explanations = load_dataset("data/csv/ai_models_generated/features_explainability.csv")
+feature_explanations = load_dataset("data/csv/models_generated/features_explainability.csv")
 
 # Set of keys whom value has to be stored (for next loaded)
 fantacalcio_keys_set = {
@@ -1239,25 +1239,39 @@ if st.session_state[show_ai_predictions_key] and filtered_players.shape[0] == 1:
         plots_enebled=st.session_state[show_ai_plots_key],
     )
 
-# Teams of the Fanta Managers
-split_value = st.session_state[fanta_manager_split_value_key]
-ordered_manager_items = [
-    (my_fanta_manager, fanta_manager_players_dict.get(my_fanta_manager, pd.DataFrame())),
-] + [
-    (fanta_manager, players)
-    for fanta_manager, players in fanta_manager_players_dict.items()
-    if fanta_manager != my_fanta_manager
-]
-fanta_manager_players_dict_splitted: list[dict] = [
-    dict(ordered_manager_items[i:i + split_value])
-    for i in range(0, len(ordered_manager_items), split_value)
-]
-for fanta_manager_players_chunk in fanta_manager_players_dict_splitted:
-    if split_value > 1:
-        create_vertical_teams(fanta_manager_players_chunk, split_value)
-    elif split_value == 1:
-        create_horizontal_teams(fanta_manager_players_chunk)
+# Case of pdf generation
+auction_completed = True
+for fanta_manager in fanta_manager_players_dict:
+    if not has_full_team(fanta_manager):
+        auction_completed = False
+if auction_completed:
+    st.divider()
+    download_col, managers_col = st.columns([6,20])
+    with download_col:
+        st.subheader("Download teams")
+        save_bought_players(page_name)
+else:
+    managers_col = st.columns(1)
 
+# Teams of the Fanta Managers
+with managers_col:
+    split_value = st.session_state[fanta_manager_split_value_key]
+    ordered_manager_items = [
+        (my_fanta_manager, fanta_manager_players_dict.get(my_fanta_manager, pd.DataFrame())),
+    ] + [
+        (fanta_manager, players)
+        for fanta_manager, players in fanta_manager_players_dict.items()
+        if fanta_manager != my_fanta_manager
+    ]
+    fanta_manager_players_dict_splitted: list[dict] = [
+        dict(ordered_manager_items[i:i + split_value])
+        for i in range(0, len(ordered_manager_items), split_value)
+    ]
+    for fanta_manager_players_chunk in fanta_manager_players_dict_splitted:
+        if split_value > 1:
+            create_vertical_teams(fanta_manager_players_chunk, split_value)
+        elif split_value == 1:
+            create_horizontal_teams(fanta_manager_players_chunk)
 
 # Store persistent Session State values
 fantacalcio_bought_players_df_key = f"{page_name}_bought_players_df_key"
@@ -1267,16 +1281,6 @@ store_env(
     data_dict={key: st.session_state[key] for key in fantacalcio_keys_list if key in st.session_state},
     path=".env",
 )
-
-# Case of pdf generation
-auction_completed = True
-for fanta_manager in fanta_manager_players_dict:
-    if not has_full_team(fanta_manager):
-        auction_completed = False
-if auction_completed:
-    with st.spinner("Building the teams file..."):
-        st.divider()
-        save_bought_players()
 
 
 bottom_caption()

@@ -16,6 +16,8 @@ from lib.utils import (
     get_condition_by,
     get_default_value,
     get_ai_icon,
+    get_current_date,
+    get_current_season,
     ai_data_stream
 )
 from lib.shap_explainability import (
@@ -158,7 +160,7 @@ def print_models_predictions(
         explainability_enabled=True,
         plots_enebled=True
     ):
-    features_explainability = load_dataset("data/csv/ai_models_generated/features_explainability.csv")
+    features_explainability = load_dataset("data/csv/models_generated/features_explainability.csv")
     role_column_means = compute_role_column_means(history_players)
 
     print_ai_icon_with_markdown_title(markdown_text=f"### AI predictions")
@@ -540,7 +542,8 @@ def store_env(data_dict: dict, path: str = ".env") -> dict:
         if isinstance(value, pd.DataFrame):
             value_type = "pd.DataFrame"
             default_name = key.removesuffix("_df_key")
-            csv_value = f"data/csv/{default_name}.csv"
+            page_name = default_name.split("_")[0]
+            csv_value = f"data/csv/pages/{page_name}/{default_name}_{get_current_date()}_{get_current_season()}.csv"
             if env_values.get(f"{key}_type") == "pd.DataFrame":
                 csv_value = env_values[key]
             csv_path = Path(csv_value)
@@ -758,7 +761,6 @@ def plot_comparison_between_players(history_players: pd.DataFrame, filtered_play
     filtered_players:
         DataFrame containing the historical records of two players.
     """
-    roles = filtered_players["fanta_role"].dropna().unique().tolist()
     role_column_means = compute_role_column_means(history_players)
 
     available_players = filtered_players["player"].dropna().drop_duplicates().tolist()
@@ -1057,7 +1059,7 @@ def has_full_team(fanta_manager: str) -> bool:
     return True
 
 
-def save_bought_players(default_file_name: str = "fantacalcio_teams.pdf", format=".pdf"):
+def save_bought_players(page_name: str):
     """Generate the teams PDF and display its download controls in the sidebar."""
     fanta_manager_players_dict = st.session_state.get("fantacalcio_manager_players_dict_key", {})
     budget = st.session_state.get("settings_budget_key", 500)
@@ -1112,94 +1114,42 @@ def save_bought_players(default_file_name: str = "fantacalcio_teams.pdf", format
 
         pdf_data = pdf_buffer.getvalue()
 
-        with st.sidebar:
-            st.subheader("Auction PDF")
-            st.caption("The completed teams are ready to download.")
+        with st.container(border=True, key=f"dark-card-{page_name}_download_key"):
             file_name = st.text_input(
                 "File name",
-                value=default_file_name,
-                key="auction_pdf_file_name_key",
+                value=f"{page_name}_{get_current_season()}",
+                key="auction_file_name_key",
             ).strip()
-
-            file_name = Path(file_name).name if file_name else default_file_name
-            normalized_filename = "_".join(file_name.split('.')[0].split(" "))
-
-            def baloons(df: pd.DataFrame):
-                df.to_csv(f"../data/csv/pages/fantacalcio/{normalized_filename}.csv")
+            file_name = Path(file_name).name
+            normalized_filename = file_name.split('.')[0].split(" ")
+            
+            def baloons():
                 st.balloons()
                 st.session_state["show_auction_reset_confirmation_key"] = True
 
-            st.download_button(
-                label="Save as CSV",
-                data=players_df.to_csv(),
-                file_name=f"{normalized_filename}.csv",
-                mime="application/csv",
-                icon=":material/save:",
-                type="primary",
-                width="stretch",
-                on_click=baloons,
-                args=(players_df)
-            )
-
-            st.download_button(
-                label="Save as PDF",
-                data=pdf_data,
-                file_name=f"{normalized_filename}.pdf",
-                mime="application/pdf",
-                icon=":material/save:",
-                type="primary",
-                width="stretch",
-                on_click=baloons,
-            )
-
-        
-        if st.session_state.get("show_auction_reset_confirmation_key", False):
-            
-            with st.sidebar:
-                st.divider()
-
-                st.info(
-                    "To do another auction is needed the reset of the purchase players. Do you want to do it? "
-                    "The downloaded PDF will not be deleted."
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    label="Save as CSV",
+                    data=players_df.to_csv(),
+                    file_name=f"{normalized_filename}.csv",
+                    mime="application/csv",
+                    icon=":material/save:",
+                    type="primary",
+                    width="stretch",
+                    on_click=baloons,
                 )
-
-                col1, col2 = st.columns(2)
-                with col1:
-                    reset_players = st.button(
-                        "Reset",
-                        icon=":material/restart_alt:",
-                        type="primary",
-                        width="stretch",
-                        key="reset_auction_players_key",
-                    )
-                with col2:
-                    keep_players = st.button(
-                        "keep",
-                        width="stretch",
-                        key="keep_auction_players_key",
-                    )
-
-                if reset_players:
-                    bought_player_columns = ["id", "player", "team", "role", "mantra_role", "manager", "mln"]
-                    empty_bought_players = pd.DataFrame(columns=bought_player_columns)
-                    fanta_managers = st.session_state.get("settings_managers_key", [])
-
-                    st.session_state["fantacalcio_manager_players_dict_key"] = {
-                        fanta_manager: empty_bought_players.copy()
-                        for fanta_manager in fanta_managers
-                    }
-                    st.session_state["fantacalcio_bought_players_df_key"] = empty_bought_players
-
-                    for key in list(st.session_state):
-                        if str(key).startswith("fantacalcio_purchase_editor_"):
-                            del st.session_state[key]
-
-                    st.session_state.pop("show_auction_reset_confirmation_key", None)
-                    st.rerun()
-
-                if keep_players:
-                    st.session_state.pop("show_auction_reset_confirmation_key", None)
-                    st.rerun()
+            with col2:
+                st.download_button(
+                    label="Save as PDF",
+                    data=pdf_data,
+                    file_name=f"{normalized_filename}.pdf",
+                    mime="application/pdf",
+                    icon=":material/save:",
+                    type="primary",
+                    width="stretch",
+                    on_click=baloons,
+                )
 
         return
     except Exception as e:
