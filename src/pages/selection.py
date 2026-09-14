@@ -7,7 +7,6 @@ from lib.utils import (
     get_ai_icon,
     get_circular_role_icon,
     get_background_img_path,
-    interest_markers
 )
 from lib.streamlit_api import (
     bottom_caption,
@@ -65,13 +64,14 @@ hidden_selection_columns = [
 ]
 
 interest_colors_dict = {
-    "Da valutare": "#E0E0E0",
-    "Bassissimo": "#FFFFFF",
-    "Basso": "#FFF59D",
-    "Medio": "#FFCC80",
-    "Alto": "#EF9A9A",
-    "Scommessa": "#81D4FA",
-    "Buoni low cost": "#81FAC8",
+    "Da valutare": "#979797",   # Gray: not yet evaluated
+    "Bassissimo": "#FFF8B8",    # White: very low interest
+    "Basso": "#FFE365",         # Yellow: low interest
+    "Medio": "#F8AB39",         # Orange: medium interest
+    "Alto": "#FB7272",          # Soft red: high interest
+    "Altissimo": "#F55050",     # Stronger red: very high interest
+    "Scommessa": "#DA74EC",     # Light purple: speculative pick
+    "Buoni low cost": "#84E7A0", # Mint green: good budget pick
 }
 
 
@@ -465,6 +465,11 @@ def create_player_selection_table(players: pd.DataFrame, visible_columns: list[s
                 border-bottom: 1px solid var(--st-dataframe-border-color, var(--st-border-color));
                 text-align: center;
                 white-space: nowrap;
+            }
+
+            td {
+                background-color: #0e1117;
+                color: #fafafa;
             }
 
             th {
@@ -903,14 +908,27 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
                             data.interests.forEach((interest) => {
                                 const option = document.createElement("option");
                                 option.value = interest.value;
-                                option.textContent = `${interest.marker} ${interest.value}`;
+                                option.textContent = interest.value;
+                                option.style.backgroundColor = interest.color;
+                                option.style.color = "#000000";
                                 option.selected = interest.value === row.interest;
                                 select.appendChild(option);
                             });
-                            select.onchange = () => setTriggerValue(
-                                "edited",
-                                {id: row.id, field: "interest", value: select.value},
-                            );
+                            const updateInterestColor = () => {
+                                const interest = data.interests.find(
+                                    (item) => item.value === select.value,
+                                );
+                                select.style.backgroundColor = interest.color;
+                                select.style.color = "#000000";
+                            };
+                            updateInterestColor();
+                            select.onchange = () => {
+                                updateInterestColor();
+                                setTriggerValue(
+                                    "edited",
+                                    {id: row.id, field: "interest", value: select.value},
+                                );
+                            };
                             cell.appendChild(select);
                         } else if (column.type === "text") {
                             cell.className = "description-column";
@@ -947,8 +965,8 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
             "columns": columns,
             "rows": rows,
             "interests": [
-                {"value": interest, "marker": marker}
-                for interest, marker in interest_markers.items()
+                {"value": interest, "color": color}
+                for interest, color in interest_colors_dict.items()
             ],
             "aiIconSrc": ai_icon_src,
         },
@@ -957,36 +975,6 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
         on_edited_change=update_edited_player,
         on_removed_change=remove_player,
     )
-
-
-def eval_players(players: pd.DataFrame):
-
-    '''def eval_player(player: pd.DataFrame, team: dict) -> tuple:
-        score = score_with_team = 0.0
-        # Switch-case on player role
-        if player['R'] == 'P':
-            score = ((player['90s_stats_keeper']/38) * 0.50) + (player['CS%'] * 0.20) + (player['Save%'] * 0.10) + (player['Qt.A']/500)
-            #print(f"score = {score} = {((player['90s_stats_keeper']/38) * 0.50)} + {(player['CS%'] * 0.20)} + {(player['Save%'] * 0.10)} + {(player['Qt.A']/500)}")
-            score_with_team = score - score * 0.40 * (1 - (team['valutazione']/100)) - score * 0.40 * (team['gol_subiti']/max_team_gol_subiti)
-        elif player['R'] == 'D':
-            score = int('MF' in player['Pos']) * 10 + int('FW' in player['Pos']) * 20 + player['Gls'] * 3 + player['Ast'] * 2 + player['Tkl+Int'] * 0.50 + player['Diff.'] * 3 + player['Qt.A']
-            score -= player['Err'] * 2 + player['CrdY'] * 0.50 + player['CrdR'] * 2
-            score_with_team = score + score * 0.25 * (team['valutazione']/100) - score * 0.25 * (team['gol_subiti']/max_team_gol_subiti) + score * 0.10 * (team['gol_fatti']/100)
-        elif player['R'] == 'C':
-            score = int('FW' in player['Pos']) * 30 + player['Gls'] * 3 + player['Ast'] * 2 + player['Tkl+Int'] * 0.50 + player['Diff.'] * 3 + player['Qt.A']
-            score -= player['Err'] * 2 + player['CrdY'] * 0.50 + player['CrdR'] * 2
-            score_with_team = score + score * 0.30 * (team['valutazione']/100) + score * 0.20 * (team['gol_fatti']/100)
-        elif player['R'] == 'A':
-            score = player['Gls'] * 3 + player['Ast'] * 2 + player['Diff.'] + player['Qt.A']
-            score -= player['Err'] * 2 + player['CrdY'] * 0.50 + player['CrdR'] * 2
-            score_with_team = score + score * 0.30 * (team['valutazione']/100) - score * 0.20 * (team['gol_subiti']/max_team_gol_subiti) + score * 0.20 * (team['gol_fatti']/100)
-        return score, score_with_team'''
-    
-    # Evaluation based on AI predictions + own team evaluation
-    players
-    teams_df = pd.DataFrame(get_teams_dict())
-
-    return
 
 
 def create_selected_players_table(players: pd.DataFrame, visible_columns: list[str]) -> None:
