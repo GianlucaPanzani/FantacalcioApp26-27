@@ -193,6 +193,12 @@ def normalize_name(name: str) -> str:
     name = re.sub(r"[^\w\s.]", " ", name.lower())
     return re.sub(r"\s+", " ", name).strip()
 
+def normalize_name_for_img_scraping(name: str) -> str:
+    """Normalize names only for match checking."""
+    name = unicodedata.normalize("NFKD", str(name))
+    name = "".join(c for c in name if not unicodedata.combining(c))
+    return " ".join(name.lower().strip().split())
+
 def get_condition_by(df: pd.DataFrame, column: str, selected_values, compare_op: str):
     """Return the appropriate filtering condition."""
     if isinstance(selected_values, (list, tuple, set)):

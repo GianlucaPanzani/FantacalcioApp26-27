@@ -18,7 +18,8 @@ from lib.utils import (
     get_ai_icon,
     get_current_date,
     get_current_season,
-    ai_data_stream
+    ai_data_stream,
+    normalize_name_for_img_scraping
 )
 from lib.shap_explainability import (
     build_model_explaination_response,
@@ -142,6 +143,15 @@ def set_text_size(text_size, class_name):
     )
 
 
+def get_player_img(player_name: str):
+    images_df = load_dataset("data/online_sources/players_thesportsdb.csv")
+    img_player_row = images_df[images_df["query_name"] == player_name].iloc[0]
+    if not img_player_row["found"]:
+        img_player_row = images_df[images_df["query_name"] == "unknown"].iloc[0]
+    st.image(img_player_row["strCutout"])
+    return
+
+
 def print_ai_icon_with_markdown_title(markdown_text = f"### AI predictions"):
     cols = st.columns([1,19])
     with cols[0]:
@@ -177,9 +187,12 @@ def print_models_predictions(
 
         with col1:
             with st.container(border=True, horizontal_alignment="center", width="stretch", key=f"dark-card-{player_name}_col1"):
+                get_player_img(player_name)
                 st.markdown(
-                    f"### :material/person: {player_name}",
+                    f"##### {player_name}",
                     text_alignment="center",
+                    width="stretch",
+                    anchors=False,
                 )
                 st.markdown(
                     f":{role_badge_color}-badge[{role_name} ({fanta_role})]  \n:violet-badge[{latest_team}]",
