@@ -5,9 +5,7 @@ from lib.utils import (
     highlight_player_role,
     set_format_interest,
     get_ai_icon,
-    get_teams_dict,
     get_circular_role_icon,
-    get_color_per_role,
     get_background_img_path,
     interest_markers
 )
@@ -576,7 +574,9 @@ def create_player_selection_table(players: pd.DataFrame, visible_columns: list[s
                             cell.appendChild(checkbox);
                         } else {
                             cell.textContent = row.values[column.key] ?? "";
-                            cell.style.cssText = row.readonlyStyle;
+                            if (["R", "Nome", "Squadra"].includes(column.key)) {
+                                cell.style.cssText = row.readonlyStyle;
+                            }
                         }
 
                         tableRow.appendChild(cell);

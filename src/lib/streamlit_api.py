@@ -19,7 +19,7 @@ from lib.utils import (
     get_current_date,
     get_current_season,
     ai_data_stream,
-    normalize_name_for_img_scraping
+    get_circular_role_icon
 )
 from lib.shap_explainability import (
     build_model_explaination_response,
@@ -116,6 +116,26 @@ def set_dark_background():
     )
 
 
+def set_player_card_background():
+    image_path = Path(__file__).resolve().parents[1] / "img/player_card_bg.png"
+    encoded_image = base64.b64encode(image_path.read_bytes()).decode("ascii")
+
+    return st.html(
+        f"""
+        <style>
+        [class*="st-key-dark-card-player-portrait-"] {{
+            background-image:
+                linear-gradient(to bottom, rgba(14, 17, 23, 0.10), rgba(14, 17, 23, 0.80)),
+                url("data:image/png;base64,{encoded_image}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }}
+        </style>
+        """
+    )
+
+
 def apply_filters(df: pd.DataFrame, exclude=None, columns_to_filter_list=[], compare_op_for_columns_to_filter_dict={}, page="unknown_page") -> pd.DataFrame:
     """Apply session-state filters, excluding one filter when requested."""
     result = df.copy()
@@ -143,13 +163,13 @@ def set_text_size(text_size, class_name):
     )
 
 
-def get_player_img(player_name: str):
+def get_player_img_url(player_name: str):
     images_df = load_dataset("data/online_sources/players_thesportsdb.csv")
     img_player_row = images_df[images_df["query_name"] == player_name].iloc[0]
-    if not img_player_row["found"]:
-        img_player_row = images_df[images_df["query_name"] == "unknown"].iloc[0]
-    st.image(img_player_row["strCutout"])
-    return
+    if not img_player_row["found"] or pd.isna(img_player_row["strCutout"]) or img_player_row["strCutout"] == "":
+        return "img/players/unknown.png"
+    return img_player_row["strCutout"]
+        
 
 
 def print_ai_icon_with_markdown_title(markdown_text = f"### AI predictions"):
@@ -186,8 +206,10 @@ def print_models_predictions(
         role_badge_color = get_color_per_role(role=fanta_role, color_version=False)
 
         with col1:
-            with st.container(border=True, horizontal_alignment="center", width="stretch", key=f"dark-card-{player_name}_col1"):
-                get_player_img(player_name)
+            with st.container(border=True, width="stretch", key=f"dark-card-{player_name}_col1"):
+                set_player_card_background()
+                with st.container(border=True, horizontal_alignment="center", width="stretch", key=f"dark-card-player-portrait-{player_name}_col1"):
+                    st.image(get_player_img_url(player_name))
                 st.markdown(
                     f"##### {player_name}",
                     text_alignment="center",
@@ -204,7 +226,9 @@ def print_models_predictions(
             with st.container(border=True, width="stretch", key=f"dark-card-{player_name}_col2"):
                 n_iters = len(features_to_predict_per_role_dict[fanta_role])
 
-                if explainability_enabled or plots_enebled:
+                if n_iters < 3:
+                    cols = st.columns([9,1] * (n_iters-1) + [9])
+                elif explainability_enabled or plots_enebled:
                     cols = st.columns([9,1,9,1,9])
                 elif n_iters <= 5:
                     cols = st.columns([9,1] * (n_iters-1) + [9])
@@ -296,11 +320,6 @@ def print_models_predictions(
                                 st.write_stream(ai_data_stream(explaination_response))
                             else:
                                 st.markdown(explaination_response)
-                    
-                        #if (explainability_enabled or plots_enebled) and i < n_iters-1 and i*2 % (n_cols/2) == 0:
-                        #    st.divider()
-                        #elif i > 0 and i < n_iters-1 and i*2 % (n_cols/2) == 0:
-                        #    st.divider()
 
     return
 
@@ -964,16 +983,30 @@ def plot_player_history(
     with st.container(border=True, key=f"dark-card-{player_name}{f'_{feature}' if feature is not None else ''}"):
         
         if not disable_player_name:
-            with st.container(border=True):
+            cols = st.columns([25,30])
+            with cols[0]:
                 st.markdown(
-                    f"### :material/person: {player_name}",
-                    text_alignment="center",
+                    f"{get_circular_role_icon(fanta_role, font_size=18, height=28, width=28, y_translation=14)}",
+                    text_alignment="right",
                     anchors=False,
+                    unsafe_allow_html=True
                 )
+            with cols[1]:
                 st.markdown(
-                    f":{role_badge_color}-badge[{role_name} ({fanta_role})]  \n:violet-badge[{latest_team}]",
-                    text_alignment="center",
+                    f"### {player_name}",
+                    text_alignment="left",
                 )
+            st.markdown(
+                f":violet-badge[{latest_team}]",
+                text_alignment="center",
+            )
+            _, col, _ = st.columns([1,2,1])
+            with col:
+                set_player_card_background()
+                with st.container(border=True, horizontal_alignment="center", width="stretch", key=f"dark-card-player-portrait-{player_name}_col1"):
+                    st.image(get_player_img_url(player_name))
+        
+        st.space(20)
 
         # Create one graphic for every selected column.
         for column in selected_columns:
