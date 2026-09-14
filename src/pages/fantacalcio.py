@@ -1251,7 +1251,7 @@ if auction_completed:
         st.subheader("Download teams")
         save_bought_players(page_name)
 else:
-    managers_col = st.columns(1)
+    managers_col = st.columns(1)[0]
 
 # Teams of the Fanta Managers
 with managers_col:
