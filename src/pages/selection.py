@@ -3,8 +3,9 @@ import pandas as pd
 import streamlit as st
 from lib.utils import (
     highlight_player_role,
+    interest_colors_dict,
     set_format_interest,
-    get_ai_icon,
+    get_icon,
     get_circular_role_icon,
     get_background_img_path,
 )
@@ -28,7 +29,7 @@ from lib.xgboost_predictor import (
 
 st.set_page_config(
     page_title="Players Selection",
-    page_icon=get_ai_icon(),
+    page_icon=get_icon("ai").removeprefix("![AI](").removesuffix(")"),
     layout="wide",
 )
 
@@ -63,16 +64,7 @@ hidden_selection_columns = [
     "Diff."
 ]
 
-interest_colors_dict = {
-    "Da valutare": "#979797",   # Gray: not yet evaluated
-    "Bassissimo": "#FFF8B8",    # White: very low interest
-    "Basso": "#FFE365",         # Yellow: low interest
-    "Medio": "#F8AB39",         # Orange: medium interest
-    "Alto": "#FB7272",          # Soft red: high interest
-    "Altissimo": "#F55050",     # Stronger red: very high interest
-    "Scommessa": "#DA74EC",     # Light purple: speculative pick
-    "Buoni low cost": "#84E7A0", # Mint green: good budget pick
-}
+
 
 
 # =============================================================================
@@ -413,7 +405,7 @@ def create_player_selection_table(players: pd.DataFrame, visible_columns: list[s
         for column in visible_columns
     )
 
-    ai_icon = get_ai_icon()
+    ai_icon = get_icon("ai")
     ai_icon_src = ai_icon.removeprefix("![AI](").removesuffix(")")
     component_key = f"{page_name}_players_selection_icon_component_key"
 
@@ -699,7 +691,7 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
         for column in visible_columns
     )
 
-    ai_icon = get_ai_icon()
+    ai_icon = get_icon("ai")
     ai_icon_src = ai_icon.removeprefix("![AI](").removesuffix(")")
     component_key = f"{page_name}_selected_players_{fanta_role}_icon_component_key"
 
@@ -835,6 +827,40 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
             button:hover {
                 background: var(--st-red-background-color, var(--st-secondary-background-color));
             }
+
+            .interest-picker {
+                min-width: 150px;
+                text-align: left;
+            }
+
+            .interest-picker summary, .interest-picker button {
+                box-sizing: border-box;
+                width: 100%;
+                min-height: 30px;
+                padding: 5px 8px;
+                border: 1px solid rgba(0, 0, 0, 0.25);
+                border-radius: 5px;
+                color: #000000;
+                font: inherit;
+                text-align: left;
+                cursor: pointer;
+            }
+
+            .interest-options {
+                max-height: 240px;
+                overflow-y: auto;
+                padding-top: 4px;
+            }
+
+            .interest-picker button {
+                display: block;
+                margin-bottom: 3px;
+            }
+
+            .interest-picker button:hover, .interest-picker button:focus-visible {
+                outline: 2px solid #ffffff;
+                outline-offset: -3px;
+            }
             """,
             js="""
             export default function(component) {
@@ -903,33 +929,51 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
                             };
                             cell.appendChild(input);
                         } else if (column.type === "select") {
-                            const select = document.createElement("select");
-                            select.setAttribute("aria-label", column.label);
+                            const picker = document.createElement("details");
+                            picker.className = "interest-picker";
+                            const summary = document.createElement("summary");
+                            const selectedInterest = data.interests.find(
+                                (item) => item.value === row.interest,
+                            ) ?? data.interests[0];
+                            summary.textContent = selectedInterest.value;
+                            summary.style.backgroundColor = selectedInterest.color;
+                            summary.setAttribute("aria-label", `${column.label}: ${selectedInterest.value}`);
+                            picker.appendChild(summary);
+                            const options = document.createElement("div");
+                            options.className = "interest-options";
                             data.interests.forEach((interest) => {
-                                const option = document.createElement("option");
-                                option.value = interest.value;
+                                const option = document.createElement("button");
+                                option.type = "button";
                                 option.textContent = interest.value;
                                 option.style.backgroundColor = interest.color;
-                                option.style.color = "#000000";
-                                option.selected = interest.value === row.interest;
-                                select.appendChild(option);
+                                option.onclick = () => {
+                                    summary.textContent = interest.value;
+                                    summary.style.backgroundColor = interest.color;
+                                    summary.setAttribute("aria-label", `${column.label}: ${interest.value}`);
+                                    picker.open = false;
+                                    summary.focus();
+                                    setTriggerValue(
+                                        "edited",
+                                        {id: row.id, field: "interest", value: interest.value},
+                                    );
+                                };
+                                options.appendChild(option);
                             });
-                            const updateInterestColor = () => {
-                                const interest = data.interests.find(
-                                    (item) => item.value === select.value,
-                                );
-                                select.style.backgroundColor = interest.color;
-                                select.style.color = "#000000";
+                            picker.appendChild(options);
+                            picker.ontoggle = () => {
+                                if (picker.open) {
+                                    root.querySelectorAll(".interest-picker[open]").forEach((other) => {
+                                        if (other !== picker) other.open = false;
+                                    });
+                                }
                             };
-                            updateInterestColor();
-                            select.onchange = () => {
-                                updateInterestColor();
-                                setTriggerValue(
-                                    "edited",
-                                    {id: row.id, field: "interest", value: select.value},
-                                );
+                            picker.onkeydown = (event) => {
+                                if (event.key === "Escape") {
+                                    picker.open = false;
+                                    summary.focus();
+                                }
                             };
-                            cell.appendChild(select);
+                            cell.appendChild(picker);
                         } else if (column.type === "text") {
                             cell.className = "description-column";
                             const input = document.createElement("input");
@@ -1034,7 +1078,7 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
     column_config = get_selection_column_config(column_order, selected_players_editor_df)
     for column, config in column_config.items():
         if str(column).lower().startswith("pred_"):
-            config["label"] = f"{get_ai_icon()} {config['label']}"
+            config["label"] = f'{get_icon("ai")} {config["label"]}'
     remove_button_key = f"{page_name}_{fanta_role}_remove_player_button_key"
     column_config["remove"] = st.column_config.ButtonColumn(
         "",
@@ -1047,6 +1091,7 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
     )
     editor_data = selected_players_editor_df.style.apply(
         highlight_player_role,
+    interest_colors_dict,
         axis=1,
         subset=visible_columns,
     )
@@ -1114,7 +1159,7 @@ if not st.session_state.get(selection_restored_key, False):
     load_selected_players(st.session_state[selection_players_key])
     st.session_state[selection_restored_key] = True
 
-st.title(f"{get_ai_icon()} Players Selection")
+st.title(f'{get_icon("ai")} Players Selection')
 st.caption(
     "Filter the player pool, build a shortlist by role, compare statistics and AI predictions, and record "
     "expected prices, interest levels and auction notes."

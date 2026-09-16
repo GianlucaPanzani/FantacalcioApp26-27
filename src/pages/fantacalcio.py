@@ -4,8 +4,8 @@ from lib.xgboost_predictor import (
     features_to_predict_list
 )
 from lib.utils import (
-    interest_markers,
-    set_format_interest,
+    interest_colors_dict,
+    highlight_interest,
     get_current_year,
     get_circular_role_icon,
     get_color_per_role,
@@ -605,7 +605,6 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
                 index=players_editor_df.index,
                 dtype=object,
             )
-        players_editor_df["interest"] = players_editor_df["interest"].map(set_format_interest)
 
     # Use a different widget key when the visible players change.
     fanta_managers = st.session_state["settings_managers_key"]
@@ -679,12 +678,23 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
     editable_columns = {"bought", "mln"}
     if player_preferences is not None:
         editable_columns.add("mln_prevision")
-        editable_columns.add("interest")
         editable_columns.add("description")
 
     # Create the table
+    editor_data = players_editor_df.style.apply(
+        highlight_bought_rows, axis=1, fanta_managers=fanta_managers
+    )
+    if player_preferences is not None:
+        editor_data = editor_data.map(
+            lambda interest: (
+                "background-color: #0e1117; color: #fafafa"
+                if pd.isna(interest)
+                else highlight_interest(interest)
+            ),
+            subset=["interest"],
+        )
     st.data_editor(
-        players_editor_df.style.apply(highlight_bought_rows, axis=1, fanta_managers=fanta_managers),
+        editor_data,
         hide_index=True,
         width="stretch",
         height="stretch",
@@ -1214,9 +1224,9 @@ else:
     with cols[4]:
         if st.session_state[enable_player_preferences_key]:
             with st.container(border=True, height="stretch", width="content", key=f"dark-card-interest_container_key"):
-                st.markdown("**Symbols meanings**:")
-                for key, value in interest_markers.items():
-                    st.markdown(f"{value} :small[{key}]")
+                st.markdown("**Interest meanings**:")
+                for interest, color in interest_colors_dict.items():
+                    st.markdown(f':color[●]{{foreground="{color}"}} :small[{interest}]')
 
 # Case of AI enabled
 if st.session_state[show_ai_predictions_key] and filtered_players.shape[0] == 1:

@@ -33,7 +33,7 @@ set_dark_background()
 
 
 st.title("⚙️ Settings")
-st.caption("Configure Fanta Managers, squad limits, total and role budgets, and the statistics displayed in player charts.")
+st.caption("Configure Fanta Managers, squad limits, budgets, auction rules, bonus and penalty points, and player charts.")
 
 loaded_env_values = load_env(path=".env")
 settings_keys_set = {
@@ -192,7 +192,7 @@ with st.container(border=True, key=f"dark-card-{page_name}_fanta_managers_key"):
             else:
                 st.success("Fanta Manager removed")
 
-# Auction settings
+# Squad size settings
 with st.container(border=True, key=f"dark-card-{page_name}_auction_key"):
 
     cols = st.columns([8,1,8,1,8,1,8,1,8])
@@ -307,6 +307,120 @@ with st.container(border=True, key=f"dark-card-{page_name}_budgets_key"):
                     value=f":green[0] mln",
                     height="stretch",
                     width="stretch",
+                )
+
+# General auction rules
+with st.container(border=True, key=f"dark-card-{page_name}_auction_rules_key"):
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
+
+    with cols[0]:
+        col1, col2 = st.columns([1,8])
+        with col1:
+            st.markdown("#### :material/gavel:")
+        with col2:
+            st.markdown("#### **Auction settings**")
+
+    for column_index, (setting_name, label) in zip(range(2,8,2), auction_rule_settings):
+        setting_key = f"{page_name}_auction_{setting_name}_key"
+        widget_key = f"{page_name}_auction_{setting_name}_widget_key"
+        st.session_state[widget_key] = st.session_state[setting_key]
+
+        with cols[column_index]:
+            st.toggle(
+                label,
+                key=widget_key,
+                on_change=sync_filter,
+                args=(setting_key, widget_key),
+            )
+
+# Bonus and penalty values
+with st.container(border=True, key=f"dark-card-{page_name}_scoring_key"):
+
+    # Initialize persistent auction rules and editable scoring defaults.
+    auction_rule_settings = [
+        ("defender_modifier", "Defender modifier"),
+        ("midfielder_modifier", "Midfielder modifier"),
+        ("player_switch", "Player switch"),
+    ]
+    for setting_name, _ in auction_rule_settings:
+        setting_key = f"{page_name}_auction_{setting_name}_key"
+        settings_keys_set.add(setting_key)
+        st.session_state.setdefault(setting_key, False)
+
+    # These are configurable starting values, not a predefined league ruleset.
+    scoring_settings = [
+        # (setting_name, label, default_points, help_text, type)
+        (
+            "goal_scored", "Goal scored", 3,
+            "Points for a goal excluding penalties; penalties have their own value.", int
+        ),
+        (
+            "goalkeeper_goal_conceded", "Goalkeeper: goal conceded", -1,
+            "Points for a goal conceded excluding penalties; penalties have their own value.", int
+        ),
+        (
+            "assist", "Assist", 1,
+            "Points for an assist.", int
+        ),
+        (
+            "penalty_scored", "Penalty scored", 3,
+            "Total points for a scored penalty, separate from the goal-scored value.", int
+        ),
+        (
+            "penalty_missed", "Penalty missed", -3,
+            "Points for a missed penalty.", int
+        ),
+        (
+            "goalkeeper_penalty_conceded", "Goalkeeper: penalty goal conceded", -1,
+            "Total points for conceding a penalty goal, not for committing a foul.", int
+        ),
+        (
+            "goalkeeper_penalty_saved", "Goalkeeper: penalty saved", 3,
+            "Points for saving a penalty.", int
+        ),
+        (
+            "yellow_card", "Yellow card", -0.5,
+            "Points for a yellow card.", float
+        ),
+        (
+            "red_card", "Red card", -1,
+            "Points for a red card.", int
+        ),
+    ]
+    for setting_name, _, default_points, _ in scoring_settings:
+        setting_key = f"{page_name}_points_{setting_name}_key"
+        settings_keys_set.add(setting_key)
+        st.session_state.setdefault(setting_key, default_points)
+
+    for row_start in range(0, len(scoring_settings), 4):
+        cols = st.columns([8,1,8,1,8,1,8,1,8])
+
+        if row_start == 0:
+            with cols[0]:
+                col1, col2 = st.columns([1,8])
+                with col1:
+                    st.markdown("#### :material/scoreboard:")
+                with col2:
+                    st.markdown("#### **Bonus and penalty points**")
+
+        for idx, (setting_name, label, default_points, help_text, type) in zip(
+            range(2,9,2), scoring_settings[row_start:row_start + 4]
+        ):
+            setting_key = f"{page_name}_points_{setting_name}_key"
+            widget_key = f"{page_name}_points_{setting_name}_widget_key"
+            st.session_state[widget_key] = st.session_state[setting_key]
+
+            with cols[idx]:
+                st.number_input(
+                    label,
+                    min_value=0.0 if default_points > 0 else None,
+                    max_value=0 if default_points < 0 else None,
+                    step=1 if type == int else 0.5,
+                    format='%f.2' if type == float else '%d',
+                    help=help_text,
+                    key=widget_key,
+                    on_change=sync_filter,
+                    args=(setting_key, widget_key),
                 )
 
 # Graphics settings

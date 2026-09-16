@@ -1,3 +1,9 @@
 .agents/
 src/.env
 src/img/*
+
+# Local SQLite database and its WAL/SHM sidecar files.
+/src/data/db/*.sqlite3*
+
+# Google OAuth credentials and the local authentication cookie secret.
+**/.streamlit/secrets.toml

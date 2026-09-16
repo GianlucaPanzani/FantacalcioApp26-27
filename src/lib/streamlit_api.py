@@ -15,7 +15,7 @@ from lib.utils import (
     get_color_per_role,
     get_condition_by,
     get_default_value,
-    get_ai_icon,
+    get_icon,
     get_current_date,
     get_current_season,
     ai_data_stream,
@@ -175,7 +175,7 @@ def get_player_img_url(player_name: str):
 def print_ai_icon_with_markdown_title(markdown_text = f"### AI predictions"):
     cols = st.columns([1,19])
     with cols[0]:
-        st.markdown(f"{get_ai_icon()}")
+        st.markdown(get_icon("ai"))
     with cols[1]:
         st.markdown(markdown_text)
 

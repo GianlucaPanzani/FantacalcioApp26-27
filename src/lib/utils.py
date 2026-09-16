@@ -87,18 +87,19 @@ columns_to_user_view_dict = {
     "FVM M": "Mean Mantra mln",
 }
 
-interest_markers = {
-    "Da valutare": "⚫",
-    "Bassissimo": "⚪",
-    "Basso": "🟡",
-    "Medio": "🟠",
-    "Alto": "🔴",
-    "Scommessa": "🟣",
-    "Buoni low cost": "🔵",
+interest_colors_dict = {
+    "Da valutare": "#979797",   # Gray: not yet evaluated
+    "Bassissimo": "#FFF8B8",    # Pale yellow: very low interest
+    "Basso": "#FFE365",         # Yellow: low interest
+    "Medio": "#F8AB39",         # Orange: medium interest
+    "Alto": "#FB7272",          # Soft red: high interest
+    "Altissimo": "#F55050",     # Stronger red: very high interest
+    "Scommessa": "#DA74EC",     # Light purple: speculative pick
+    "Buoni low cost": "#84E7A0", # Mint green: good budget pick
 }
 
-def get_ai_icon():
-    return f"![AI](data:image/png;base64,{b64encode(Path('icons/icons_ai.png').read_bytes()).decode('ascii')})"
+def get_icon(icon_name: str):
+    return f"![AI](data:image/png;base64,{b64encode(Path(f'icons/icons8-{icon_name}-94.png').read_bytes()).decode('ascii')})"
 
 def get_role_icon(fanta_role: str):
     role_icons = {
@@ -116,7 +117,14 @@ def get_ai_player_selection_icon():
 def set_format_interest(interest):
     if interest is None:
         return None
-    return interest_markers.get(interest, interest)
+    return str(interest)
+
+
+def highlight_interest(interest) -> str:
+    """Use the shared interest palette for table cells."""
+    color = interest_colors_dict.get(interest)
+    return f"background-color: {color}; color: #000000" if color else ""
+
 
 def get_current_year():
     return datetime.now().year
