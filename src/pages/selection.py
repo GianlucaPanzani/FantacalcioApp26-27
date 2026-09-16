@@ -9,18 +9,22 @@ from lib.utils import (
     get_circular_role_icon,
     get_background_img_path,
 )
-from lib.streamlit_api import (
-    bottom_caption,
-    set_page_background,
-    set_dark_background,
+from lib.streamlit_api.data_handler import (
     sync_filter,
     apply_filters,
     get_roles_dict,
-    get_user_view_of_column,
     load_dataset,
     load_models,
     load_env,
     store_env,
+)
+from lib.streamlit_api.design_handler import (
+    bottom_caption,
+    set_page_background,
+    set_dark_background,
+)
+from lib.streamlit_api.visualization_handler import (
+    get_user_view_of_column,
 )
 from lib.xgboost_predictor import (
     features_to_predict_list,

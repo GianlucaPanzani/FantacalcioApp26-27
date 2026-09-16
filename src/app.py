@@ -1,16 +1,9 @@
-import pandas as pd
 import streamlit as st
 
-from backend import api
 from backend.user_services import get_user
-from backend.auction_services import get_partecipation
 
-from lib.streamlit_api import (
-    sidebar_navigation_size
-)
-from lib.utils import (
-    get_icon
-)
+from lib.streamlit_api.design_handler import sidebar_navigation_size
+from lib.utils import get_icon
 
 
 # Case of user not logged with google

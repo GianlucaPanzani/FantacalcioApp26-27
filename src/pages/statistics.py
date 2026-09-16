@@ -1,4 +1,3 @@
-import math
 import streamlit as st
 import pandas as pd
 from lib.utils import (
@@ -6,21 +5,23 @@ from lib.utils import (
     highlight_player_role,
     get_background_img_path
 )
-from lib.streamlit_api import (
-    thick_divider,
-    bottom_caption,
-    set_dark_background,
-    set_page_background,
+from lib.streamlit_api.data_handler import (
     sync_filter,
     apply_filters,
-    get_user_view_of_column,
     load_dataset,
     load_env,
     load_models,
     store_env,
     get_roles_dict,
-    plot_comparison_between_players,
-    plot_player_history
+)
+from lib.streamlit_api.design_handler import (
+    bottom_caption,
+    set_dark_background,
+    set_page_background,
+)
+from lib.streamlit_api.visualization_handler import (
+    get_user_view_of_column,
+    plot_player_history,
 )
 from lib.xgboost_predictor import (
     features_to_predict_list,
@@ -186,7 +187,7 @@ def players_filters(players: pd.DataFrame) -> pd.DataFrame:
         st.multiselect(
             f"Select {get_user_view_of_column(column).lower()}",
             options=options,
-            placeholder=f"Select one or more elements...",
+            placeholder="Select one or more elements...",
             key=f"{page_name}_{column}_widget_key",
             on_change=sync_filter,
             args=(f"{page_name}_{column}_key", f"{page_name}_{column}_widget_key"),

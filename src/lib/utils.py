@@ -101,6 +101,18 @@ interest_colors_dict = {
 def get_icon(icon_name: str):
     return f"![AI](data:image/png;base64,{b64encode(Path(f'icons/icons8-{icon_name}-94.png').read_bytes()).decode('ascii')})"
 
+def get_emoji(page_name: str):
+    emoji_dict = {
+        "login": "⚽",
+        "registration": "👤",
+        "auction": ":material/gavel:",
+        "fantacalcio": "⚽",
+        "statistics": "📊",
+        "selection": "🏃‍♂️",
+        "settings": "⚙️",
+    }
+    return emoji_dict[page_name]
+
 def get_role_icon(fanta_role: str):
     role_icons = {
         "P": "🧤",

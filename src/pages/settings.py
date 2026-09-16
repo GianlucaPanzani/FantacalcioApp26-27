@@ -4,18 +4,22 @@ from lib.utils import (
     get_circular_role_icon,
     get_background_img_path
 )
-from lib.streamlit_api import (
-    bottom_caption,
-    set_page_background,
-    set_dark_background,
-    get_user_view_of_column,
+from lib.streamlit_api.data_handler import (
     get_fanta_manager_players_dict,
     get_roles_dict,
     sync_filter,
     add_graphical_columns,
     load_dataset,
     load_env,
-    store_env
+    store_env,
+)
+from lib.streamlit_api.design_handler import (
+    bottom_caption,
+    set_page_background,
+    set_dark_background,
+)
+from lib.streamlit_api.visualization_handler import (
+    get_user_view_of_column,
 )
 
 
@@ -41,6 +45,63 @@ settings_keys_set = {
     for key in loaded_env_values
     if key.startswith(f"{page_name}_")
 }
+
+# Initialize persistent auction rules.
+auction_rule_settings = [
+    ("defender_modifier", "Defender modifier"),
+    ("midfielder_modifier", "Midfielder modifier"),
+    ("player_switch", "Player switch"),
+]
+for setting_name, _ in auction_rule_settings:
+    setting_key = f"{page_name}_auction_{setting_name}_key"
+    settings_keys_set.add(setting_key)
+    st.session_state.setdefault(setting_key, False)
+
+# Define editable scoring values and their numeric types.
+scoring_settings = [
+    # (setting_name, label, default_points, help_text, value_type)
+    (
+        "goal_scored", "Goal scored", 3,
+        "Points for a goal excluding penalties; penalties have their own value.", int
+    ),
+    (
+        "goalkeeper_goal_conceded", "Goalkeeper: goal conceded", -1,
+        "Points for a goal conceded excluding penalties; penalties have their own value.", int
+    ),
+    (
+        "assist", "Assist", 1,
+        "Points for an assist.", int
+    ),
+    (
+        "penalty_scored", "Penalty scored", 3,
+        "Total points for a scored penalty, separate from the goal-scored value.", int
+    ),
+    (
+        "penalty_missed", "Penalty missed", -3,
+        "Points for a missed penalty.", int
+    ),
+    (
+        "goalkeeper_penalty_conceded", "Goalkeeper: penalty goal conceded", -1,
+        "Total points for conceding a penalty goal, not for committing a foul.", int
+    ),
+    (
+        "goalkeeper_penalty_saved", "Goalkeeper: penalty saved", 3,
+        "Points for saving a penalty.", int
+    ),
+    (
+        "yellow_card", "Yellow card", -0.5,
+        "Points for a yellow card.", float
+    ),
+    (
+        "red_card", "Red card", -1,
+        "Points for a red card.", int
+    ),
+]
+for setting_name, _, default_points, _, value_type in scoring_settings:
+    setting_key = f"{page_name}_points_{setting_name}_key"
+    settings_keys_set.add(setting_key)
+    st.session_state.setdefault(setting_key, default_points)
+    st.session_state[setting_key] = value_type(st.session_state[setting_key])
 
 my_manager_key = f"{page_name}_my_manager_key"
 settings_keys_set.add(my_manager_key)
@@ -303,8 +364,8 @@ with st.container(border=True, key=f"dark-card-{page_name}_budgets_key"):
                 )
             else:
                 st.metric(
-                    label=f"**Budgets balanced**",
-                    value=f":green[0] mln",
+                    label="**Budgets balanced**",
+                    value=":green[0] mln",
                     height="stretch",
                     width="stretch",
                 )
@@ -335,63 +396,6 @@ with st.container(border=True, key=f"dark-card-{page_name}_auction_rules_key"):
 
 # Bonus and penalty values
 with st.container(border=True, key=f"dark-card-{page_name}_scoring_key"):
-
-    # Initialize persistent auction rules and editable scoring defaults.
-    auction_rule_settings = [
-        ("defender_modifier", "Defender modifier"),
-        ("midfielder_modifier", "Midfielder modifier"),
-        ("player_switch", "Player switch"),
-    ]
-    for setting_name, _ in auction_rule_settings:
-        setting_key = f"{page_name}_auction_{setting_name}_key"
-        settings_keys_set.add(setting_key)
-        st.session_state.setdefault(setting_key, False)
-
-    # These are configurable starting values, not a predefined league ruleset.
-    scoring_settings = [
-        # (setting_name, label, default_points, help_text, type)
-        (
-            "goal_scored", "Goal scored", 3,
-            "Points for a goal excluding penalties; penalties have their own value.", int
-        ),
-        (
-            "goalkeeper_goal_conceded", "Goalkeeper: goal conceded", -1,
-            "Points for a goal conceded excluding penalties; penalties have their own value.", int
-        ),
-        (
-            "assist", "Assist", 1,
-            "Points for an assist.", int
-        ),
-        (
-            "penalty_scored", "Penalty scored", 3,
-            "Total points for a scored penalty, separate from the goal-scored value.", int
-        ),
-        (
-            "penalty_missed", "Penalty missed", -3,
-            "Points for a missed penalty.", int
-        ),
-        (
-            "goalkeeper_penalty_conceded", "Goalkeeper: penalty goal conceded", -1,
-            "Total points for conceding a penalty goal, not for committing a foul.", int
-        ),
-        (
-            "goalkeeper_penalty_saved", "Goalkeeper: penalty saved", 3,
-            "Points for saving a penalty.", int
-        ),
-        (
-            "yellow_card", "Yellow card", -0.5,
-            "Points for a yellow card.", float
-        ),
-        (
-            "red_card", "Red card", -1,
-            "Points for a red card.", int
-        ),
-    ]
-    for setting_name, _, default_points, _ in scoring_settings:
-        setting_key = f"{page_name}_points_{setting_name}_key"
-        settings_keys_set.add(setting_key)
-        st.session_state.setdefault(setting_key, default_points)
-
     for row_start in range(0, len(scoring_settings), 4):
         cols = st.columns([8,1,8,1,8,1,8,1,8])
 
@@ -403,20 +407,24 @@ with st.container(border=True, key=f"dark-card-{page_name}_scoring_key"):
                 with col2:
                     st.markdown("#### **Bonus and penalty points**")
 
-        for idx, (setting_name, label, default_points, help_text, type) in zip(
+        for idx, (setting_name, label, default_points, help_text, value_type) in zip(
             range(2,9,2), scoring_settings[row_start:row_start + 4]
         ):
             setting_key = f"{page_name}_points_{setting_name}_key"
             widget_key = f"{page_name}_points_{setting_name}_widget_key"
             st.session_state[widget_key] = st.session_state[setting_key]
 
+            zero_value = value_type(0)
+            step_value = value_type(1 if value_type is int else 0.5)
+            number_format = "%d" if value_type is int else "%.1f"
+
             with cols[idx]:
                 st.number_input(
                     label,
-                    min_value=0.0 if default_points > 0 else None,
-                    max_value=0 if default_points < 0 else None,
-                    step=1 if type == int else 0.5,
-                    format='%f.2' if type == float else '%d',
+                    min_value=zero_value if default_points > 0 else None,
+                    max_value=zero_value if default_points < 0 else None,
+                    step=step_value,
+                    format=number_format,
                     help=help_text,
                     key=widget_key,
                     on_change=sync_filter,

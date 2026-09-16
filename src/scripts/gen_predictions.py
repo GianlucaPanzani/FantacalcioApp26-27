@@ -1,7 +1,7 @@
 from math import isfinite
 import pandas as pd
 
-from lib.streamlit_api import (
+from lib.streamlit_api.data_handler import (
     load_dataset,
     load_models,
     store_env
