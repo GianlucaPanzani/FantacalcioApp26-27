@@ -167,7 +167,7 @@ def _read_guest_env(content: str, *, strict: bool = False) -> dict[str, str]:
     return values
 
 
-def _validate_guest_settings(values: dict[str, str]) -> dict:
+def _validate_guest_settings_zip_data(values: dict[str, str]) -> dict:
     """Validate allowlisted settings while retaining the existing type encoding."""
     decoded = {}
     for key in values:
@@ -230,7 +230,7 @@ def _validate_guest_settings(values: dict[str, str]) -> dict:
     return decoded
 
 
-def _validate_guest_selection(content: bytes) -> tuple[bytes, int]:
+def _validate_guest_selection_zip_data(content: bytes) -> tuple[bytes, int]:
     """Normalize the current shortlist format and reject malformed player data."""
     columns = ["Id", "mln", "interest", "description"]
     reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig"), newline=""), strict=True)
@@ -293,11 +293,11 @@ def export_guest_state(src_dir: str | Path | None = None) -> bytes:
         key: value for key, value in env_values.items()
         if key.removesuffix("_type") in _GUEST_SETTING_KEYS
     }
-    _validate_guest_settings(personal_values)
+    _validate_guest_settings_zip_data(personal_values)
     selection_path = _guest_selection_target(root, env_values)
     if selection_path.exists() and selection_path.stat().st_size > _GUEST_ARCHIVE_LIMIT:
         raise ValueError("Selection CSV is too large.")
-    selection_bytes, _ = _validate_guest_selection(
+    selection_bytes, _ = _validate_guest_selection_zip_data(
         selection_path.read_bytes() if selection_path.exists()
         else b"Id,mln,interest,description\n"
     )
@@ -342,8 +342,8 @@ def restore_guest_state(archive: bytes | BinaryIO, src_dir: str | Path | None = 
             if manifest != {"format": "fantacalcio-guest-state", "version": 1}:
                 raise ValueError("Unsupported guest archive format or version.")
             personal_values = _read_guest_env(bundle.read("personal.env").decode("utf-8"), strict=True)
-            settings = _validate_guest_settings(personal_values)
-            selection_bytes, selection_count = _validate_guest_selection(bundle.read("selection_selected_players.csv"))
+            settings = _validate_guest_settings_zip_data(personal_values)
+            selection_bytes, selection_count = _validate_guest_selection_zip_data(bundle.read("selection_selected_players.csv"))
     except (zipfile.BadZipFile, UnicodeError, csv.Error, json.JSONDecodeError, NotImplementedError) as exc:
         raise ValueError("Invalid guest archive.") from exc
 
@@ -388,6 +388,7 @@ def restore_guest_state(archive: bytes | BinaryIO, src_dir: str | Path | None = 
         for temporary_path in staged.values():
             temporary_path.unlink(missing_ok=True)
     return {"settings": settings, "selected_players": selection_count}
+
 
 def download_dataset(out_dir: str, path_kaggle: str) -> None:
     kagglehub.dataset_download(

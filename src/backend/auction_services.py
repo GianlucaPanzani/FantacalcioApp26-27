@@ -8,18 +8,30 @@ from . import api
 from .user_services import set_user
 
 
-def get_partecipation(
+def get_participant(
     user_id: int, auction_id: int, *, connection: sqlite3.Connection | None = None,
 ) -> dict | None:
     """Return the user's participation in the requested auction, or None."""
     # Scope the lookup to one auction, since a user can join several auctions.
     participants = api.get(
-        "participants",
-        ["user_id", "auction_id"],
-        [user_id, auction_id],
+        table="participants",
+        columns=["user_id", "auction_id"],
+        values=[user_id, auction_id],
         connection=connection,
     )
     return participants[0] if participants else None
+
+
+def get_participants(
+    auction_id: int, *, connection: sqlite3.Connection | None = None,
+) -> dict | None:
+    participants = api.get(
+        table="participants",
+        columns=["auction_id"],
+        values=[auction_id],
+        connection=connection,
+    )
+    return participants
 
 
 def set_partecipant(

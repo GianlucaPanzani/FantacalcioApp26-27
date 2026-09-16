@@ -98,7 +98,48 @@ interest_colors_dict = {
     "Buoni low cost": "#84E7A0", # Mint green: good budget pick
 }
 
+auction_settings = [
+    # (setting_name, label, default_points, help_text, value_type)
+    (
+        "goal_scored", "Goal scored", 3,
+        "Points for a goal excluding penalties; penalties have their own value.", int
+    ),
+    (
+        "assist", "Assist", 1,
+        "Points for an assist.", int
+    ),
+    (
+        "penalty_scored", "Penalty scored", 3,
+        "Total points for a scored penalty, separate from the goal-scored value.", int
+    ),
+    (
+        "penalty_missed", "Penalty missed", -3,
+        "Points for a missed penalty.", int
+    ),
+    (
+        "goalkeeper_goal_conceded", "Goalkeeper goal conceded", -1,
+        "Points for a goal conceded excluding penalties; penalties have their own value.", int
+    ),
+    (
+        "goalkeeper_penalty_conceded", "Goalkeeper penalty goal conceded", -1,
+        "Total points for conceding a penalty goal, not for committing a foul.", int
+    ),
+    (
+        "goalkeeper_penalty_saved", "Goalkeeper penalty saved", 3,
+        "Points for saving a penalty.", int
+    ),
+    (
+        "yellow_card", "Yellow card", -0.5,
+        "Points for a yellow card.", float
+    ),
+    (
+        "red_card", "Red card", -1,
+        "Points for a red card.", int
+    ),
+]
+
 def get_icon(icon_name: str):
+    """Allowed icon names: ai, ai-settings, auction, ball, graphic, settings."""
     return f"![AI](data:image/png;base64,{b64encode(Path(f'icons/icons8-{icon_name}-94.png').read_bytes()).decode('ascii')})"
 
 def get_emoji(page_name: str):
@@ -122,9 +163,6 @@ def get_role_icon(fanta_role: str):
     }
     return role_icons[fanta_role]
 
-
-def get_ai_player_selection_icon():
-    return f"![AI](data:image/png;base64,{b64encode(Path('icons/icons_ai_chatgpt_players_selection2.png').read_bytes()).decode('ascii')})"
 
 def set_format_interest(interest):
     if interest is None:
@@ -181,8 +219,16 @@ def get_color_per_role(role: str, color_version=True, rgba=False) -> str:
     if rgba:
         return role_colors_rgba_dict.get(role, "")
     return role_colors_dict.get(str(role).strip().upper(), "")
-    
 
+def get_user_view_of_column(col: str):
+    return columns_to_user_view_dict.get(col, col.replace("_", " ").capitalize())
+
+def get_col_from_user_view(user_view: str):
+    for col, user_view_i in columns_to_user_view_dict.items():
+        if user_view == user_view_i:
+            return col
+    return user_view
+    
 def get_circular_role_icon(role: str, font_size=14, height=24, width=24, y_translation=-2):
     return f"""
     <span style="

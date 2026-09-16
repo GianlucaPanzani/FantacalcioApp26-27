@@ -11,12 +11,22 @@ def get_user(
 
     # Match the provider and its stable user identifier; never create on lookup.
     users = api.get(
-        "users",
-        ["auth_issuer", "auth_subject"],
-        [auth_issuer, auth_subject],
+        table="users",
+        columns=["auth_issuer", "auth_subject"],
+        values=[auth_issuer, auth_subject],
         connection=connection,
     )
     return users[0] if users else None
+
+
+def get_users(connection: sqlite3.Connection | None = None) -> list[dict] | None:
+    users = api.get(
+        table="users",
+        columns=None,
+        values=None,
+        connection=connection,
+    )
+    return users
 
 
 def set_user(

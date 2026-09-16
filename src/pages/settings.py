@@ -1,7 +1,14 @@
 import streamlit as st
 import pandas as pd
+from lib.data_handler import (
+    export_guest_state,
+    restore_guest_state
+)
 from lib.utils import (
     get_circular_role_icon,
+    get_emoji,
+    get_icon,
+    get_current_season,
     get_background_img_path
 )
 from lib.streamlit_api.data_handler import (
@@ -12,6 +19,7 @@ from lib.streamlit_api.data_handler import (
     load_dataset,
     load_env,
     store_env,
+    restore_personal_backup
 )
 from lib.streamlit_api.design_handler import (
     bottom_caption,
@@ -23,20 +31,25 @@ from lib.streamlit_api.visualization_handler import (
 )
 
 
+page_name = "settings"
+
 st.set_page_config(
     page_title="Settings",
-    page_icon="⚙️",
+    page_icon=get_emoji(page_name),
     layout="wide",
 )
-
-page_name = "settings"
 
 img_path = get_background_img_path(page_name)
 set_page_background(img_path)
 set_dark_background()
 
 
-st.title("⚙️ Settings")
+# Title
+cols = st.columns([1,15])
+with cols[0]:
+    st.markdown(f"{get_icon('settings')}", unsafe_allow_html=True)
+with cols[1]:
+    st.title("Settings")
 st.caption("Configure Fanta Managers, squad limits, budgets, auction rules, bonus and penalty points, and player charts.")
 
 loaded_env_values = load_env(path=".env")
@@ -45,63 +58,6 @@ settings_keys_set = {
     for key in loaded_env_values
     if key.startswith(f"{page_name}_")
 }
-
-# Initialize persistent auction rules.
-auction_rule_settings = [
-    ("defender_modifier", "Defender modifier"),
-    ("midfielder_modifier", "Midfielder modifier"),
-    ("player_switch", "Player switch"),
-]
-for setting_name, _ in auction_rule_settings:
-    setting_key = f"{page_name}_auction_{setting_name}_key"
-    settings_keys_set.add(setting_key)
-    st.session_state.setdefault(setting_key, False)
-
-# Define editable scoring values and their numeric types.
-scoring_settings = [
-    # (setting_name, label, default_points, help_text, value_type)
-    (
-        "goal_scored", "Goal scored", 3,
-        "Points for a goal excluding penalties; penalties have their own value.", int
-    ),
-    (
-        "goalkeeper_goal_conceded", "Goalkeeper: goal conceded", -1,
-        "Points for a goal conceded excluding penalties; penalties have their own value.", int
-    ),
-    (
-        "assist", "Assist", 1,
-        "Points for an assist.", int
-    ),
-    (
-        "penalty_scored", "Penalty scored", 3,
-        "Total points for a scored penalty, separate from the goal-scored value.", int
-    ),
-    (
-        "penalty_missed", "Penalty missed", -3,
-        "Points for a missed penalty.", int
-    ),
-    (
-        "goalkeeper_penalty_conceded", "Goalkeeper: penalty goal conceded", -1,
-        "Total points for conceding a penalty goal, not for committing a foul.", int
-    ),
-    (
-        "goalkeeper_penalty_saved", "Goalkeeper: penalty saved", 3,
-        "Points for saving a penalty.", int
-    ),
-    (
-        "yellow_card", "Yellow card", -0.5,
-        "Points for a yellow card.", float
-    ),
-    (
-        "red_card", "Red card", -1,
-        "Points for a red card.", int
-    ),
-]
-for setting_name, _, default_points, _, value_type in scoring_settings:
-    setting_key = f"{page_name}_points_{setting_name}_key"
-    settings_keys_set.add(setting_key)
-    st.session_state.setdefault(setting_key, default_points)
-    st.session_state[setting_key] = value_type(st.session_state[setting_key])
 
 my_manager_key = f"{page_name}_my_manager_key"
 settings_keys_set.add(my_manager_key)
@@ -370,23 +326,60 @@ with st.container(border=True, key=f"dark-card-{page_name}_budgets_key"):
                     width="stretch",
                 )
 
-# General auction rules
+# General auction rules and bonus/malus points
 with st.container(border=True, key=f"dark-card-{page_name}_auction_rules_key"):
-    cols = st.columns([8,1,8,1,8,1,8,1,8])
 
+    # Initialize persistent auction rules.
+    auction_rule_settings = [
+        ("defender_modifier", "Defender modifier"),
+        ("midfielder_modifier", "Midfielder modifier"),
+        ("player_switch", "Player switch"),
+    ]
+    for setting_name, _ in auction_rule_settings:
+        setting_key = f"{page_name}_auction_{setting_name}_key"
+        settings_keys_set.add(setting_key)
+        st.session_state.setdefault(setting_key, False)
+
+    for setting_name, _, default_points, _, value_type in auction_settings:
+        setting_key = f"{page_name}_points_{setting_name}_key"
+        settings_keys_set.add(setting_key)
+        st.session_state.setdefault(setting_key, default_points)
+        st.session_state[setting_key] = value_type(st.session_state[setting_key])
+
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
     with cols[0]:
         col1, col2 = st.columns([1,8])
         with col1:
             st.markdown("#### :material/gavel:")
         with col2:
-            st.markdown("#### **Auction settings**")
+            st.markdown("#### **Auction rules and points**")
 
-    for column_index, (setting_name, label) in zip(range(2,8,2), auction_rule_settings):
+    # Display bonus and penalty values on separate rows.
+    for row_start in range(0, len(auction_settings), 4):
+        scoring_settings_chunk = auction_settings[row_start:row_start + 4]
+        for idx, (setting_name, label, default_value, help_str, type) in zip(range(2,9,2), scoring_settings_chunk):
+            setting_key = f"{page_name}_points_{setting_name}_key"
+            widget_key = f"{page_name}_points_{setting_name}_widget_key"
+            st.session_state[widget_key] = st.session_state[setting_key]
+            with cols[idx]:
+                st.number_input(
+                    label,
+                    step=1 if type is int else 0.5,
+                    format="%d" if type is int else "%.1f",
+                    help=help_str,
+                    key=widget_key,
+                    on_change=sync_filter,
+                    args=(setting_key, widget_key),
+                )
+    
+    # Display each auction rule once in the first row.
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
+    for idx, (setting_name, label) in zip(range(2,8,2), auction_rule_settings):
         setting_key = f"{page_name}_auction_{setting_name}_key"
         widget_key = f"{page_name}_auction_{setting_name}_widget_key"
         st.session_state[widget_key] = st.session_state[setting_key]
 
-        with cols[column_index]:
+        with cols[idx]:
             st.toggle(
                 label,
                 key=widget_key,
@@ -394,48 +387,10 @@ with st.container(border=True, key=f"dark-card-{page_name}_auction_rules_key"):
                 args=(setting_key, widget_key),
             )
 
-# Bonus and penalty values
-with st.container(border=True, key=f"dark-card-{page_name}_scoring_key"):
-    for row_start in range(0, len(scoring_settings), 4):
-        cols = st.columns([8,1,8,1,8,1,8,1,8])
-
-        if row_start == 0:
-            with cols[0]:
-                col1, col2 = st.columns([1,8])
-                with col1:
-                    st.markdown("#### :material/scoreboard:")
-                with col2:
-                    st.markdown("#### **Bonus and penalty points**")
-
-        for idx, (setting_name, label, default_points, help_text, value_type) in zip(
-            range(2,9,2), scoring_settings[row_start:row_start + 4]
-        ):
-            setting_key = f"{page_name}_points_{setting_name}_key"
-            widget_key = f"{page_name}_points_{setting_name}_widget_key"
-            st.session_state[widget_key] = st.session_state[setting_key]
-
-            zero_value = value_type(0)
-            step_value = value_type(1 if value_type is int else 0.5)
-            number_format = "%d" if value_type is int else "%.1f"
-
-            with cols[idx]:
-                st.number_input(
-                    label,
-                    min_value=zero_value if default_points > 0 else None,
-                    max_value=zero_value if default_points < 0 else None,
-                    step=step_value,
-                    format=number_format,
-                    help=help_text,
-                    key=widget_key,
-                    on_change=sync_filter,
-                    args=(setting_key, widget_key),
-                )
-
 # Graphics settings
 with st.container(border=True, key=f"dark-card-{page_name}_graphics_key"):
 
     cols = st.columns([8,1,8,1,8,1,8,1,8])
-
     with cols[0]:
         col1, col2 = st.columns([1,8])
         with col1:
@@ -445,6 +400,7 @@ with st.container(border=True, key=f"dark-card-{page_name}_graphics_key"):
 
     for i, (role, role_name) in zip(range(2,9,2), get_roles_dict().items()):
         with cols[i]:
+            st.space(1)
             st.markdown(
                 f"{get_circular_role_icon(role)} $\\quad$ **{str(role_name).capitalize()} statistics**",
                 unsafe_allow_html=True
@@ -503,6 +459,74 @@ with st.container(border=True, key=f"dark-card-{page_name}_graphics_key"):
                 on_click=add_graphical_columns,
                 args=(graphical_cols_key, graphical_cols_widget_key),
             )
+
+# Personal backup and restore
+backup_upload_key = f"{page_name}_backup_upload_key"
+backup_confirm_key = f"{page_name}_backup_confirm_key"
+backup_result_key = f"{page_name}_backup_result_key"
+
+with st.container(border=True, key=f"dark-card-{page_name}_backup_key"):
+    col1, _, col2, _, col3 = st.columns([8,1,18,1,18])
+    with col1:
+        st.markdown("#### :material/settings_backup_restore: **Backup**")
+        st.caption("Export or restore your personal settings, player selections and spending limits.")
+
+    with col2:
+        st.markdown(f"##### :material/upload: Backup upload")
+        st.caption("Upload a previous backup to restore your personal settings, player selections, and spending limits.")
+
+        uploaded_archive = st.file_uploader(
+            "Upload a backup from FantAI",
+            type=["zip"],
+            key=backup_upload_key,
+            help="Select a ZIP previously exported from FantAI.",
+        )
+
+        if uploaded_archive is not None:
+            restore_confirmed = st.checkbox(
+                "Replace my current personal settings with this backup",
+                key=backup_confirm_key,
+            )
+
+            backup_stored = st.button(
+                "Store uploaded backup",
+                icon=":material/restore:",
+                type="primary",
+                width="stretch",
+                disabled=not restore_confirmed,
+                on_click=restore_personal_backup,
+                args=(backup_upload_key, backup_result_key),
+            )
+
+            if backup_stored:
+                backup_result = st.session_state[backup_result_key]
+                if backup_result["success"]:
+                    st.success(backup_result["message"])
+                else:
+                    st.error(backup_result["message"])
+
+    with col3:
+        st.markdown(f"##### :material/download: Backup download")
+        st.caption("Download a backup of your personal settings, player selections, and spending limits.")
+
+        download_disabled = False
+        try:
+            backup_archive = export_guest_state()
+        except (ValueError, OSError) as error:
+            backup_archive = None
+            st.error(f"Unable to create the backup: {error}")
+        if backup_archive is None:
+            download_disabled = True
+
+        st.download_button(
+            "Download backup",
+            data=backup_archive,
+            file_name=f"FantAI_backup_fantacalcio{get_current_season()}.zip",
+            disabled=download_disabled,
+            mime="application/zip",
+            icon=":material/download:",
+            width="stretch",
+        )
 
 
 # Synchronize bought players after adding, renaming or removing a manager

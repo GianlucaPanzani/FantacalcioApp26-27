@@ -47,7 +47,7 @@ def set_page_background(image_path: str | Path):
 
 def set_dark_background():
     return st.html(
-        """
+        f"""
         <style>
         [class*="st-key-dark-card-"] {{
             background-color: rgba(14, 17, 23, 0.94);

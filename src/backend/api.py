@@ -179,8 +179,8 @@ _TABLES = {
     """,
     # JSON preserves imported preference types (numbers, lists, booleans, null).
     # Only personal settings belong here; official rules remain in auctions.
-    "participant_settings": """
-        CREATE TABLE IF NOT EXISTS participant_settings (
+    "settings": """
+        CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
             key TEXT NOT NULL CHECK (length(trim(key)) > 0),
@@ -191,8 +191,8 @@ _TABLES = {
     """,
     # Presence of a row represents a selected player. Imported CSV mln maps to
     # max_bid; these preferences never create an actual bid or purchase.
-    "player_preferences": """
-        CREATE TABLE IF NOT EXISTS player_preferences (
+    "players_selected": """
+        CREATE TABLE IF NOT EXISTS players_selected (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             auction_id INTEGER NOT NULL,
             participant_id INTEGER NOT NULL,
@@ -243,7 +243,7 @@ def _connect(*, create_file: bool = False) -> sqlite3.Connection:
     return connection
 
 
-def create() -> Path:
+def create_db() -> Path:
     """Create the database directory, nine static tables and indexes if absent.
 
     Return the absolute database path. Existing data is preserved and all schema
@@ -355,7 +355,7 @@ def _build_predicates_condition(pairs: list[tuple[str, SQLValue]]) -> tuple[str,
 
 
 def get(
-    table: str, column: Columns | None, value: Values, *,
+    table: str, columns: Columns | None, values: Values, *,
     connection: sqlite3.Connection | None = None,
 ) -> list[dict[str, SQLValue]]:
     """Return matching rows as dictionaries ordered by id, or [] if none exist.
@@ -369,11 +369,11 @@ def get(
         allowed_cols = _get_allowed_columns(conn_transaction, table)
         parameters = []
         query = f'SELECT * FROM "{table}"'
-        if column is None:
-            if value is not None:
+        if columns is None:
+            if values is not None:
                 raise ValueError("Reading all rows requires both column=None and value=None.")
         else:
-            pairs = _get_columns_values_pairs(column, value, allowed_cols)
+            pairs = _get_columns_values_pairs(columns, values, allowed_cols)
             predicate, parameters = _build_predicates_condition(pairs)
             query += f" WHERE {predicate}"
         return [dict(row) for row in conn_transaction.execute(query + ' ORDER BY "id"', parameters)]

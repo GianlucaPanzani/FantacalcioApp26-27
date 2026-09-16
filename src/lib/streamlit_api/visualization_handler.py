@@ -210,17 +210,6 @@ def print_models_predictions(
     return
 
 
-def get_user_view_of_column(col: str):
-    return columns_to_user_view_dict.get(col, col.replace("_", " ").capitalize())
-
-
-def get_col_from_user_view(user_view: str):
-    for col, user_view_i in columns_to_user_view_dict.items():
-        if user_view == user_view_i:
-            return col
-    return user_view
-
-
 def create_player_history_chart(
         data: pd.DataFrame,
         statistic_name: str,

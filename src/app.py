@@ -31,7 +31,7 @@ if user is None:
     st.stop()
 
 
-sidebar_navigation_size(font_size=1.25)
+sidebar_navigation_size(font_size=1.28)
 
 pages = {
     "Pages": [

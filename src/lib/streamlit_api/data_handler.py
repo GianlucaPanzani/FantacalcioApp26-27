@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
 import streamlit as st
+from lib.data_handler import restore_guest_state
 from lib.utils import (
     stats_persistent_key_fields,
     get_condition_by,
@@ -53,8 +54,6 @@ def load_models(target_features: list) -> dict:
     return models_packages_dict
 
 
-
-
 def apply_filters(df: pd.DataFrame, exclude=None, columns_to_filter_list=[], compare_op_for_columns_to_filter_dict={}, page="unknown_page") -> pd.DataFrame:
     """Apply session-state filters, excluding one filter when requested."""
     result = df.copy()
@@ -88,6 +87,7 @@ def get_stats_persistent_keys(player_ids, page_name="stats") -> list[str]:
 
     return persistent_keys
 
+
 def get_role_limits() -> dict:
     return {
         "P": st.session_state.get("settings_P_limit_key", 3),
@@ -96,6 +96,7 @@ def get_role_limits() -> dict:
         "A": st.session_state.get("settings_A_limit_key", 6),
     }
 
+
 def get_roles_list(enable_aka=False) -> list:
     return [
         "goalkeeper" + f"{' (P)' if enable_aka else ''}",
@@ -103,6 +104,7 @@ def get_roles_list(enable_aka=False) -> list:
         "midfielder" + f"{' (C)' if enable_aka else ''}", 
         "attacker" + f"{' (A)' if enable_aka else ''}"
     ]
+
 
 def get_roles_dict() -> dict:
     '''
@@ -115,6 +117,7 @@ def get_roles_dict() -> dict:
         "A": "attacker"
     }
 
+
 def get_role_budget_limits() -> dict:
     return {
         "P": st.session_state.get("settings_P_budget_limit_key", 50),
@@ -122,6 +125,7 @@ def get_role_budget_limits() -> dict:
         "C": st.session_state.get("settings_C_budget_limit_key", 200),
         "A": st.session_state.get("settings_A_budget_limit_key", 150),
     }
+
 
 def get_fanta_manager_players_dict() -> dict:
     # Case of rebuild of the bought players dict by restoring from csv
@@ -288,6 +292,45 @@ def store_env(data_dict: dict, path: str = ".env") -> dict:
     env_path.write_text(f"{env_content}\n", encoding="utf-8")
 
     return stored_values
+
+
+def restore_personal_backup(upload_key: str, result_key: str) -> None:
+    """Restore personal settings and clear stale Session State values."""
+    uploaded_archive = st.session_state.get(upload_key)
+
+    try:
+        result = restore_guest_state(uploaded_archive.getvalue())
+    except (ValueError, OSError) as error:
+        st.session_state[result_key] = {
+            "success": False,
+            "message": str(error),
+        }
+        return
+
+    restored_keys = set(result["settings"])
+    restored_widget_keys = {
+        f"{key.removesuffix('_key')}_widget_key"
+        for key in restored_keys
+        if key.endswith("_key")
+    }
+
+    # Allow load_env() to reload the restored values on the next rerun.
+    for key in list(st.session_state):
+        if (
+            key.startswith("selection_")
+            or key in restored_keys
+            or key in restored_widget_keys
+        ):
+            del st.session_state[key]
+
+    st.session_state[result_key] = {
+        "success": True,
+        "message": (
+            f"Backup restored successfully. "
+            f"{result['selected_players']} selected players imported."
+        ),
+    }
+
 
 def restore_bought_players(bought_players_df_key: str, settings_managers_key: str, fanta_manager_players_dict_key:str):
     '''Rebuild of the bought players dict by csv'''

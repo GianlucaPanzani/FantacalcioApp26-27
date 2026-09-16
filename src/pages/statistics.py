@@ -3,6 +3,8 @@ import pandas as pd
 from lib.utils import (
     get_default_value,
     highlight_player_role,
+    get_emoji,
+    get_icon,
     get_background_img_path
 )
 from lib.streamlit_api.data_handler import (
@@ -28,14 +30,13 @@ from lib.xgboost_predictor import (
     features_to_predict_per_role_dict
 )
 
+page_name = "statistics"
 
 st.set_page_config(
     page_title="Statistics",
-    page_icon="📊",
+    page_icon=get_emoji(page_name),
     layout="wide",
 )
-
-page_name = "statistics"
 
 img_path = get_background_img_path(page_name)
 set_page_background(img_path)
@@ -295,7 +296,12 @@ with st.sidebar:
     st.markdown("### Filters")
     filtered_players = players_filters(history_players)
 
-st.title("📊 Statistics")
+# Title
+cols = st.columns([1,15])
+with cols[0]:
+    st.markdown(f"{get_icon('graphic')}", unsafe_allow_html=True)
+with cols[1]:
+    st.title("Statistics")
 st.caption(
     "Filter historical data to inspect a player's season-by-season performance or compare two players "
     "and their statistics against the respective role averages."

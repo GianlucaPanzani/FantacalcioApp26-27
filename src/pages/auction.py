@@ -7,6 +7,7 @@ from lib.utils import (
     interest_colors_dict,
     highlight_interest,
     get_current_year,
+    get_emoji,
     get_icon,
     get_background_img_path
 )
@@ -33,13 +34,13 @@ from lib.streamlit_api.visualization_handler import (
     create_vertical_teams,
 )
 
+page_name = "auction"
 
 st.set_page_config(
-    page_title=f"{get_icon("auction")} Auction 26-27",
+    page_title="Auction 26-27",
+    page_icon=get_emoji(page_name),
     layout="wide",
 )
-
-page_name = "auction"
 
 img_path = get_background_img_path(page_name)
 set_page_background(img_path)
@@ -87,7 +88,7 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
     # Role filter
     role_filter_key = f"{page_name}_fanta_role_key"
     role_widget_key = f"{page_name}_fanta_role_widget_key"
-    fantacalcio_keys_set.add(role_filter_key)
+    auction_keys_set.add(role_filter_key)
     st.session_state.setdefault(role_filter_key, None)
     role_options = get_roles_dict().keys()
     st.session_state[role_widget_key] = (
@@ -109,7 +110,7 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
     # Fanta Manager filter
     manager_filter_key = f"{page_name}_selected_manager_key"
     manager_widget_key = f"{page_name}_selected_manager_widget_key"
-    fantacalcio_keys_set.add(manager_filter_key)
+    auction_keys_set.add(manager_filter_key)
     st.session_state.setdefault(manager_filter_key, None)
     manager_options = ["Free"] + st.session_state.get("settings_managers_key", [])
     st.session_state[manager_widget_key] = (
@@ -129,7 +130,7 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
     # Player filter
     player_filter_key = f"{page_name}_player_key"
     player_widget_key = f"{page_name}_player_widget_key"
-    fantacalcio_keys_set.add(player_filter_key)
+    auction_keys_set.add(player_filter_key)
     st.session_state.setdefault(player_filter_key, None)
     selected_player = st.session_state[player_filter_key]
     player_options = sorted(fanta_players["player"].dropna().astype(str).unique())
@@ -149,7 +150,7 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
     # Team filter
     team_filter_key = f"{page_name}_team_key"
     team_widget_key = f"{page_name}_team_widget_key"
-    fantacalcio_keys_set.add(team_filter_key)
+    auction_keys_set.add(team_filter_key)
     st.session_state.setdefault(team_filter_key, None)
     team_options = sorted(fanta_players["team"].dropna().astype(str).unique())
     st.session_state[team_widget_key] = (
@@ -207,7 +208,7 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
 def general_filters():
 
     # Set the number of columns of the view of the teams made by the fanta managers
-    fantacalcio_keys_set.add(fanta_manager_split_value_key)
+    auction_keys_set.add(fanta_manager_split_value_key)
     st.session_state.setdefault(fanta_manager_split_value_key, 5)
     st.session_state[fanta_manager_split_value_widget_key] = st.session_state[fanta_manager_split_value_key]
     n_cols_selected = st.number_input(
@@ -221,7 +222,7 @@ def general_filters():
     )
 
     # Checkbox to show the Manager's prefered players
-    fantacalcio_keys_set.add(enable_player_preferences_key)
+    auction_keys_set.add(enable_player_preferences_key)
     st.session_state.setdefault(enable_player_preferences_key, False)
     st.checkbox(
         "Show the columns of your selected players",
@@ -231,7 +232,7 @@ def general_filters():
     )
 
     # Checkbox to show the Manager's prefered players
-    fantacalcio_keys_set.add(enable_bought_players_stats_key)
+    auction_keys_set.add(enable_bought_players_stats_key)
     st.session_state.setdefault(enable_bought_players_stats_key, False)
     st.checkbox(
         "Enable compact view of the purchases",
@@ -248,7 +249,7 @@ def checkbox_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
     filtered_df = fanta_players.copy()
 
     # Checkbox to show AI predictions
-    fantacalcio_keys_set.add(show_ai_predictions_key)
+    auction_keys_set.add(show_ai_predictions_key)
     st.session_state.setdefault(show_ai_predictions_key, False)
     st.checkbox(
         "Show AI predictions",
@@ -259,7 +260,7 @@ def checkbox_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Checkbox to show the AI explaination
-    fantacalcio_keys_set.add(show_ai_explainations_key)
+    auction_keys_set.add(show_ai_explainations_key)
     st.session_state.setdefault(show_ai_explainations_key, False)
     st.checkbox(
         "Enable AI explainations",
@@ -271,7 +272,7 @@ def checkbox_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Checkbox to show the AI plots
-    fantacalcio_keys_set.add(show_ai_plots_key)
+    auction_keys_set.add(show_ai_plots_key)
     st.session_state.setdefault(show_ai_plots_key, False)
     st.checkbox(
         "Enable AI plots",
@@ -759,7 +760,7 @@ def remove_bought_player(player: dict) -> None:
 loaded_env_values = load_env(path=".env")
 
 # Track the persistent keys already stored for this page.
-fantacalcio_keys_set = {
+auction_keys_set = {
     key
     for key in loaded_env_values
     if key.startswith(f"{page_name}_")
@@ -767,21 +768,38 @@ fantacalcio_keys_set = {
 
 # Initialize missing manager and auction settings.
 settings_my_manager_key = "settings_my_manager_key"
-fantacalcio_keys_set.add(settings_my_manager_key)
+auction_keys_set.add(settings_my_manager_key)
 st.session_state.setdefault(settings_my_manager_key, "Me")
 settings_managers_key = "settings_managers_key"
-fantacalcio_keys_set.add(settings_managers_key)
+auction_keys_set.add(settings_managers_key)
 st.session_state.setdefault(settings_managers_key, [st.session_state[settings_my_manager_key]])
 settings_budget_key = "settings_budget_key"
-fantacalcio_keys_set.add(settings_budget_key)
+auction_keys_set.add(settings_budget_key)
 st.session_state.setdefault(settings_budget_key, 500)
 settings_ai_enabled_key = "settings_ai_enabled_key"
-fantacalcio_keys_set.add(settings_ai_enabled_key)
+auction_keys_set.add(settings_ai_enabled_key)
 st.session_state.setdefault(settings_ai_enabled_key, False)
+
+from backend.
+def get_fanta_managers():
+    participants = get_participants()
+    if participants is None:
+        return None
+    
+    users = {}
+    for participant in participants:
+        user_id = participant["uder_id"]
+        user = api.get(
+            table="users",
+            columns=["id"],
+            values=[user_id],
+            connection=connection,
+        )
 
 # Show the current manager first and check for at least one other participant.
 my_fanta_manager = st.session_state[settings_my_manager_key]
-fanta_managers = st.session_state[settings_managers_key]
+fanta_managers = get_fanta_managers()
+st.session_state[settings_managers_key] = fanta_managers
 fanta_managers = [my_fanta_manager] + [manager for manager in fanta_managers if manager != my_fanta_manager]
 st.session_state[settings_managers_key] = fanta_managers
 
@@ -802,16 +820,18 @@ except sqlite3.IntegrityError:
     st.stop()
 '''
 
-
+# Case of no other managers different by my_fantamanager in the list
 if not any(manager != my_fanta_manager for manager in fanta_managers):
     st.info("Add at least one other Fanta Manager in Settings before accessing the auction.")
     st.stop()
 
-# Block 2: Load the auction data and display the complete auction interface.
+# Load data
 models_packages_dict = load_models(target_features=features_to_predict_list)
 feature_explanations = load_dataset("data/csv/models_generated/features_explainability.csv")
+history_players = load_dataset("data/csv/notebooks_generated/serie_a_players_history.csv")
+fanta_players = load_dataset("data/csv/notebooks_generated/serie_a_players_history.csv", filter_by_current_year=True)
 
-# Restore purchased players when their session data has not been initialized.
+# Restore purchased players when their session data has not been initialized
 if f"{page_name}_manager_players_dict_key" not in st.session_state:
     restore_bought_players(
         bought_players_df_key=f"{page_name}_bought_players_df_key",
@@ -829,12 +849,6 @@ if st.session_state[enable_player_preferences_key]:
     )
     player_preferences = load_player_preferences(selection_players_path)
 
-# Load player history for statistics and model explanations.
-history_players = load_dataset("data/csv/notebooks_generated/serie_a_players_history.csv")
-
-# Load the current-season player pool for the auction table.
-fanta_players = load_dataset("data/csv/notebooks_generated/serie_a_players_history.csv", filter_by_current_year=True)
-
 # Render the sidebar controls for layout, AI views, and team resets.
 with st.sidebar:
 
@@ -849,9 +863,13 @@ with st.sidebar:
     st.markdown("### Reset teams")
     reset_teams_filters(fanta_managers)
 
-# Display the auction title and describe the available tools.
+# Title
 year = get_current_year()
-st.title(f"{get_icon('auction')} Auction {year}-{year+1}")
+cols = st.columns([1,15])
+with cols[0]:
+    st.markdown(f"{get_icon('auction')}", unsafe_allow_html=True)
+with cols[1]:
+    st.title(f"Auction {year}-{year+1}")
 st.caption(
     "Run the auction by filtering players, reviewing saved preferences and AI predictions, assigning purchases "
     "and prices, monitoring budgets and role limits, and exporting the completed teams to PDF."
@@ -965,8 +983,8 @@ with managers_col:
 
 # Persist the existing page settings and purchases using the current storage format.
 fantacalcio_bought_players_df_key = f"{page_name}_bought_players_df_key"
-fantacalcio_keys_set.add(fantacalcio_bought_players_df_key)
-fantacalcio_keys_list = list(fantacalcio_keys_set)
+auction_keys_set.add(fantacalcio_bought_players_df_key)
+fantacalcio_keys_list = list(auction_keys_set)
 store_env(
     data_dict={key: st.session_state[key] for key in fantacalcio_keys_list if key in st.session_state},
     path=".env",

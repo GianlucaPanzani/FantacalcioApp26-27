@@ -4,8 +4,14 @@ import streamlit as st
 from backend.user_services import (
     set_user
 )
+from lib.utils import get_emoji
 
 page_name = "registration"
+
+st.set_page_config(
+    page_title="Registration | Fantacalcio",
+    page_icon=get_emoji(page_name),
+)
 
 
 # Session state keys

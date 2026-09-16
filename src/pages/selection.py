@@ -6,6 +6,7 @@ from lib.utils import (
     interest_colors_dict,
     set_format_interest,
     get_icon,
+    get_emoji,
     get_circular_role_icon,
     get_background_img_path,
 )
@@ -30,14 +31,13 @@ from lib.xgboost_predictor import (
     features_to_predict_list,
 )
 
+page_name = "selection"
 
 st.set_page_config(
     page_title="Players Selection",
-    page_icon=get_icon("ai").removeprefix("![AI](").removesuffix(")"),
+    page_icon=get_emoji(page_name),
     layout="wide",
 )
-
-page_name = "selection"
 
 img_path = get_background_img_path(page_name)
 set_page_background(img_path)
