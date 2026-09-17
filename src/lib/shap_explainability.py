@@ -4,21 +4,22 @@ import pandas as pd
 
 
 def get_shap_info(shap_values_dict: dict[str, float], df: pd.DataFrame, top_k=None):
-    ''''
-    Get the top_k features with the highest absolute SHAP values and their corresponding explanations.
+    """Return the features with the greatest absolute SHAP impact.
+
+    Params
+    ----------
+    shap_values_dict : dict of str to float
+        SHAP impact indexed by model feature.
+    df : pandas.DataFrame
+        One-row model input containing the corresponding feature values.
+    top_k : int or None
+        Maximum number of features to include; all features when omitted.
 
     Returns
     --------
-    dict: A dictionary containing the features as keys and a dictionary of informations as values. 
-        Its format is as follows:
-        {
-            "feature_name": {
-                "value": feature_value,
-                "impact": shap_value,
-                "outcome": "positive" or "negative"
-            }
-        }
-    '''
+    dict
+        Feature values, signed impacts and positive/negative outcomes.
+    """
     feature_shap_value_list = [(k, abs(v)) for k, v in shap_values_dict.items()]
     feature_shap_value_list.sort(key=lambda x: x[1], reverse=True)
 
@@ -48,6 +49,28 @@ def build_model_explaination_response(
         top_k=3,
         worst_k=2
     ) -> str:
+    """Build a Markdown explanation from a model's SHAP values.
+
+    Params
+    ----------
+    shap_explainer : object
+        SHAP explainer exposing a ``shap_values`` method.
+    features : list
+        Ordered model features used to build the input row.
+    features_explainability : pandas.DataFrame
+        Human-readable positive and negative explanations per feature.
+    player_history : pandas.DataFrame
+        Temporal model input for the selected player.
+    top_k : int
+        Number of strongest positive or negative features to include first.
+    worst_k : int
+        Number of lowest-ranked features to include.
+
+    Returns
+    -------
+    str
+        Markdown list explaining the most relevant model signals.
+    """
 
     available_features = set(
         player_history.attrs.get("available_features", features)

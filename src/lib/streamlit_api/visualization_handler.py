@@ -1,13 +1,9 @@
 import altair as alt
 import pandas as pd
 import streamlit as st
-from lib.utils import (
-    columns_to_user_view_dict,
-    get_color_per_role,
-    get_icon,
-    ai_data_stream,
-    get_circular_role_icon
-)
+import time
+
+from lib.utils import columns_to_user_view_dict
 from lib.shap_explainability import (
     build_model_explaination_response,
 )
@@ -24,13 +20,26 @@ from lib.streamlit_api.data_handler import (
     load_dataset,
 )
 from lib.streamlit_api.design_handler import (
+    get_circular_role_icon,
+    get_color_per_role,
+    get_icon,
+    get_user_view_of_column,
     set_player_card_background,
     set_text_size,
 )
 
 
+def ai_data_stream(text: str):
+    """Yield text one word at a time for a short streaming animation."""
+    words = text.split(" ")
+    for index, word in enumerate(words):
+        time.sleep(0.01)
+        yield word + " " if index < len(words) - 1 else word
+
+
 
 def get_player_img_url(player_name: str):
+    """Return the player's cutout URL or the local fallback image path."""
     images_df = load_dataset("data/online_sources/players_thesportsdb.csv")
     img_player_row = images_df[images_df["query_name"] == player_name].iloc[0]
     if not img_player_row["found"] or pd.isna(img_player_row["strCutout"]) or img_player_row["strCutout"] == "":
@@ -39,6 +48,7 @@ def get_player_img_url(player_name: str):
 
 
 def print_ai_icon_with_markdown_title(markdown_text="### AI predictions"):
+    """Display the AI icon beside a Markdown section title."""
     cols = st.columns([1,19])
     with cols[0]:
         st.markdown(get_icon("ai"))
@@ -76,6 +86,27 @@ def print_models_predictions(
         explainability_enabled=True,
         plots_enebled=True
     ):
+    """Display model predictions, optional charts and SHAP explanations.
+
+    Params
+    ----------
+    models_packages_dict : dict
+        Trained model packages indexed by predicted feature.
+    history_players : pandas.DataFrame
+        Historical dataset used to calculate role averages.
+    history_of_the_player : pandas.DataFrame
+        Historical rows for the selected player.
+    player_row : pandas.Series
+        Current Fantacalcio record for the selected player.
+    top_k : int
+        Number of strongest SHAP signals to display.
+    worst_k : int
+        Number of weakest SHAP signals to display.
+    explainability_enabled : bool
+        Whether to render model explanations.
+    plots_enebled : bool
+        Whether to render player-history charts.
+    """
     features_explainability = load_dataset("data/csv/models_generated/features_explainability.csv")
     role_column_means = compute_role_column_means(history_players)
 
@@ -217,8 +248,29 @@ def create_player_history_chart(
         mean_value: float | None = None,
         prediction_data: pd.DataFrame | None = None,
         enable_collapse_values=False
-    ):
-    """Create a player history chart with season, team and value tooltips."""
+):
+    """Create a layered Altair chart for a player's seasonal history.
+
+    Params
+    ----------
+    data : pandas.DataFrame
+        Historical seasons, teams and values to plot.
+    statistic_name : str
+        Readable label for the vertical axis and tooltips.
+    y_limits : sequence or None
+        Optional minimum and maximum values for the vertical scale.
+    mean_value : float or None
+        Optional role average displayed as a reference line.
+    prediction_data : pandas.DataFrame or None
+        Optional predicted season and value displayed as a diamond marker.
+    enable_collapse_values : bool
+        Whether to average multiple team rows within each season.
+
+    Returns
+    -------
+    altair.LayerChart
+        Layered history, average and prediction chart.
+    """
     data = data.copy()
     tooltip = [
         alt.Tooltip("season:N", title="Season"),
@@ -312,11 +364,20 @@ def create_player_history_chart(
 
 
 def compute_role_column_means(history_players: pd.DataFrame) -> dict[str, dict[str, float | None]]:
-    """
-    Compute numeric column means by role, giving each player equal weight.
+    """Compute numeric column means by role, giving each player equal weight.
 
     First average each player's historical values, then average those results
     across all players with the same role.
+
+    Params
+    ----------
+    history_players : pandas.DataFrame
+        Historical player rows containing role and numeric statistics.
+
+    Returns
+    -------
+    dict
+        Statistic means indexed first by role and then by column.
     """
     numeric_columns = history_players.select_dtypes(include="number").columns
     role_column_means = {}
@@ -343,16 +404,17 @@ def compute_role_column_means(history_players: pd.DataFrame) -> dict[str, dict[s
 
 
 def plot_comparison_between_players(history_players: pd.DataFrame, filtered_players: pd.DataFrame) -> None:
-    """
-    Compare the historical statistics of two selected players.
+    """Compare the historical statistics of two selected players.
 
     The statistics configured for both player roles are combined and displayed
     in the same order. The first player is shown on the left and the second one
     on the right.
 
-    Parameters
+    Params
     ----------
-    filtered_players:
+    history_players : pandas.DataFrame
+        Complete historical dataset used to calculate role averages.
+    filtered_players : pandas.DataFrame
         DataFrame containing the historical records of two players.
     """
     role_column_means = compute_role_column_means(history_players)
@@ -490,7 +552,7 @@ def plot_player_history(
     Each chart represents the evolution of one statistic across the requested
     number of recent seasons.
 
-    Parameters
+    Params
     ----------
     history_players:
         DataFrame containing the historical records of the players.
@@ -647,7 +709,21 @@ def create_vertical_teams(
     enable_bought_players_stats_key: str,
     remove_player_callback,
 ):
-    """Display one compact team column for each Fanta Manager."""
+    """Display multiple Fanta Manager teams in compact vertical columns.
+
+    Params
+    ----------
+    fanta_manager_players_dict : dict
+        Purchased-player DataFrames indexed by Fanta Manager.
+    n_cols : int
+        Number of team columns to display.
+    page_name : str
+        Page prefix used to build stable widget keys.
+    enable_bought_players_stats_key : str
+        Session key controlling compact role statistics.
+    remove_player_callback : callable
+        Callback invoked by each player removal button.
+    """
 
     # Initializations
     my_fanta_manager = st.session_state["settings_my_manager_key"]
@@ -838,7 +914,17 @@ def create_horizontal_teams(
     page_name: str,
     remove_player_callback,
 ):
-    """Display one compact team column for each Fanta Manager."""
+    """Display Fanta Manager teams in full-width horizontal sections.
+
+    Params
+    ----------
+    fanta_manager_players_dict : dict
+        Purchased-player DataFrames indexed by Fanta Manager.
+    page_name : str
+        Page prefix used to build stable widget keys.
+    remove_player_callback : callable
+        Callback invoked by each player removal button.
+    """
 
     # Initializations
     my_fanta_manager = st.session_state["settings_my_manager_key"]

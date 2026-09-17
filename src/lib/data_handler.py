@@ -148,7 +148,7 @@ _GUEST_ARCHIVE_LIMIT = 10 * 1024 * 1024
 _GUEST_PLAYER_KEY = re.compile(r"selection_(selected|mln|interest|description)_\d+_key(?:_type)?$")
 
 
-def _read_guest_env(content: str, *, strict: bool = False) -> dict[str, str]:
+def _read_guest_env(content: str, strict: bool = False) -> dict[str, str]:
     """Read the app's KEY/value + KEY_type format without loading credentials."""
     values = {}
     for line in content.splitlines():
@@ -279,7 +279,7 @@ def export_guest_state(src_dir: str | Path | None = None) -> bytes:
 
     The archive contains ``personal.env`` (an allowlisted subset of ``.env``),
     ``selection_selected_players.csv`` and a versioned manifest. It excludes
-    purchases, participants, official auction rules, dataset paths and secrets.
+    purchases, Fanta Managers, official auction rules, dataset paths and secrets.
     An absent shortlist is exported as an empty CSV. ``src_dir`` defaults to
     this project's src directory, independently of the working directory.
 
@@ -391,6 +391,15 @@ def restore_guest_state(archive: bytes | BinaryIO, src_dir: str | Path | None = 
 
 
 def download_dataset(out_dir: str, path_kaggle: str) -> None:
+    """Download a Kaggle dataset into the requested local directory.
+
+    Params
+    ----------
+    out_dir : str
+        Destination directory for downloaded files.
+    path_kaggle : str
+        Kaggle dataset identifier accepted by ``kagglehub``.
+    """
     kagglehub.dataset_download(
         path_kaggle,
         output_dir=out_dir
@@ -401,7 +410,7 @@ def divide_values_by_denominator(values, denominator):
     """
     Divide two Series and replace invalid results with NaN.
 
-    Parameters
+    Params
     ----------
     values : pandas.Series
         Values to divide.
@@ -435,7 +444,7 @@ def select_and_rename_columns(df, source_index):
     """
     Select shared columns and rename them using the common schema.
 
-    Parameters
+    Params
     ----------
     df : pandas.DataFrame
         Source dataset.
@@ -496,7 +505,7 @@ def concat(dataset_2017_2025, dataset_2025_2026):
     """
     Standardize and concatenate all available player seasons.
 
-    Parameters
+    Params
     ----------
     dataset_2017_2025 : pandas.DataFrame
         FIFA-FBref dataset covering 2017-18 through 2024-25.
@@ -520,7 +529,7 @@ def name_similarity(history_name, fanta_name):
     """
     Calculate the similarity between a complete and an abbreviated name.
 
-    Parameters
+    Params
     ----------
     history_name : str
         Name from the historical dataset.
@@ -568,7 +577,7 @@ def find_best_player_match(
     """
     Find the best Fantacalcio match for one historical player.
 
-    Parameters
+    Params
     ----------
     history_name : str
         Player name from the historical dataset.
@@ -611,7 +620,7 @@ def filter_history_by_fantacalcio_players(
 
     All historical seasons of a matched player are retained.
 
-    Parameters
+    Params
     ----------
     history_df : pandas.DataFrame
         Historical player dataset.
@@ -682,6 +691,121 @@ def filter_history_by_fantacalcio_players(
 
     return filtered_history, matches
 
+def normalize_name(name: str) -> str:
+    """Normalize a player name for fuzzy comparison."""
+    name = unicodedata.normalize("NFD", str(name))
+    name = "".join(
+        char for char in name if unicodedata.category(char) != "Mn"
+    )
+    name = re.sub(r"[^\w\s.]", " ", name.lower())
+    return re.sub(r"\s+", " ", name).strip()
+
+
+def generate_name_variants(full_name: str) -> list[str]:
+    """Generate common full-name and abbreviated-name representations.
+
+    Params
+    ----------
+    full_name : str
+        Player name to expand into matching variants.
+
+    Returns
+    -------
+    list of str
+        Unique variants in deterministic order.
+    """
+    full_name = str(full_name).strip()
+    parts = full_name.split()
+
+    if not full_name:
+        return []
+    if len(parts) == 1:
+        return [full_name]
+
+    first_name = parts[0]
+    surname = " ".join(parts[1:])
+    last_surname = parts[-1]
+    variants = [
+        full_name,
+        surname,
+        f"{first_name[0]}. {surname}",
+        f"{first_name} {last_surname[0]}.",
+    ]
+
+    if len(parts[-1].replace(".", "")) == 1:
+        initial = parts[-1].replace(".", "")
+        surname_first = " ".join(parts[:-1])
+        variants.extend([f"{initial}. {surname_first}", surname_first])
+
+    return list(dict.fromkeys(variants))
+
+
+def get_candidates_by_season(
+    fanta_name: str,
+    history_df: pd.DataFrame,
+    top_k: int = 3,
+    season_column: str = "season",
+    name_column: str = "player",
+) -> pd.DataFrame:
+    """Select the best historical name candidates for each season.
+
+    Params
+    ----------
+    fanta_name : str
+        Fantacalcio player name to match.
+    history_df : pandas.DataFrame
+        Historical player rows grouped by season during matching.
+    top_k : int
+        Maximum candidates retained for each season.
+    season_column : str
+        Column containing season labels.
+    name_column : str
+        Column containing historical player names.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Candidate rows with identifiers, variants and fuzzy-match scores.
+    """
+    fanta_variants = generate_name_variants(fanta_name) or [fanta_name]
+    normalized_fanta_variants = [normalize_name(name) for name in fanta_variants]
+
+    candidates = []
+    for _, season_df in history_df.groupby(season_column, sort=False):
+        season_candidates = []
+        for _, history_row in season_df.iterrows():
+            historical_name = str(history_row.get(name_column, ""))
+            historical_variants = generate_name_variants(historical_name)
+            best_score = -1
+            best_variant = historical_name
+
+            for historical_variant in historical_variants:
+                normalized_historical = normalize_name(historical_variant)
+                for fanta_variant in normalized_fanta_variants:
+                    score = fuzz.WRatio(fanta_variant, normalized_historical)
+                    if score > best_score:
+                        best_score = score
+                        best_variant = historical_variant
+
+            candidate = history_row.copy()
+            candidate["name_variants"] = historical_variants
+            candidate["matched_name_variant"] = best_variant
+            candidate["name_score"] = best_score
+            season_candidates.append(candidate)
+
+        candidates.extend(
+            sorted(
+                season_candidates,
+                key=lambda row: row["name_score"],
+                reverse=True,
+            )[:top_k]
+        )
+
+    candidates_df = pd.DataFrame(candidates).reset_index(drop=True)
+    candidates_df.insert(0, "candidate_id", candidates_df.index)
+    return candidates_df
+
+
 def normalize_player_name(name):
     """
     Normalize a player name for matching.
@@ -689,7 +813,7 @@ def normalize_player_name(name):
     The function removes accents, duplicated spaces, case differences and
     punctuation, while preserving periods used in abbreviated names.
 
-    Parameters
+    Params
     ----------
     name : object
         Original player name.
@@ -738,7 +862,7 @@ def filter_history_exact_matches(
     Multiple historical players may be retained for an abbreviated name. The
     user can subsequently resolve ambiguous matches through the interface.
 
-    Parameters
+    Params
     ----------
     history_df : pandas.DataFrame
         Historical player dataset.
@@ -805,7 +929,7 @@ def filter_history_relaxed_matches(
     When an abbreviated name matches multiple historical players, the
     Fantacalcio row is duplicated once for each possible match.
 
-    Parameters
+    Params
     ----------
     history_df : pandas.DataFrame
         Historical player dataset.
@@ -843,6 +967,7 @@ def filter_history_relaxed_matches(
     history_names = {name for name in history_normalized_df["normalized_name"] if name}
 
     def relaxed_matching_rules(normalized_name):
+        """Return historical names compatible with a normalized short name."""
         # Match exact normalized names.
         if normalized_name in history_names:
             return {normalized_name}

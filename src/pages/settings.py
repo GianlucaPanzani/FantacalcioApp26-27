@@ -4,13 +4,7 @@ from lib.data_handler import (
     export_guest_state,
     restore_guest_state
 )
-from lib.utils import (
-    get_circular_role_icon,
-    get_emoji,
-    get_icon,
-    get_current_season,
-    get_background_img_path
-)
+from lib.utils import get_current_season
 from lib.streamlit_api.data_handler import (
     get_fanta_manager_players_dict,
     get_roles_dict,
@@ -23,11 +17,13 @@ from lib.streamlit_api.data_handler import (
 )
 from lib.streamlit_api.design_handler import (
     bottom_caption,
+    get_background_img_path,
+    get_circular_role_icon,
+    get_emoji,
+    get_icon,
+    get_user_view_of_column,
     set_page_background,
     set_dark_background,
-)
-from lib.streamlit_api.visualization_handler import (
-    get_user_view_of_column,
 )
 
 

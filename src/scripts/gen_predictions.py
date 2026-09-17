@@ -16,8 +16,7 @@ from lib.xgboost_predictor import (
 
 
 def merge(model_prediction: float, team_score: float, feature: str, max_team_adjustment: float = 0.15) -> float:
-    """
-    Adjust a player prediction using the strength of their team.
+    """Adjust a player prediction using the strength of their team.
 
     The adjustment is multiplicative and limited by
     `max_team_adjustment`. Positive team strength improves attacking
@@ -26,6 +25,22 @@ def merge(model_prediction: float, team_score: float, feature: str, max_team_adj
 
     Unknown features and minutes are left unchanged.
     Negative results are clamped to zero.
+
+    Params
+    ----------
+    model_prediction : float
+        Raw player prediction produced by the model.
+    team_score : float
+        Team strength score in the range -1 to 1.
+    feature : str
+        Feature whose direction determines the adjustment.
+    max_team_adjustment : float
+        Maximum proportional adjustment at either score extreme.
+
+    Returns
+    -------
+    float
+        Adjusted prediction, with feature-specific bounds applied.
     """
     prediction = float(model_prediction)
 
@@ -54,6 +69,7 @@ def merge(model_prediction: float, team_score: float, feature: str, max_team_adj
 
 
 def main():
+    """Generate and persist team-adjusted predictions for every player."""
     prefix_path = "../data/csv/notebooks_generated"
     players_history = load_dataset(f"{prefix_path}/serie_a_players_history.csv")
     fanta_players = load_dataset(f"{prefix_path}/Listone_Fantacalcio_Stagione_2026_27.csv")

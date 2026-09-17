@@ -64,23 +64,26 @@ class XGBPlayerPerformancePredictor:
         scoring="neg_mean_squared_error",
         cv=3
     ):
-        """
-        XGBoost predictor per fantacalcio.
+        """Initialize a temporal XGBoost predictor.
 
-        Parameters
+        Params
         ----------
         player_col : str
-            Nome colonna giocatore.
+            Column containing player names.
         season_col : str
-            Nome colonna stagione.
+            Column containing season labels.
         target_col : str
-            Variabile da predire.
+            Target variable to predict.
         window_size : int
-            Numero di stagioni precedenti utilizzate come input.
-        drop_cols : list
-            Colonne da eliminare dalle feature.
-        param_grid : dict
-            Griglia per GridSearchCV.
+            Number of previous seasons used as model input.
+        drop_cols : list or None
+            Columns excluded from model features.
+        param_grid : dict or None
+            Hyperparameter grid used by ``GridSearchCV``.
+        scoring : str
+            Scikit-learn score used to select the best model.
+        cv : int
+            Number of cross-validation folds.
         """
 
         self.player_col = player_col
@@ -106,9 +109,17 @@ class XGBPlayerPerformancePredictor:
         return
 
     def build_temporal_dataset(self, df: pd.DataFrame):
-        """
-        Build temporal examples like: [T-window_size+1, T-window_size ... T-1, T]
-        ---> to predict the target season T+1
+        """Build temporal feature rows that predict the following season.
+
+        Params
+        ----------
+        df : pandas.DataFrame
+            Player history ordered internally by player and season.
+
+        Returns
+        -------
+        tuple of pandas.DataFrame and pandas.Series
+            Temporal model inputs and their target values.
         """
         X = []
         y = []
@@ -147,11 +158,27 @@ class XGBPlayerPerformancePredictor:
         return X, y
 
     def temporal_split(self, X, y, split_ratio=0.8):
-        """ Split without shuffle. The temporal sequence is maintained. """
+        """Split features and targets without changing temporal order.
+
+        Params
+        ----------
+        X : pandas.DataFrame
+            Temporal feature rows.
+        y : pandas.Series
+            Target values aligned with ``X``.
+        split_ratio : float
+            Fraction assigned to the training split.
+
+        Returns
+        -------
+        tuple
+            Training features, test features, training targets and test targets.
+        """
         split = int(len(X) * split_ratio)
         return X.iloc[:split], X.iloc[split:], y.iloc[:split], y.iloc[split:]
 
     def train(self, X_train, y_train, verbose=1):
+        """Tune and train the XGBoost regressor on temporal examples."""
         base_model = XGBRegressor(objective="reg:squarederror", random_state=42)
 
         grid = GridSearchCV(
@@ -170,6 +197,7 @@ class XGBPlayerPerformancePredictor:
         return
 
     def predict(self, X):
+        """Predict target values with the trained estimator."""
         if self.model is None:
             raise Exception("Model not trained")
         return self.model.predict(X)
@@ -177,6 +205,7 @@ class XGBPlayerPerformancePredictor:
 
 
     def evaluate(self, X_test, y_test):
+        """Return MAE, RMSE and R² metrics for a test dataset."""
         pred = self.predict(X_test)
         results = {
             "MAE": mean_absolute_error(y_test, pred),
@@ -186,9 +215,11 @@ class XGBPlayerPerformancePredictor:
         return results
 
     def save(self, path):
+        """Serialize the trained estimator to disk with joblib."""
         joblib.dump(self.model, path)
 
     def load(self, path):
+        """Load a serialized estimator from disk into this predictor."""
         self.model = joblib.load(path)
 
 
@@ -204,6 +235,20 @@ def build_temporal_player_input(
     The window size is inferred from the feature suffixes stored with the model.
     Available historical lags are populated from newest to oldest; older missing
     lags remain zero so the input keeps the complete schema expected by XGBoost.
+
+    Params
+    ----------
+    player_history : pandas.DataFrame
+        Historical rows for one player.
+    features : list of str
+        Temporal feature names expected by the trained model.
+    season_col : str
+        Column used to order historical rows.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One-row model input with metadata describing available history.
     """
     parsed_features = []
     invalid_features = []
@@ -258,11 +303,22 @@ def get_team_impact_score(teams_history: pd.DataFrame, team: str, seasons: int =
     Each component is ranked within its season from -1 to 1.
     Recent seasons receive progressively greater weight.
 
-    Returns:
-        A value between -1 and 1. Zero is returned when the team
-        has no available history.
+    Params
+    ----------
+    teams_history : pandas.DataFrame
+        Team results and scoring statistics by season.
+    team : str
+        Team whose recent impact should be calculated.
+    seasons : int
+        Number of recent seasons included in the weighted score.
+
+    Returns
+    -------
+    float
+        Value between -1 and 1, or zero when no team history exists.
     """
     def season_rank(data, column: str, ascending: bool) -> pd.Series:
+        """Scale within-season ranks for one metric to the range -1 to 1."""
         grouped = data.groupby("season")[column]
         ranks = grouped.rank(method="average", ascending=ascending)
         counts = grouped.transform("count")
@@ -305,6 +361,20 @@ def get_team_impact_score(teams_history: pd.DataFrame, team: str, seasons: int =
 
 
 def predict(model_package: dict, player_history: pd.DataFrame) -> str:
+    """Predict one feature using a model package and prepared player history.
+
+    Params
+    ----------
+    model_package : dict
+        Package containing a trained model and its ordered feature names.
+    player_history : pandas.DataFrame
+        Prepared temporal input containing the requested model features.
+
+    Returns
+    -------
+    float
+        Model prediction for the first input row.
+    """
 
     features = model_package["features"]
     model = model_package["model"]
@@ -317,12 +387,30 @@ def predict(model_package: dict, player_history: pd.DataFrame) -> str:
 
 
 def get_transformed_feature_and_value(feature: str, pred_value, pred_minutes=None):
+    """Convert a raw prediction into the label and unit shown in the UI.
+
+    Params
+    ----------
+    feature : str
+        Predicted model feature.
+    pred_value : float
+        Raw model prediction.
+    pred_minutes : float or None
+        Predicted minutes required to transform per-90 values.
+
+    Returns
+    -------
+    tuple of str and float
+        Readable feature label and transformed prediction.
+    """
     
     def transform_feature(s: str):
+        """Remove the per-90 suffix and format a readable feature label."""
         strings = s.split("_")[:-1]
         return " ".join([strings[0].capitalize()] + strings[1:])
     
     def transform_value_per90(v):
+        """Convert a non-negative per-90 prediction into a season value."""
         if v < 0:
             return 0
         if pred_minutes is None:

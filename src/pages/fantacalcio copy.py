@@ -5,11 +5,7 @@ from lib.xgboost_predictor import (
 )
 from lib.utils import (
     interest_colors_dict,
-    highlight_interest,
     get_current_year,
-    get_emoji,
-    get_icon,
-    get_background_img_path
 )
 from lib.streamlit_api.data_handler import (
     sync_filter,
@@ -24,6 +20,10 @@ from lib.streamlit_api.data_handler import (
 )
 from lib.streamlit_api.design_handler import (
     bottom_caption,
+    get_background_img_path,
+    get_emoji,
+    get_icon,
+    highlight_interest,
     set_page_background,
     set_dark_background,
 )
@@ -78,6 +78,18 @@ bought_player_columns = ["id", "player", "team", "role", "mantra_role", "manager
 # =============================================================================
 
 def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
+    """Render page filters and return the matching players.
+
+    Params
+    ----------
+    fanta_players : pandas.DataFrame
+        Current-season players available to the page.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Players matching the selected role, manager, player and team filters.
+    """
     filtered_df = fanta_players.copy()
 
     # Role filter
@@ -201,6 +213,7 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
 
 
 def general_filters():
+    """Render general controls for team layout and optional table columns."""
 
     # Set the number of columns of the view of the teams made by the fanta managers
     fantacalcio_keys_set.add(fanta_manager_split_value_key)
@@ -241,6 +254,7 @@ def general_filters():
 
 
 def checkbox_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
+    """Render AI display controls and return role-sorted players."""
     filtered_df = fanta_players.copy()
 
     # Checkbox to show AI predictions
@@ -297,6 +311,7 @@ def checkbox_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
 
 
 def reset_teams_filters(fanta_managers):
+    """Render controls that reset purchases for selected Fanta Managers."""
 
     selected_fanta_managers = st.multiselect(
         "Select Fanta Managers to reset",
@@ -340,7 +355,18 @@ def reset_teams_filters(fanta_managers):
 
 
 def load_player_preferences(path: str) -> dict:
-    """Load the selected players' preferences from CSV, indexed by player ID."""
+    """Load selected-player metadata from CSV, indexed by player ID.
+
+    Params
+    ----------
+    path : str
+        Path to the selected players CSV file.
+
+    Returns
+    -------
+    dict
+        Maximum bid, interest and description indexed by player ID.
+    """
     try:
         preferences_df = pd.read_csv(path, low_memory=False)
     except (FileNotFoundError, pd.errors.EmptyDataError):
@@ -372,7 +398,17 @@ def load_player_preferences(path: str) -> dict:
 
 
 def update_player_boughts(players: pd.DataFrame, fanta_manager_players_dict: dict, fanta_managers: list) -> None:
-    """Update auction data using only the manager and price columns."""
+    """Apply manager and price values to the in-memory purchase mapping.
+
+    Params
+    ----------
+    players : pandas.DataFrame
+        Edited player rows containing manager and price values.
+    fanta_manager_players_dict : dict
+        Purchased-player DataFrames indexed by Fanta Manager.
+    fanta_managers : list
+        Manager names allowed as purchase owners.
+    """
     for _, player_row in players.iterrows():
         selected_manager = player_row["bought"]
         selected_manager = "" if pd.isna(selected_manager) else str(selected_manager).strip()
@@ -420,7 +456,13 @@ def update_player_boughts(players: pd.DataFrame, fanta_manager_players_dict: dic
 
 
 def reset_fanta_manager_boughts(selection_key: str) -> None:
-    """Reset every purchase belonging to the selected Fanta Managers."""
+    """Reset purchases belonging to the Fanta Managers selected in a widget.
+
+    Params
+    ----------
+    selection_key : str
+        Session State key containing the selected manager names.
+    """
     fanta_managers = st.session_state.get("settings_managers_key", [])
     selected_managers = [
         manager
@@ -483,7 +525,19 @@ def sync_purchase_editor(
     fanta_managers: list,
     editor_key: str,
 ) -> None:
-    """Apply purchase edits and update the last budget transaction."""
+    """Apply table edits and update each manager's latest budget transaction.
+
+    Params
+    ----------
+    players_editor_df : pandas.DataFrame
+        DataFrame displayed by the purchase editor.
+    fanta_manager_players_dict : dict
+        Purchased-player DataFrames indexed by Fanta Manager.
+    fanta_managers : list
+        Manager names allowed as purchase owners.
+    editor_key : str
+        Session State key containing edits emitted by the data editor.
+    """
 
     editor_changes = st.session_state.get(editor_key, {}).get("edited_rows", {})
 
@@ -566,6 +620,17 @@ def sync_purchase_editor(
 
 
 def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_players_dict: dict, player_preferences: dict | None = None,):
+    """Display the editable purchase table for the filtered players.
+
+    Params
+    ----------
+    filtered_players : pandas.DataFrame
+        Player rows currently visible after filtering.
+    fanta_manager_players_dict : dict
+        Purchased-player DataFrames indexed by Fanta Manager.
+    player_preferences : dict or None
+        Optional selected-player metadata indexed by player ID.
+    """
     players_editor_df = filtered_players.copy()
     
     # Create the players dataframe to be shown
@@ -709,6 +774,7 @@ def create_editor_dataframe(filtered_players: pd.DataFrame, fanta_manager_player
 
 
 def remove_bought_player(player: dict) -> None:
+        """Remove one purchased player and record the refunded amount."""
         free_player = pd.DataFrame(
             [
                 {

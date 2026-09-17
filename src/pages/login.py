@@ -1,9 +1,7 @@
 import streamlit as st
-from lib.utils import (
-    get_emoji,
-    get_icon,
-    get_current_season
-)
+
+from lib.streamlit_api.design_handler import get_emoji, get_icon
+from lib.utils import get_current_season
 
 page_name = "login"
 

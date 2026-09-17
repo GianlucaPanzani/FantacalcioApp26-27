@@ -1,11 +1,42 @@
-import requests
-import pandas as pd
 import json
-import lib.utils as utils
+import numpy as np
+import pandas as pd
+import requests
+
+from lib.data_handler import get_candidates_by_season
+
+
+def json_converter(value):
+    """Convert NumPy and pandas values into JSON-compatible Python values."""
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.floating):
+        return None if np.isnan(value) else float(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if pd.isna(value):
+        return None
+    raise TypeError(
+        f"Object of type {type(value).__name__} is not JSON serializable"
+    )
+
 
 def build_candidates_request(fanta_row, candidates):
-    """
-    Build a JSON-compatible request for row-level entity matching.
+    """Build a JSON-compatible request for row-level entity matching.
+
+    Params
+    ----------
+    fanta_row : pandas.Series
+        Fantacalcio player to match.
+    candidates : pandas.DataFrame
+        Historical player candidates with their matching metadata.
+
+    Returns
+    -------
+    dict
+        Player data and candidate records ready for JSON serialization.
     """
     candidate_objects = []
     for _, row in candidates.iterrows():
@@ -30,8 +61,23 @@ def build_candidates_request(fanta_row, candidates):
     }
 
 def query_ollama(prompt, model="qwen3:4b", content="Football players for Fantacalcio", format=None):
-    """
-    Send a prompt to a locally running Ollama model.
+    """Send a prompt to a locally running Ollama model.
+
+    Params
+    ----------
+    prompt : str
+        User prompt sent to the model.
+    model : str
+        Name of the locally installed Ollama model.
+    content : str
+        System instruction that defines the model task.
+    format : dict or None
+        Optional JSON schema required for the response.
+
+    Returns
+    -------
+    str
+        Content of the model response.
     """
     json_dict = {
         "model": model,
@@ -66,6 +112,22 @@ def query_ollama(prompt, model="qwen3:4b", content="Football players for Fantaca
 
 
 def get_filtered_history_with_llm_matches(players, history_players, prompt):
+    """Match Fantacalcio players to historical records with a local LLM.
+
+    Params
+    ----------
+    players : pandas.DataFrame
+        Fantacalcio players that need historical matches.
+    history_players : pandas.DataFrame
+        Historical player records used to build match candidates.
+    prompt : str
+        Prompt template containing a ``{request_data}`` placeholder.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        Matched historical rows and a report of players that could not be matched.
+    """
     format_dict = {
         "type": "object",
         "properties": {
@@ -97,7 +159,7 @@ def get_filtered_history_with_llm_matches(players, history_players, prompt):
     for _, fanta_row in players.iterrows():
 
         # Get the top 3 candidates for the current fanta_player
-        candidates = utils.get_candidates_by_season(
+        candidates = get_candidates_by_season(
             fanta_name=fanta_row["Nome"],
             history_df=history_players,
             top_k=5,
@@ -114,7 +176,12 @@ def get_filtered_history_with_llm_matches(players, history_players, prompt):
             response = query_ollama(
                 prompt=prompt.replace(
                     "{request_data}",
-                    json.dumps(request_data, ensure_ascii=False, indent=2, default=utils.json_converter)
+                    json.dumps(
+                        request_data,
+                        ensure_ascii=False,
+                        indent=2,
+                        default=json_converter,
+                    )
                 ),
                 content="You perform football player entity matching. Follow the requested output format exactly.",
                 format=format_dict

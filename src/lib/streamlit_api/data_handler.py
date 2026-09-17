@@ -5,49 +5,107 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
+from pandas.api.types import (
+    is_bool_dtype,
+    is_datetime64_any_dtype,
+    is_float_dtype,
+    is_integer_dtype,
+    is_string_dtype,
+)
 import streamlit as st
 from lib.data_handler import restore_guest_state
 from lib.utils import (
     stats_persistent_key_fields,
-    get_condition_by,
-    get_default_value,
     get_current_date,
     get_current_season,
 )
 
 
+def set_format_interest(interest):
+    """Convert a non-null interest value to display text."""
+    if interest is None:
+        return None
+    return str(interest)
+
+
+def get_condition_by(
+    df: pd.DataFrame, column: str, selected_values, compare_op: str,
+):
+    """Build the pandas condition for one configured dataset filter."""
+    if isinstance(selected_values, (list, tuple, set)):
+        return df[column].isin(selected_values)
+    if compare_op == "eq":
+        return df[column] == selected_values
+    if compare_op == "geq":
+        return df[column] >= selected_values
+    if compare_op == "leq":
+        return df[column] <= selected_values
+    return df[column] == selected_values
+
+
+def get_default_value(column: pd.Series):
+    """Return an empty filter value compatible with a pandas Series dtype."""
+    if is_bool_dtype(column):
+        return False
+    if is_integer_dtype(column):
+        return 0
+    if is_float_dtype(column):
+        return 0.0
+    if is_datetime64_any_dtype(column):
+        return pd.NaT
+    if is_string_dtype(column):
+        return ""
+
+    values = column.dropna()
+    if not values.empty:
+        sample_value = values.iloc[0]
+        if isinstance(sample_value, list):
+            return []
+        if isinstance(sample_value, dict):
+            return {}
+        if isinstance(sample_value, tuple):
+            return ()
+
+    return None
+
+
 
 @st.cache_data(show_spinner=False)
 def load_dataset(path: str, filter_by_current_year: bool = False, current_season: str = "2026-27") -> pd.DataFrame:
-    """Load and cache a players dataset."""
+    """Load and cache a CSV dataset, optionally keeping one season.
+
+    Params
+    ----------
+    path : str
+        Path to the CSV file.
+    filter_by_current_year : bool
+        Whether to keep only rows for ``current_season``.
+    current_season : str
+        Season label used by the optional filter.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Loaded dataset or its current-season subset.
+    """
     df = pd.read_csv(path, low_memory=False)
     return df.loc[df["season"].eq(current_season)].copy() if filter_by_current_year else df
 
 
 @st.cache_resource
 def load_models(target_features: list) -> dict:
-    '''
+    """Load and cache one serialized model package per target feature.
+
+    Params
+    ----------
+    target_features : list
+        Target names used in the ``models/xgb_<target>.pkl`` filenames.
+
     Returns
     -------
-    - dict:
-        Dictionary containing one entry for each target feature.
-
-        Structure::
-            {
-                "target_feature1": {
-                    "model": model,
-                    "explainer": explainer,
-                    "features": features,
-                    "window_size": window_size,
-                    "RMSE": rmse_error,
-                    "MAE": baseline_error
-                },
-
-                "target_feature2": {
-                    ...
-                },
-            }
-    '''
+    dict
+        Model packages indexed by target feature.
+    """
     models_packages_dict = {}
     for feature in target_features:
         models_packages_dict[feature] = joblib.load(f"models/xgb_{feature}.pkl")
@@ -55,7 +113,26 @@ def load_models(target_features: list) -> dict:
 
 
 def apply_filters(df: pd.DataFrame, exclude=None, columns_to_filter_list=[], compare_op_for_columns_to_filter_dict={}, page="unknown_page") -> pd.DataFrame:
-    """Apply session-state filters, excluding one filter when requested."""
+    """Apply the page filters stored in Streamlit Session State.
+
+    Params
+    ----------
+    df : pandas.DataFrame
+        Dataset to filter.
+    exclude : str or None
+        Column whose active filter should be ignored.
+    columns_to_filter_list : list
+        Columns with filter values stored in Session State.
+    compare_op_for_columns_to_filter_dict : dict
+        Comparison operator configured for each filter column.
+    page : str
+        Page prefix used to build Session State keys.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Filtered copy of the input dataset.
+    """
     result = df.copy()
 
     for column in columns_to_filter_list:
@@ -89,6 +166,7 @@ def get_stats_persistent_keys(player_ids, page_name="stats") -> list[str]:
 
 
 def get_role_limits() -> dict:
+    """Return configured squad limits indexed by Fantacalcio role."""
     return {
         "P": st.session_state.get("settings_P_limit_key", 3),
         "D": st.session_state.get("settings_D_limit_key", 8),
@@ -98,6 +176,7 @@ def get_role_limits() -> dict:
 
 
 def get_roles_list(enable_aka=False) -> list:
+    """Return readable role names, optionally including role codes."""
     return [
         "goalkeeper" + f"{' (P)' if enable_aka else ''}",
         "defender" + f"{' (D)' if enable_aka else ''}",
@@ -107,9 +186,7 @@ def get_roles_list(enable_aka=False) -> list:
 
 
 def get_roles_dict() -> dict:
-    '''
-    { "P": "goalkeeper", "D": "defender", "C": "midfielder", "A": "attacker" }
-    '''
+    """Return readable role names indexed by Fantacalcio role code."""
     return {
         "P": "goalkeeper",
         "D": "defender",
@@ -119,6 +196,7 @@ def get_roles_dict() -> dict:
 
 
 def get_role_budget_limits() -> dict:
+    """Return configured spending targets indexed by Fantacalcio role."""
     return {
         "P": st.session_state.get("settings_P_budget_limit_key", 50),
         "D": st.session_state.get("settings_D_budget_limit_key", 100),
@@ -128,6 +206,16 @@ def get_role_budget_limits() -> dict:
 
 
 def get_fanta_manager_players_dict() -> dict:
+    """Return purchased players grouped by Fanta Manager.
+
+    Rebuild the mapping from the restored CSV DataFrame when Session State does
+    not contain it yet, while preserving managers with no purchases.
+
+    Returns
+    -------
+    dict
+        Fanta Manager names mapped to their purchased-player DataFrames.
+    """
     # Case of rebuild of the bought players dict by restoring from csv
     if "fantacalcio_manager_players_dict_key" not in st.session_state:
         fanta_manager_players_dict = {}
@@ -154,13 +242,27 @@ def get_fanta_manager_players_dict() -> dict:
 
 
 def get_from_session_state(key: str):
+    """Return a Session State value, or ``None`` when its key is absent."""
     if key in st.session_state:
         return st.session_state[key]
     return None
 
 
 def load_env(keys: list[str] | None = None, path: str = ".env") -> dict:
-    """Load selected or all stored values into Session State."""
+    """Load selected typed values from an environment file into Session State.
+
+    Params
+    ----------
+    keys : list of str or None
+        Values to load; every non-type key when omitted.
+    path : str
+        Environment file to read.
+
+    Returns
+    -------
+    dict
+        Values loaded or already present in Session State.
+    """
     env_path = Path(path)
     if not env_path.exists():
         return {}
@@ -226,7 +328,20 @@ def load_env(keys: list[str] | None = None, path: str = ".env") -> dict:
 
 
 def store_env(data_dict: dict, path: str = ".env") -> dict:
-    """Store supported values in an environment file."""
+    """Persist supported Python values in the application's typed env format.
+
+    Params
+    ----------
+    data_dict : dict
+        Session values to persist.
+    path : str
+        Environment file to update.
+
+    Returns
+    -------
+    dict
+        Values successfully serialized to the file.
+    """
     env_path = Path(path)
 
     # Preserve values already stored in the environment file.
@@ -295,7 +410,15 @@ def store_env(data_dict: dict, path: str = ".env") -> dict:
 
 
 def restore_personal_backup(upload_key: str, result_key: str) -> None:
-    """Restore personal settings and clear stale Session State values."""
+    """Restore a personal backup and clear stale Session State values.
+
+    Params
+    ----------
+    upload_key : str
+        Session State key containing the uploaded ZIP file.
+    result_key : str
+        Session State key that receives a success or error message.
+    """
     uploaded_archive = st.session_state.get(upload_key)
 
     try:
@@ -333,7 +456,17 @@ def restore_personal_backup(upload_key: str, result_key: str) -> None:
 
 
 def restore_bought_players(bought_players_df_key: str, settings_managers_key: str, fanta_manager_players_dict_key:str):
-    '''Rebuild of the bought players dict by csv'''
+    """Rebuild purchased-player groups from a restored CSV DataFrame.
+
+    Params
+    ----------
+    bought_players_df_key : str
+        Session State key containing the restored purchases DataFrame.
+    settings_managers_key : str
+        Session State key containing every configured Fanta Manager.
+    fanta_manager_players_dict_key : str
+        Session State key that receives the rebuilt manager mapping.
+    """
     fanta_manager_players_dict = {}
 
     # Restore data from csv
@@ -358,6 +491,7 @@ def sync_filter(filter_key: str, widget_key: str) -> None:
 
 
 def add_graphical_columns(graphical_cols_key, widget_key):
+    """Copy selected chart columns from a widget into persistent state."""
     st.session_state[graphical_cols_key].extend(st.session_state[widget_key])
     st.session_state[widget_key] = []
 
@@ -451,6 +585,7 @@ def save_bought_players(page_name: str):
             normalized_filename = file_name.split('.')[0].split(" ")
             
             def baloons():
+                """Show the completion balloons for a finished squad."""
                 st.balloons()
                 st.session_state["show_auction_reset_confirmation_key"] = True
 

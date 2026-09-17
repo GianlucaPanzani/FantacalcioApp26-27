@@ -16,6 +16,7 @@ from src.backend import api, user_services
 
 class RegistrationPageTests(unittest.TestCase):
     def setUp(self):
+        """Create an isolated database and load the registration page."""
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.enterContext(patch.object(api, "DB_PATH", Path(directory.name) / "registration.sqlite3"))
@@ -26,17 +27,19 @@ class RegistrationPageTests(unittest.TestCase):
         }))
         self.identity = SimpleNamespace(is_logged_in=True, iss="google", sub="guest-123")
         self.enterContext(patch.object(st, "user", self.identity))
-        api.create()
+        api.create_db()
         page = Path(__file__).resolve().parents[1] / "pages" / "registration.py"
         self.app = AppTest.from_file(str(page)).run()
 
     def submit(self, username="Guest", team_name="Guest FC"):
+        """Submit the registration form with the supplied values."""
         self.app.text_input(key="registration_username_key").set_value(username)
         self.app.text_input(key="registration_team_name_key").set_value(team_name)
         self.app.button(key="registration_confirmation_button_key").click().run()
         self.assertFalse(self.app.exception)
 
     def test_submit_callback_reads_the_latest_username(self):
+        """Store the current widget value when the form is submitted."""
         self.assertEqual(len(self.app.get("file_uploader")), 1)
         self.submit(username="Fresh username")
         user = user_services.get_user("google", "guest-123")
@@ -45,17 +48,20 @@ class RegistrationPageTests(unittest.TestCase):
         self.assertIn("successfully completed", self.app.success[0].value)
 
     def test_empty_username_shows_feedback_without_creating_user(self):
+        """Show validation feedback without creating an empty user."""
         self.submit(username=" ")
         self.assertIn("Enter a username", self.app.error[0].value)
         self.assertIsNone(user_services.get_user("google", "guest-123"))
 
     def test_duplicate_username_shows_feedback(self):
+        """Show feedback when the chosen username already exists."""
         user_services.set_user("google", "another-subject", "Taken")
         self.submit(username="taken")
         self.assertIn("already in use", self.app.error[0].value)
         self.assertIsNone(user_services.get_user("google", "guest-123"))
 
     def test_page_requires_an_authenticated_identity(self):
+        """Stop registration when no authenticated identity is available."""
         self.identity.is_logged_in = False
         self.app = self.app.run()
         self.assertIn("Sign in with Google", self.app.error[0].value)

@@ -4,7 +4,7 @@ import streamlit as st
 from backend.user_services import (
     set_user
 )
-from lib.utils import get_emoji
+from lib.streamlit_api.design_handler import get_emoji
 
 page_name = "registration"
 

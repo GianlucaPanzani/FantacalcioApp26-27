@@ -14,6 +14,7 @@ from src.lib.data_handler import export_guest_state, restore_guest_state
 
 class GuestStateTests(unittest.TestCase):
     def setUp(self):
+        """Create source and destination fixtures for guest backup tests."""
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.source = Path(self.temporary.name) / "guest"
@@ -62,7 +63,8 @@ class GuestStateTests(unittest.TestCase):
             path.parent.mkdir(parents=True)
             path.write_bytes(b"id,manager,mln\n900,Host,30\n")
 
-    def make_archive(self, *, settings=None, selection=None, extra=None, version=1):
+    def make_archive(self, settings=None, selection=None, extra=None, version=1):
+        """Build a modified backup archive for validation tests."""
         payload = export_guest_state(self.source)
         with zipfile.ZipFile(io.BytesIO(payload)) as archive:
             members = {name: archive.read(name) for name in archive.namelist()}
@@ -80,6 +82,7 @@ class GuestStateTests(unittest.TestCase):
         return result.getvalue()
 
     def test_roundtrip_preserves_shared_state_and_typed_preferences(self):
+        """Round-trip allowed personal state without copying private host data."""
         payload = export_guest_state(self.source)
         with zipfile.ZipFile(io.BytesIO(payload)) as archive:
             exported = archive.read("personal.env").decode()
@@ -105,6 +108,7 @@ class GuestStateTests(unittest.TestCase):
         self.assertIsInstance(export_guest_state(self.target), bytes)
 
     def test_rejects_invalid_archives_before_writing(self):
+        """Reject unsafe archive data before changing either destination file."""
         env_before = (self.target / ".env").read_bytes()
         csv_before = (self.target / self.selection).read_bytes()
         invalid_archives = [
@@ -129,11 +133,13 @@ class GuestStateTests(unittest.TestCase):
                 self.assertEqual((self.target / self.selection).read_bytes(), csv_before)
 
     def test_restore_rolls_back_first_file_if_second_replace_fails(self):
+        """Restore the first file when replacing the second file fails."""
         env_before = (self.target / ".env").read_bytes()
         csv_before = (self.target / self.selection).read_bytes()
         real_replace = os.replace
 
         def fail_selection(source, target):
+            """Simulate a failure while replacing the shortlist file."""
             if target == (self.target / self.selection).resolve():
                 raise OSError("Simulated write failure")
             return real_replace(source, target)
@@ -145,12 +151,14 @@ class GuestStateTests(unittest.TestCase):
         self.assertEqual((self.target / self.selection).read_bytes(), csv_before)
 
     def test_missing_local_state_exports_an_empty_shortlist(self):
+        """Export a valid empty shortlist when no local state exists."""
         empty = Path(self.temporary.name) / "empty"
         report = restore_guest_state(export_guest_state(empty), self.target)
         self.assertEqual(report, {"settings": {}, "selected_players": 0})
         self.assertEqual((self.target / self.selection).read_bytes(), b"Id,mln,interest,description\n")
 
     def test_restore_uses_only_the_local_shortlist_path(self):
+        """Ignore imported paths and use the destination's configured path."""
         custom = "data/personal/shortlist.csv"
         with (self.target / ".env").open("a") as env:
             env.write(f"selection_selected_players_csv_path_key={custom}\n")

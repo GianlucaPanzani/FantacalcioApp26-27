@@ -1,12 +1,9 @@
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+import unicodedata
 import pandas as pd
 import requests
-
-from lib.utils import (
-    normalize_name_for_img_scaping
-)
 
 
 API_KEY = "123"
@@ -21,11 +18,15 @@ REQUEST_TIMEOUT = 20
 MAX_RETRIES = 3
 
 
+def normalize_name_for_img_scraping(name: str) -> str:
+    """Normalize a player name before comparing image-search results."""
+    name = unicodedata.normalize("NFKD", str(name))
+    name = "".join(char for char in name if not unicodedata.combining(char))
+    return " ".join(name.lower().strip().split())
+
+
 def is_creative_commons(value) -> bool:
-    """
-    TheSportsDB commonly uses strCreativeCommons
-    to indicate whether player artwork is CC tagged.
-    """
+    """Return whether TheSportsDB marks a player's artwork as Creative Commons."""
     if value is None:
         return False
 
@@ -35,6 +36,20 @@ def is_creative_commons(value) -> bool:
 
 
 def request_player(player_name: str, session: requests.Session) -> dict | None:
+    """Request one player from TheSportsDB with retry and rate-limit handling.
+
+    Params
+    ----------
+    player_name : str
+        Player name sent to the search endpoint.
+    session : requests.Session
+        Reusable HTTP session.
+
+    Returns
+    -------
+    dict or None
+        First API player result, or ``None`` after an empty or failed search.
+    """
 
     url = f"{BASE_URL}/searchplayers.php"
 
@@ -78,6 +93,20 @@ def request_player(player_name: str, session: requests.Session) -> dict | None:
 
 
 def create_player_row(searched_name: str, api_player: dict | None) -> dict:
+    """Add provenance and artwork metadata to a player API result.
+
+    Params
+    ----------
+    searched_name : str
+        Original player name used for the API query.
+    api_player : dict or None
+        Player object returned by TheSportsDB.
+
+    Returns
+    -------
+    dict
+        Normalized output row, including metadata for unsuccessful searches.
+    """
 
     timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -98,7 +127,10 @@ def create_player_row(searched_name: str, api_player: dict | None) -> dict:
     # Add our own provenance / validation metadata
     row["query_name"] = searched_name
     row["found"] = True
-    row["name_match"] = normalize_name_for_img_scaping(searched_name) == normalize_name_for_img_scraping(api_name)
+    row["name_match"] = (
+        normalize_name_for_img_scraping(searched_name)
+        == normalize_name_for_img_scraping(api_name)
+    )
     row["cc_artwork"] = is_creative_commons(cc_value)
     row["artwork_usage_status"] = (
         "CC_TAGGED"
@@ -117,6 +149,20 @@ def create_player_row(searched_name: str, api_player: dict | None) -> dict:
 
 
 def fetch_players(player_names: list[str], output_file: Path) -> pd.DataFrame:
+    """Fetch player images and save a progressive CSV checkpoint.
+
+    Params
+    ----------
+    player_names : list of str
+        Player names to search sequentially.
+    output_file : pathlib.Path
+        CSV path updated after every completed request.
+
+    Returns
+    -------
+    pandas.DataFrame
+        API results and provenance metadata for every requested player.
+    """
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
 

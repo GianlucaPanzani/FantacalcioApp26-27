@@ -1,13 +1,7 @@
 import streamlit as st
 import pandas as pd
-from lib.utils import (
-    get_default_value,
-    highlight_player_role,
-    get_emoji,
-    get_icon,
-    get_background_img_path
-)
 from lib.streamlit_api.data_handler import (
+    get_default_value,
     sync_filter,
     apply_filters,
     load_dataset,
@@ -18,11 +12,15 @@ from lib.streamlit_api.data_handler import (
 )
 from lib.streamlit_api.design_handler import (
     bottom_caption,
+    get_background_img_path,
+    get_emoji,
+    get_icon,
+    get_user_view_of_column,
+    highlight_player_role,
     set_dark_background,
     set_page_background,
 )
 from lib.streamlit_api.visualization_handler import (
-    get_user_view_of_column,
     plot_player_history,
 )
 from lib.xgboost_predictor import (
@@ -94,6 +92,24 @@ fantacalcio_dataset_columns = [
 # =============================================================================
 
 def get_safe_slider_max(df, column_name, state_key, minimum_max=0.01):
+    """Return a slider maximum that includes data and the saved value.
+
+    Params
+    ----------
+    df : pandas.DataFrame
+        Rows available to the slider's current filter context.
+    column_name : str
+        Numeric column used to calculate the data maximum.
+    state_key : str
+        Session State key containing the current slider value.
+    minimum_max : float
+        Smallest valid maximum returned to Streamlit.
+
+    Returns
+    -------
+    float
+        Maximum that safely contains both data and current widget state.
+    """
     # Ignore missing or non-numeric values.
     values = pd.to_numeric(df[column_name], errors="coerce").dropna()
     data_max = float(values.max()) if not values.empty else 0.0
@@ -133,7 +149,18 @@ def get_column_width(players: pd.DataFrame, column: str) -> int:
 
 
 def players_filters(players: pd.DataFrame) -> pd.DataFrame:
-    """Display the player filters vertically in the sidebar."""
+    """Display statistics filters and return matching player rows.
+
+    Params
+    ----------
+    players : pandas.DataFrame
+        Historical player dataset available to the page.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Rows matching the selected team, competition and numeric filters.
+    """
 
     st.number_input(
         label="Choose the number of player to inspect",
@@ -231,6 +258,15 @@ def players_filters(players: pd.DataFrame) -> pd.DataFrame:
 
 
 def create_dataframe(statistics_table, displayed_table):
+    """Display the formatted statistics DataFrame with readable columns.
+
+    Params
+    ----------
+    statistics_table : pandas.DataFrame
+        Source table whose columns define display configuration.
+    displayed_table : pandas.DataFrame
+        Rows to render after filtering or selection.
+    """
     fantacalcio_visible_columns = [col for col in fantacalcio_dataset_columns if col in statistics_table.columns]
 
     integer_statistics_columns = {"age", "birth_year", "appearances", "starts", "minutes"}

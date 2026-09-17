@@ -1,16 +1,9 @@
 from pathlib import Path
 import pandas as pd
 import streamlit as st
-from lib.utils import (
-    highlight_player_role,
-    interest_colors_dict,
-    set_format_interest,
-    get_icon,
-    get_emoji,
-    get_circular_role_icon,
-    get_background_img_path,
-)
+from lib.utils import interest_colors_dict
 from lib.streamlit_api.data_handler import (
+    set_format_interest,
     sync_filter,
     apply_filters,
     get_roles_dict,
@@ -21,11 +14,14 @@ from lib.streamlit_api.data_handler import (
 )
 from lib.streamlit_api.design_handler import (
     bottom_caption,
+    get_background_img_path,
+    get_circular_role_icon,
+    get_emoji,
+    get_icon,
+    get_user_view_of_column,
+    highlight_player_role,
     set_page_background,
     set_dark_background,
-)
-from lib.streamlit_api.visualization_handler import (
-    get_user_view_of_column,
 )
 from lib.xgboost_predictor import (
     features_to_predict_list,
@@ -134,6 +130,7 @@ def players_filters(players: pd.DataFrame, columns_to_filter_list: list[str]) ->
 
 
 def sync_player_filter(widget_key, key) -> None:
+    """Copy a player-filter widget value into its persistent Session State key."""
     selected_value = st.session_state.get(widget_key)
     st.session_state[key] = [selected_value] if selected_value is not None else []
 
@@ -157,7 +154,22 @@ def get_configured_statistics_columns(selected_roles: list[str]) -> list[str]:
 
 
 def add_latest_player_statistics(players: pd.DataFrame, history_players: pd.DataFrame, statistics_columns: list[str]) -> pd.DataFrame:
-    """Add the latest available statistics without duplicating player rows."""
+    """Add the latest available statistics without duplicating player rows.
+
+    Params
+    ----------
+    players : pandas.DataFrame
+        Current Fantacalcio player catalog.
+    history_players : pandas.DataFrame
+        Historical statistics containing player IDs and seasons.
+    statistics_columns : list of str
+        Statistics requested by the current role configuration.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Player catalog enriched with the latest available statistics.
+    """
     players_with_statistics = players.copy()
 
     available_columns = [
@@ -414,6 +426,7 @@ def create_player_selection_table(players: pd.DataFrame, visible_columns: list[s
     component_key = f"{page_name}_players_selection_icon_component_key"
 
     def update_player_selection() -> None:
+        """Persist checkbox edits emitted by the available-players table."""
         component_state = st.session_state.get(component_key, {})
         selection = component_state.get("selected")
         if not selection:
@@ -700,6 +713,7 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
     component_key = f"{page_name}_selected_players_{fanta_role}_icon_component_key"
 
     def update_edited_player() -> None:
+        """Persist editable fields changed in the selected-players table."""
         component_state = st.session_state.get(component_key, {})
         edited = component_state.get("edited")
         if not edited:
@@ -724,6 +738,7 @@ def create_selected_players_table_css(players: pd.DataFrame, visible_columns: li
             st.session_state[get_stats_player_key(field, player_id)] = str(value)
 
     def remove_player() -> None:
+        """Remove the player whose action button was clicked."""
         component_state = st.session_state.get(component_key, {})
         player_id = component_state.get("removed")
         if player_id is None:
@@ -1129,6 +1144,17 @@ def create_selected_players_table(players: pd.DataFrame, visible_columns: list[s
     return
 
 def set_visible_cols(df: pd.DataFrame, key: str, expander_key: str):
+    """Persist the DataFrame columns visible while an expander is open.
+
+    Params
+    ----------
+    df : pandas.DataFrame
+        Dataset whose available columns are inspected.
+    key : str
+        Session State key receiving the visible-column list.
+    expander_key : str
+        Session State key containing the expander open state.
+    """
     if st.session_state.get(expander_key, False):
         st.session_state[key] = [
             col

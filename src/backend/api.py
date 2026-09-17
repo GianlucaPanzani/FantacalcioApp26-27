@@ -1,21 +1,20 @@
 """SQLite storage primitives, independent of Streamlit and HTTP services.
 
-Call ``create()`` once before using the database. All CRUD functions accept
-``table, column, value``; a column can also be a list/tuple with matching values.
-For reads/deletes these pairs are equality filters joined by AND. For
-inserts/updates they are the fields to write. Updates additionally require a
-nonempty ``where`` mapping, so the target rows are always explicit.
+Call ``create_db()`` once before using the database. CRUD functions accept
+dictionaries: ``data`` contains fields to write and ``filters`` contains equality
+conditions joined by AND. Updates and deletes require nonempty filters, so their
+target rows are always explicit.
 
 Each standalone write commits or rolls back in its own transaction. Pass the
 connection yielded by ``transaction()`` to group several operations atomically.
 Values are bound parameters; only known table/column names can enter SQL text.
 
 This module enforces storage constraints, not application permissions or auction
-rules such as sufficient budget, free roster slots or selecting the winning bid.
-Those checks belong in the future services, inside the same write transaction.
+rules such as sufficient budget or free roster slots. Those checks belong in the
+services, inside the same write transaction.
 """
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping
 from contextlib import closing, contextmanager
 import math
 from pathlib import Path
@@ -24,19 +23,17 @@ import sqlite3
 
 # Resolve the database relative to this module, regardless of the working folder.
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "db" / "fantacalcio.sqlite3"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 CONNECTION_TIMEOUT = 5.0
 
 SQLValue = str | int | float | bytes | None
-Columns = str | Sequence[str]
-Values = SQLValue | Sequence[SQLValue]
 
 
 # The schema is intentionally static. Changing existing tables will require an
 # explicit migration; CREATE TABLE IF NOT EXISTS does not alter existing columns.
 # STRICT tables require SQLite >= 3.37; built-in JSON support requires >= 3.38.
 _TABLES = {
-    # An account exists independently of its participation in individual auctions.
+    # An account exists independently of the auctions managed by the user.
     # Optional OIDC identity uses both issuer and subject, never a display name.
     "users": """
         CREATE TABLE IF NOT EXISTS users (
@@ -93,16 +90,16 @@ _TABLES = {
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) STRICT
     """,
-    # A user can join several auctions, but only once per auction. The host joins
-    # through this same table; a separate host team is not necessary.
-    "participants": """
-        CREATE TABLE IF NOT EXISTS participants (
+    # A user can manage one team in each auction. The host uses this same table;
+    # a separate host team is not necessary.
+    "fanta_managers": """
+        CREATE TABLE IF NOT EXISTS fanta_managers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             auction_id INTEGER NOT NULL REFERENCES auctions(id) ON DELETE RESTRICT,
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
             team_name TEXT NOT NULL COLLATE NOCASE
                 CHECK (length(trim(team_name)) > 0 AND team_name = trim(team_name)),
-            joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (auction_id, user_id),
             UNIQUE (auction_id, team_name),
             UNIQUE (id, auction_id)
@@ -123,57 +120,20 @@ _TABLES = {
             UNIQUE (id, auction_id)
         ) STRICT
     """,
-    # The row with status='open' identifies the current player. A skipped player
-    # may appear in a later lot; history is therefore not unique by player.
-    "auction_lots": """
-        CREATE TABLE IF NOT EXISTS auction_lots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            auction_id INTEGER NOT NULL REFERENCES auctions(id) ON DELETE RESTRICT,
-            player_id INTEGER NOT NULL,
-            status TEXT NOT NULL DEFAULT 'open'
-                CHECK (status IN ('open', 'sold', 'skipped')),
-            version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
-            opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            closed_at TEXT,
-            FOREIGN KEY (player_id, auction_id)
-                REFERENCES players(id, auction_id) ON DELETE RESTRICT,
-            UNIQUE (id, auction_id),
-            UNIQUE (id, auction_id, player_id)
-        ) STRICT
-    """,
-    # Store the latest offer from each participant for each lot. Zero means no
-    # active offer. Composite foreign keys prevent offers from a different auction.
-    "bids": """
-        CREATE TABLE IF NOT EXISTS bids (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            auction_id INTEGER NOT NULL,
-            lot_id INTEGER NOT NULL,
-            participant_id INTEGER NOT NULL,
-            amount INTEGER NOT NULL CHECK (amount >= 0),
-            version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (lot_id, auction_id)
-                REFERENCES auction_lots(id, auction_id) ON DELETE RESTRICT,
-            FOREIGN KEY (participant_id, auction_id)
-                REFERENCES participants(id, auction_id) ON DELETE RESTRICT,
-            UNIQUE (lot_id, participant_id)
-        ) STRICT
-    """,
     # Purchases are the source of truth for ownership, roster and spent budget.
-    # A lot can produce one purchase; a player has one owner within an auction.
+    # Only the final assignment is persisted; temporary offers stay in app state.
     "purchases": """
         CREATE TABLE IF NOT EXISTS purchases (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             auction_id INTEGER NOT NULL,
-            lot_id INTEGER NOT NULL UNIQUE,
             player_id INTEGER NOT NULL,
-            participant_id INTEGER NOT NULL,
+            fanta_manager_id INTEGER NOT NULL,
             price INTEGER NOT NULL CHECK (price > 0),
             purchased_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (lot_id, auction_id, player_id)
-                REFERENCES auction_lots(id, auction_id, player_id) ON DELETE RESTRICT,
-            FOREIGN KEY (participant_id, auction_id)
-                REFERENCES participants(id, auction_id) ON DELETE RESTRICT,
+            FOREIGN KEY (player_id, auction_id)
+                REFERENCES players(id, auction_id) ON DELETE RESTRICT,
+            FOREIGN KEY (fanta_manager_id, auction_id)
+                REFERENCES fanta_managers(id, auction_id) ON DELETE RESTRICT,
             UNIQUE (auction_id, player_id)
         ) STRICT
     """,
@@ -182,11 +142,12 @@ _TABLES = {
     "settings": """
         CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+            fanta_manager_id INTEGER NOT NULL
+                REFERENCES fanta_managers(id) ON DELETE CASCADE,
             key TEXT NOT NULL CHECK (length(trim(key)) > 0),
             value_json TEXT NOT NULL CHECK (json_valid(value_json)),
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE (participant_id, key)
+            UNIQUE (fanta_manager_id, key)
         ) STRICT
     """,
     # Presence of a row represents a selected player. Imported CSV mln maps to
@@ -195,38 +156,45 @@ _TABLES = {
         CREATE TABLE IF NOT EXISTS players_selected (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             auction_id INTEGER NOT NULL,
-            participant_id INTEGER NOT NULL,
+            fanta_manager_id INTEGER NOT NULL,
             player_id INTEGER NOT NULL,
             max_bid INTEGER CHECK (max_bid >= 0),
             interest TEXT DEFAULT 'Da valutare',
             description TEXT NOT NULL DEFAULT '',
-            FOREIGN KEY (participant_id, auction_id)
-                REFERENCES participants(id, auction_id) ON DELETE CASCADE,
+            FOREIGN KEY (fanta_manager_id, auction_id)
+                REFERENCES fanta_managers(id, auction_id) ON DELETE CASCADE,
             FOREIGN KEY (player_id, auction_id)
                 REFERENCES players(id, auction_id) ON DELETE RESTRICT,
-            UNIQUE (participant_id, player_id)
+            UNIQUE (fanta_manager_id, player_id)
         ) STRICT
     """,
 }
 
 _INDEXES = (
-    "CREATE UNIQUE INDEX IF NOT EXISTS one_open_lot_per_auction "
-    "ON auction_lots(auction_id) WHERE status = 'open'",
     "CREATE INDEX IF NOT EXISTS auctions_by_host ON auctions(host_user_id)",
-    "CREATE INDEX IF NOT EXISTS participants_by_user ON participants(user_id)",
-    "CREATE INDEX IF NOT EXISTS lots_by_player ON auction_lots(player_id, auction_id)",
-    "CREATE INDEX IF NOT EXISTS bids_by_participant ON bids(participant_id, auction_id)",
-    "CREATE INDEX IF NOT EXISTS purchases_by_participant "
-    "ON purchases(participant_id, auction_id)",
-    "CREATE INDEX IF NOT EXISTS preferences_by_player "
-    "ON player_preferences(player_id, auction_id)",
+    "CREATE INDEX IF NOT EXISTS fanta_managers_by_user ON fanta_managers(user_id)",
+    "CREATE INDEX IF NOT EXISTS purchases_by_fanta_manager "
+    "ON purchases(fanta_manager_id, auction_id)",
+    "CREATE INDEX IF NOT EXISTS players_selected_by_player "
+    "ON players_selected(player_id, auction_id)",
 )
 
 
-def _connect(*, create_file: bool = False) -> sqlite3.Connection:
-    """Open a connection owned by the caller; never share it across threads."""
+def _connect(create_file: bool = False) -> sqlite3.Connection:
+    """Open a database connection owned by the caller.
+
+    Params
+    ----------
+    create_file : bool
+        Whether SQLite may create the database when it does not exist.
+
+    Returns
+    -------
+    sqlite3.Connection
+        Configured connection with row dictionaries and foreign keys enabled.
+    """
     path = Path(DB_PATH).resolve()
-    # SQLite reports a missing file in mode=rw; only create() may create it.
+    # SQLite reports a missing file in mode=rw; only create_db() may create it.
     connection = sqlite3.connect(
         path.as_uri() + ("?mode=rwc" if create_file else "?mode=rw"),
         uri=True,
@@ -244,7 +212,7 @@ def _connect(*, create_file: bool = False) -> sqlite3.Connection:
 
 
 def create_db() -> Path:
-    """Create the database directory, nine static tables and indexes if absent.
+    """Create the database directory, seven static tables and indexes if absent.
 
     Return the absolute database path. Existing data is preserved and all schema
     statements run atomically. WAL permits readers during a write; SQLite still
@@ -252,7 +220,12 @@ def create_db() -> Path:
     No accounts, auction data or CSV imports are created automatically.
 
     SQLite 3.38+ is required for STRICT tables and built-in JSON validation.
-    This function initializes schema version 1; it is not a migration runner.
+    This function initializes schema version 2; it is not a migration runner.
+
+    Returns
+    -------
+    pathlib.Path
+        Absolute path of the initialized database file.
     """
     path = Path(DB_PATH).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -272,6 +245,17 @@ def create_db() -> Path:
     return path
 
 
+def reset_db() -> None:
+    """Delete the SQLite database and its WAL companion files if they exist.
+
+    Call ``create_db()`` afterwards when a new database using the current schema
+    is required. The function is idempotent and does not recreate any data.
+    """
+    path = Path(DB_PATH).resolve()
+    for database_file in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+        database_file.unlink(missing_ok=True)
+
+
 @contextmanager
 def transaction() -> Iterator[sqlite3.Connection]:
     """Group operations into one write transaction with commit/rollback and close.
@@ -284,9 +268,17 @@ def transaction() -> Iterator[sqlite3.Connection]:
     Example::
 
         with transaction() as connection:
-            user_id = insert("users", "username", "Mario", connection=connection)
-            insert("participants", ["auction_id", "user_id", "team_name"],
-                   [1, user_id, "Mario FC"], connection=connection)
+            user_id = insert("users", {"username": "Mario"}, connection=connection)
+            insert(
+                "fanta_managers",
+                {"auction_id": 1, "user_id": user_id, "team_name": "Mario FC"},
+                connection=connection,
+            )
+
+    Yields
+    ------
+    sqlite3.Connection
+        Active connection that commits on success and rolls back on error.
     """
     with closing(_connect()) as connection:
         connection.execute("BEGIN IMMEDIATE")
@@ -296,9 +288,22 @@ def transaction() -> Iterator[sqlite3.Connection]:
 
 @contextmanager
 def _get_connection_scope(
-    connection: sqlite3.Connection | None, *, write: bool = False
+    connection: sqlite3.Connection | None, write: bool = False
 ) -> Iterator[sqlite3.Connection]:
-    """Reuse a connection from transaction(), or open and close one for this call."""
+    """Provide an active connection for one database operation.
+
+    Params
+    ----------
+    connection : sqlite3.Connection or None
+        Existing active transaction connection to reuse.
+    write : bool
+        Whether a missing connection should open a write transaction.
+
+    Yields
+    ------
+    sqlite3.Connection
+        Reused or locally owned connection.
+    """
     if connection is not None:
         if not connection.in_transaction:
             raise ValueError("Pass an active connection from transaction().")
@@ -312,38 +317,73 @@ def _get_connection_scope(
 
 
 def _get_allowed_columns(connection: sqlite3.Connection, table: str) -> set[str]:
-    """Read valid column names for a table declared in this module."""
+    """Read valid columns for a table declared by this module.
+
+    Params
+    ----------
+    connection : sqlite3.Connection
+        Open database connection used to inspect the table.
+    table : str
+        Declared table name.
+
+    Returns
+    -------
+    set of str
+        Column names accepted by the CRUD helpers.
+    """
     if table not in _TABLES:
         raise ValueError(f"Unknown table: {table!r}.")
     return {row["name"] for row in connection.execute(f'PRAGMA table_info("{table}")')}
 
 
-def _get_columns_values_pairs(column: Columns, value: Values, allowed_cols: set[str]) -> list[tuple[str, SQLValue]]:
-    """Pair valid column names with values; SQLite checks supported value types."""
-    if isinstance(column, str):
-        columns, values = [column], [value]
-    elif isinstance(column, (list, tuple)) and isinstance(value, (list, tuple)):
-        columns, values = column, value
-    else:
-        raise ValueError("Use a column name and scalar, or matching lists/tuples.")
+def _get_data_pairs(
+    data: Mapping[str, SQLValue],
+    allowed_columns: set[str],
+    allow_empty: bool = False,
+) -> list[tuple[str, SQLValue]]:
+    """Validate a data or filter mapping and return its ordered pairs.
 
-    # Avoid empty filters and silently dropping fields when zip() pairs the lists.
-    if not columns or len(columns) != len(values):
-        raise ValueError("Column and value sequences must have the same nonzero length.")
-    if any(name not in allowed_cols for name in columns):
+    Params
+    ----------
+    data : mapping
+        Column names mapped to values.
+    allowed_columns : set of str
+        Valid columns for the target table.
+    allow_empty : bool
+        Whether an empty mapping is valid.
+
+    Returns
+    -------
+    list of tuple
+        Validated ``(column, value)`` pairs.
+    """
+    if not isinstance(data, Mapping):
+        raise ValueError("Use a dictionary that maps column names to values.")
+    if not data and not allow_empty:
+        raise ValueError("The data or filter dictionary must not be empty.")
+    if any(name not in allowed_columns for name in data):
         raise ValueError("Unknown column name.")
-    if len(set(columns)) != len(columns):
-        raise ValueError("Column names must not be repeated.")
 
     # CSV imports may contain NaN; require an explicit None for missing values.
-    for item in values:
-        if isinstance(item, float) and not math.isfinite(item):
+    for value in data.values():
+        if isinstance(value, float) and not math.isfinite(value):
             raise ValueError("NaN and infinite values are not supported; use None for SQL NULL.")
-    return list(zip(columns, values))
+    return list(data.items())
 
 
 def _build_predicates_condition(pairs: list[tuple[str, SQLValue]]) -> tuple[str, list[SQLValue]]:
-    """Build equality filters, treating Python None as SQL NULL."""
+    """Build equality predicates, treating Python ``None`` as SQL NULL.
+
+    Params
+    ----------
+    pairs : list of tuple
+        Validated column/value filters.
+
+    Returns
+    -------
+    tuple of str and list
+        SQL condition and bound non-null parameter values.
+    """
     clauses, parameters = [], []
     for column, value in pairs:
         if value is None:
@@ -355,44 +395,74 @@ def _build_predicates_condition(pairs: list[tuple[str, SQLValue]]) -> tuple[str,
 
 
 def get(
-    table: str, columns: Columns | None, values: Values, *,
+    table: str,
+    filters: dict[str, SQLValue] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> list[dict[str, SQLValue]]:
     """Return matching rows as dictionaries ordered by id, or [] if none exist.
 
-    ``get("users", "username", "Mario")`` filters by a single column.
-    ``get("participants", ["auction_id", "user_id"], [1, 7])`` combines filters.
-    ``get("users", None, None)`` explicitly reads every row; ``("auth_subject",
-    None)`` instead matches rows whose auth_subject is SQL NULL.
+    ``get("users", {"username": "Mario"})`` filters by one column.
+    Multiple entries are combined with AND. Omitting ``filters`` reads every row;
+    ``{"auth_subject": None}`` instead matches SQL NULL.
+
+    Params
+    ----------
+    table : str
+        Declared table to read.
+    filters : dict or None
+        Equality conditions, or ``None``/an empty dictionary to read all rows.
+    connection : sqlite3.Connection or None
+        Active transaction connection to reuse, when provided.
+
+    Returns
+    -------
+    list of dict
+        Matching rows ordered by identifier.
     """
     with _get_connection_scope(connection) as conn_transaction:
-        allowed_cols = _get_allowed_columns(conn_transaction, table)
+        allowed_columns = _get_allowed_columns(conn_transaction, table)
+        filter_pairs = _get_data_pairs(
+            {} if filters is None else filters,
+            allowed_columns,
+            allow_empty=True,
+        )
         parameters = []
         query = f'SELECT * FROM "{table}"'
-        if columns is None:
-            if values is not None:
-                raise ValueError("Reading all rows requires both column=None and value=None.")
-        else:
-            pairs = _get_columns_values_pairs(columns, values, allowed_cols)
-            predicate, parameters = _build_predicates_condition(pairs)
+        if filter_pairs:
+            predicate, parameters = _build_predicates_condition(filter_pairs)
             query += f" WHERE {predicate}"
         return [dict(row) for row in conn_transaction.execute(query + ' ORDER BY "id"', parameters)]
 
 
 def insert(
-    table: str, column: Columns, value: Values, *,
+    table: str,
+    data: dict[str, SQLValue],
     connection: sqlite3.Connection | None = None,
 ) -> int:
     """Insert one row and return its id; omitted fields use schema defaults.
 
-    Example: ``insert("users", ["username", "auth_issuer", "auth_subject"],
-    ["Mario", "https://accounts.google.com", "provider-subject"])``.
+    Example: ``insert("users", {"username": "Mario", "auth_issuer":
+    "https://accounts.google.com", "auth_subject": "provider-subject"})``.
     Duplicate keys, missing required fields and other constraint violations
     propagate as sqlite3.IntegrityError. Existing rows are never replaced.
+
+    Params
+    ----------
+    table : str
+        Declared table to insert into.
+    data : dict
+        Columns and values to store.
+    connection : sqlite3.Connection or None
+        Active transaction connection to reuse, when provided.
+
+    Returns
+    -------
+    int
+        Identifier of the inserted row.
     """
     with _get_connection_scope(connection, write=True) as conn_transaction:
-        allowed_cols = _get_allowed_columns(conn_transaction, table)
-        pairs = _get_columns_values_pairs(column, value, allowed_cols)
+        allowed_columns = _get_allowed_columns(conn_transaction, table)
+        pairs = _get_data_pairs(data, allowed_columns)
         columns = ", ".join(f'"{name}"' for name, _ in pairs)
         placeholders = ", ".join("?" for _ in pairs)
         cursor = conn_transaction.execute(
@@ -403,54 +473,275 @@ def insert(
 
 
 def update(
-    table: str, column: Columns, value: Values, *,
-    where: Mapping[str, SQLValue],
+    table: str,
+    data: dict[str, SQLValue],
+    filters: dict[str, SQLValue],
     connection: sqlite3.Connection | None = None,
 ) -> int:
     """Set fields on rows matching a required nonempty filter; return row count.
 
-    Example: ``update("participants", "team_name", "New FC", where={"id": 7})``.
-    All where entries are equality conditions joined by AND. Zero affected rows
+    Example: ``update("fanta_managers", {"team_name": "New FC"}, {"id": 7})``.
+    All filter entries are equality conditions joined by AND. Zero affected rows
     is a valid result. When present, updated_at is refreshed automatically unless
     explicitly supplied; version fields must be incremented by the service.
     Empty filters are rejected to prevent accidental table-wide updates.
+
+    Params
+    ----------
+    table : str
+        Declared table to update.
+    data : dict
+        Columns and new values to store.
+    filters : dict
+        Required equality filters that select target rows.
+    connection : sqlite3.Connection or None
+        Active transaction connection to reuse, when provided.
+
+    Returns
+    -------
+    int
+        Number of updated rows.
     """
-    if not where:
-        raise ValueError("update() requires a nonempty where mapping.")
     with _get_connection_scope(connection, write=True) as conn_transaction:
-        allowed_cols = _get_allowed_columns(conn_transaction, table)
-        pairs = _get_columns_values_pairs(column, value, allowed_cols)
-        filter_pairs = _get_columns_values_pairs(list(where), list(where.values()), allowed_cols)
-        predicate, filters = _build_predicates_condition(filter_pairs)
+        allowed_columns = _get_allowed_columns(conn_transaction, table)
+        pairs = _get_data_pairs(data, allowed_columns)
+        filter_pairs = _get_data_pairs(filters, allowed_columns)
+        predicate, filter_values = _build_predicates_condition(filter_pairs)
         assignments = [f'"{name}" = ?' for name, _ in pairs]
-        if "updated_at" in allowed_cols and "updated_at" not in dict(pairs):
+        if "updated_at" in allowed_columns and "updated_at" not in data:
             assignments.append('"updated_at" = CURRENT_TIMESTAMP')
         cursor = conn_transaction.execute(
             f'UPDATE "{table}" SET {", ".join(assignments)} WHERE {predicate}',
-            [item for _, item in pairs] + filters,
+            [item for _, item in pairs] + filter_values,
         )
         return cursor.rowcount
 
 
 def remove(
-    table: str, column: Columns, value: Values, *,
+    table: str,
+    filters: dict[str, SQLValue],
     connection: sqlite3.Connection | None = None,
 ) -> int:
     """Delete matching rows and return their count; an explicit filter is required.
 
-    Example: ``remove("bids", ["lot_id", "participant_id"], [3, 7])``.
-    Passing None as a value matches SQL NULL, but column=None is never allowed.
+    Example: ``remove("players_selected", {"fanta_manager_id": 3, "player_id": 7})``.
+    Passing None as a value matches SQL NULL, but an empty filter is not allowed.
     Referenced auction/account/history rows are protected by foreign keys;
-    deleting an unreferenced participant also removes their personal preferences.
+    deleting an unreferenced Fanta Manager also removes personal settings and selections.
+
+    Params
+    ----------
+    table : str
+        Declared table to delete from.
+    filters : dict
+        Required equality filters that select rows to delete.
+    connection : sqlite3.Connection or None
+        Active transaction connection to reuse, when provided.
+
+    Returns
+    -------
+    int
+        Number of deleted rows.
     """
     with _get_connection_scope(connection, write=True) as conn_transaction:
-        allowed_cols = _get_allowed_columns(conn_transaction, table)
-        pairs = _get_columns_values_pairs(column, value, allowed_cols)
+        allowed_columns = _get_allowed_columns(conn_transaction, table)
+        pairs = _get_data_pairs(filters, allowed_columns)
         predicate, parameters = _build_predicates_condition(pairs)
         cursor = conn_transaction.execute(f'DELETE FROM "{table}" WHERE {predicate}', parameters)
         return cursor.rowcount
 
 
+def _get_join_condition(
+    connection: sqlite3.Connection,
+    left_table: str,
+    right_table: str,
+) -> str:
+    """Return the foreign-key condition between two consecutive tables.
+
+    Params
+    ----------
+    connection : sqlite3.Connection
+        Open database connection used to inspect foreign keys.
+    left_table : str
+        Table already present in the join chain.
+    right_table : str
+        Next table to join.
+
+    Returns
+    -------
+    str
+        SQL equality condition for the single relationship between the tables.
+    """
+    relationships = []
+    for child_table, parent_table in (
+        (left_table, right_table),
+        (right_table, left_table),
+    ):
+        foreign_keys = {}
+        for row in connection.execute(
+            f'PRAGMA foreign_key_list("{child_table}")'
+        ):
+            if row["table"] == parent_table:
+                foreign_keys.setdefault(row["id"], []).append(row)
+
+        for rows in foreign_keys.values():
+            conditions = []
+            for row in sorted(rows, key=lambda item: item["seq"]):
+                conditions.append(
+                    f'"{child_table}"."{row["from"]}" = '
+                    f'"{parent_table}"."{row["to"]}"'
+                )
+            relationships.append(" AND ".join(conditions))
+
+    if not relationships:
+        raise ValueError(
+            f"Tables {left_table!r} and {right_table!r} have no direct "
+            "foreign-key relationship."
+        )
+    if len(relationships) > 1:
+        raise ValueError(
+            f"Tables {left_table!r} and {right_table!r} have more than one "
+            "foreign-key relationship."
+        )
+    return relationships[0]
+
+
+def _resolve_join_column(
+    column: str,
+    tables: list[str],
+    allowed_columns: dict[str, set[str]],
+) -> str:
+    """Validate a join column and return its qualified SQL identifier.
+
+    Params
+    ----------
+    column : str
+        Plain or ``table.column`` identifier.
+    tables : list of str
+        Tables included in the join.
+    allowed_columns : dict
+        Valid columns indexed by table.
+
+    Returns
+    -------
+    str
+        Safely quoted and table-qualified SQL identifier.
+    """
+    if not isinstance(column, str) or not column:
+        raise ValueError("Join columns must be nonempty strings.")
+
+    parts = column.split(".")
+    if len(parts) == 2:
+        table, column_name = parts
+        if table not in tables or column_name not in allowed_columns.get(table, set()):
+            raise ValueError(f"Unknown join column: {column!r}.")
+        return f'"{table}"."{column_name}"'
+    if len(parts) != 1:
+        raise ValueError(f"Invalid join column: {column!r}.")
+
+    matching_tables = [
+        table for table in tables if column in allowed_columns[table]
+    ]
+    if not matching_tables:
+        raise ValueError(f"Unknown join column: {column!r}.")
+    if len(matching_tables) > 1:
+        raise ValueError(
+            f"Ambiguous join column {column!r}; qualify it as 'table.column'."
+        )
+    return f'"{matching_tables[0]}"."{column}"'
+
+
+def join(
+    tables: list[str],
+    filters: dict[str, SQLValue] | None,
+    proj: list[str],
+    connection: sqlite3.Connection | None = None,
+) -> list[dict[str, SQLValue]]:
+    """Join consecutive related tables and return the projected filtered rows.
+
+    Each consecutive pair in ``tables`` must have exactly one direct foreign-key
+    relationship. Plain column names are accepted only when they occur in one of
+    the joined tables; qualify ambiguous names as ``table.column``. Result keys
+    preserve the identifiers supplied in ``proj``.
+
+    Params
+    ----------
+    tables : list of str
+        Ordered join chain containing at least two distinct declared tables.
+    filters : dict or None
+        Equality conditions keyed by plain or qualified column names.
+    proj : list of str
+        Plain or qualified columns to include in each result.
+    connection : sqlite3.Connection or None
+        Active transaction connection to reuse, when provided.
+
+    Returns
+    -------
+    list of dict
+        Projected matching rows, ordered by the first table's identifier.
+    """
+    if not isinstance(tables, list) or len(tables) < 2:
+        raise ValueError("join() requires a list containing at least two tables.")
+    if any(not isinstance(table, str) for table in tables):
+        raise ValueError("join() table names must be strings.")
+    if len(set(tables)) != len(tables):
+        raise ValueError("join() table names must not be repeated.")
+    if not isinstance(proj, list) or not proj:
+        raise ValueError("join() requires a nonempty projection list.")
+    if any(not isinstance(column, str) for column in proj):
+        raise ValueError("Projected column names must be strings.")
+    if len(set(proj)) != len(proj):
+        raise ValueError("Projected columns must not be repeated.")
+    if filters is not None and not isinstance(filters, Mapping):
+        raise ValueError("Use a filter dictionary that maps columns to values.")
+
+    with _get_connection_scope(connection) as conn_transaction:
+        allowed_columns = {
+            table: _get_allowed_columns(conn_transaction, table)
+            for table in tables
+        }
+        projections = [
+            (_resolve_join_column(column, tables, allowed_columns), column)
+            for column in proj
+        ]
+        query = "SELECT " + ", ".join(
+            f'{column_sql} AS "{result_key}"'
+            for column_sql, result_key in projections
+        )
+        query += f' FROM "{tables[0]}"'
+
+        for left_table, right_table in zip(tables, tables[1:]):
+            condition = _get_join_condition(
+                conn_transaction,
+                left_table,
+                right_table,
+            )
+            query += f' JOIN "{right_table}" ON {condition}'
+
+        parameters = []
+        filter_clauses = []
+        for column, value in (filters or {}).items():
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError(
+                    "NaN and infinite values are not supported; use None for SQL NULL."
+                )
+            column_sql = _resolve_join_column(column, tables, allowed_columns)
+            if value is None:
+                filter_clauses.append(f"{column_sql} IS NULL")
+            else:
+                filter_clauses.append(f"{column_sql} = ?")
+                parameters.append(value)
+
+        if filter_clauses:
+            query += " WHERE " + " AND ".join(filter_clauses)
+        query += f' ORDER BY "{tables[0]}"."id"'
+
+        return [
+            dict(row)
+            for row in conn_transaction.execute(query, parameters)
+        ]
+
+
 if __name__ == "__main__":
     # Needed for explicit initialization only: the import of this module does not create files.
-    print(f"SQLite database ready: {create()}")
+    print(f"SQLite database ready: {create_db()}")

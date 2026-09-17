@@ -2,8 +2,7 @@ import streamlit as st
 
 from backend.user_services import get_user
 
-from lib.streamlit_api.design_handler import sidebar_navigation_size
-from lib.utils import get_icon
+from lib.streamlit_api.design_handler import get_icon, sidebar_navigation_size
 
 
 # Case of user not logged with google
@@ -21,7 +20,7 @@ user = get_user(
     auth_subject=st.user.sub,
 )
 
-# New users and users without a membership must complete registration first.
+# New users must complete registration before entering the application.
 if user is None:
     navigation = st.navigation(
         pages=[st.Page("pages/registration.py", title="Registration")],
