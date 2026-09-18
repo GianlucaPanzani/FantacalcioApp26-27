@@ -13,9 +13,10 @@ from lib.utils import (
 
 
 def get_auction_code_component():
+    copy_icon_url = get_icon("copy").removeprefix("![AI](").removesuffix(")")
     return st.components.v2.component(
         "auction_code_digits",
-        html="""
+        html=f"""
         <div class="pin-container">
             <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 1">
             <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 2">
@@ -24,7 +25,8 @@ def get_auction_code_component():
             <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 5">
             <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 6">
             <button class="copy-code-button" type="button" aria-label="Copy auction code">
-                ⧉
+                <img class="copy-code-icon" src="{copy_icon_url}" alt="">
+                <span class="copy-code-status" hidden>✓</span>
             </button>
         </div>
         """,
@@ -56,8 +58,10 @@ def get_auction_code_component():
 
         .copy-code-button {
             box-sizing: border-box;
+            flex: 0 0 var(--pin-height);
+            width: var(--pin-height);
             height: var(--pin-height);
-            padding: 0 0.75rem;
+            padding: 5px;
             border: 1px solid var(--st-primary-color);
             border-radius: var(--st-button-radius);
             background: var(--st-primary-color);
@@ -65,6 +69,21 @@ def get_auction_code_component():
             font-size: var(--pin-font-size);
             font-weight: 600;
             cursor: pointer;
+        }
+
+        .copy-code-icon {
+            width: 32px;
+            height: 32px;
+            margin: auto;
+        }
+
+        .copy-code-status {
+            line-height: 1;
+        }
+
+        .copy-code-icon[hidden],
+        .copy-code-status[hidden] {
+            display: none;
         }
 
         .copy-code-button:hover {
@@ -82,7 +101,9 @@ def get_auction_code_component():
             const container = parentElement.querySelector(".pin-container")
             const inputs = Array.from(parentElement.querySelectorAll(".pin-input"))
             const copyButton = parentElement.querySelector(".copy-code-button")
-            if (!container || inputs.length !== 6 || !copyButton) return
+            const copyIcon = parentElement.querySelector(".copy-code-icon")
+            const copyStatus = parentElement.querySelector(".copy-code-status")
+            if (!container || inputs.length !== 6 || !copyButton || !copyIcon || !copyStatus) return
 
             container.style.setProperty("--pin-alignment", data.containerAlignment)
             container.style.setProperty("--pin-gap", `${data.pinGap}px`)
@@ -100,16 +121,19 @@ def get_auction_code_component():
             })
 
             copyButton.hidden = !data.readOnly || value.length !== 6
-            copyButton.textContent = "⧉"
+            copyIcon.hidden = false
+            copyStatus.hidden = true
             copyButton.onclick = async () => {
                 try {
                     await navigator.clipboard.writeText(value)
-                    copyButton.textContent = "✓"
+                    copyIcon.hidden = true
+                    copyStatus.hidden = false
                     setTimeout(() => {
-                        copyButton.textContent = "⧉"
+                        copyIcon.hidden = false
+                        copyStatus.hidden = true
                     }, 3000)
                 } catch {
-                    copyButton.textContent = "Copy failed"
+                    copyButton.title = "Copy failed"
                 }
             }
 
