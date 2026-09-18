@@ -604,7 +604,7 @@ def plot_player_history(
     with st.container(border=True, key=f"dark-card-{player_name}{f'_{feature}' if feature is not None else ''}"):
         
         if not disable_player_name:
-            cols = st.columns([25,30])
+            cols = st.columns([21,34])
             with cols[0]:
                 st.markdown(
                     f"{get_circular_role_icon(fanta_role, font_size=18, height=28, width=28, y_translation=14)}",
@@ -731,7 +731,7 @@ def create_vertical_teams(
     if not fanta_managers:
         return
     ordered_fanta_managers = fanta_manager_players_dict.keys()
-    starting_budget = st.session_state.get("settings_budget_key", 500)
+    starting_budget = st.session_state.get("settings_budget_widget_key", 500)
 
     colors = {
         "orange": ("rgba(255,255,255,1)", "rgba(255,165,0,0.80)"),
@@ -932,7 +932,7 @@ def create_horizontal_teams(
     if not fanta_managers:
         return
     ordered_fanta_managers = fanta_manager_players_dict.keys()
-    starting_budget = st.session_state.get("settings_budget_key", 500)
+    starting_budget = st.session_state.get("settings_budget_widget_key", 500)
 
     colors = {
         "orange": ("rgba(255,255,255,1)", "rgba(255,165,0,0.80)"),

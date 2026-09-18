@@ -11,7 +11,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from src import backend
-from src.backend import api, user_services
+from src.backend import db_api, users_db
 
 
 class RegistrationPageTests(unittest.TestCase):
@@ -19,15 +19,21 @@ class RegistrationPageTests(unittest.TestCase):
         """Create an isolated database and load the registration page."""
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.enterContext(patch.object(api, "DB_PATH", Path(directory.name) / "registration.sqlite3"))
+        self.enterContext(
+            patch.object(
+                db_api,
+                "DB_PATH",
+                Path(directory.name) / "registration.sqlite3",
+            )
+        )
         self.enterContext(patch.dict(sys.modules, {
             "backend": backend,
-            "backend.api": api,
-            "backend.user_services": user_services,
+            "backend.db_api": db_api,
+            "backend.users_db": users_db,
         }))
         self.identity = SimpleNamespace(is_logged_in=True, iss="google", sub="guest-123")
         self.enterContext(patch.object(st, "user", self.identity))
-        api.create_db()
+        db_api.create_db()
         page = Path(__file__).resolve().parents[1] / "pages" / "registration.py"
         self.app = AppTest.from_file(str(page)).run()
 
@@ -42,8 +48,13 @@ class RegistrationPageTests(unittest.TestCase):
         """Store the current widget value when the form is submitted."""
         self.assertEqual(len(self.app.get("file_uploader")), 1)
         self.submit(username="Fresh username")
-        user = user_services.get_user("google", "guest-123")
+        users = users_db.get_users({
+            "auth_issuer": "google",
+            "auth_subject": "guest-123",
+        })
+        user = users[0]
         self.assertEqual(user["username"], "Fresh username")
+        self.assertEqual(user["team_name"], "Guest FC")
         self.assertEqual(self.app.session_state["user_id"], user["id"])
         self.assertIn("successfully completed", self.app.success[0].value)
 
@@ -51,14 +62,34 @@ class RegistrationPageTests(unittest.TestCase):
         """Show validation feedback without creating an empty user."""
         self.submit(username=" ")
         self.assertIn("Enter a username", self.app.error[0].value)
-        self.assertIsNone(user_services.get_user("google", "guest-123"))
+        self.assertEqual(
+            users_db.get_users({"auth_issuer": "google", "auth_subject": "guest-123"}),
+            [],
+        )
+
+    def test_empty_team_name_shows_feedback_without_creating_user(self):
+        """Show validation feedback without creating a teamless user."""
+        self.submit(team_name=" ")
+        self.assertIn("Enter a team name", self.app.error[0].value)
+        self.assertEqual(
+            users_db.get_users({"auth_issuer": "google", "auth_subject": "guest-123"}),
+            [],
+        )
 
     def test_duplicate_username_shows_feedback(self):
         """Show feedback when the chosen username already exists."""
-        user_services.set_user("google", "another-subject", "Taken")
+        users_db.set_user({
+            "auth_issuer": "google",
+            "auth_subject": "another-subject",
+            "username": "Taken",
+            "team_name": "Taken FC",
+        })
         self.submit(username="taken")
         self.assertIn("already in use", self.app.error[0].value)
-        self.assertIsNone(user_services.get_user("google", "guest-123"))
+        self.assertEqual(
+            users_db.get_users({"auth_issuer": "google", "auth_subject": "guest-123"}),
+            [],
+        )
 
     def test_page_requires_an_authenticated_identity(self):
         """Stop registration when no authenticated identity is available."""

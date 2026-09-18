@@ -23,7 +23,7 @@ import sqlite3
 
 # Resolve the database relative to this module, regardless of the working folder.
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "db" / "fantacalcio.sqlite3"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 CONNECTION_TIMEOUT = 5.0
 
 SQLValue = str | int | float | bytes | None
@@ -40,6 +40,8 @@ _TABLES = {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL COLLATE NOCASE UNIQUE
                 CHECK (length(trim(username)) > 0 AND username = trim(username)),
+            team_name TEXT NOT NULL COLLATE NOCASE UNIQUE
+                CHECK (length(trim(team_name)) > 0 AND team_name = trim(team_name)),
             auth_issuer TEXT,
             auth_subject TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -75,6 +77,12 @@ _TABLES = {
                 CHECK (midfielder_modifier_enabled IN (0, 1)),
             player_switch_enabled INTEGER NOT NULL DEFAULT 0
                 CHECK (player_switch_enabled IN (0, 1)),
+            player_extraction_order TEXT NOT NULL DEFAULT 'random'
+                CHECK (player_extraction_order IN ('random', 'alphabetic_order')),
+            player_extraction_scope TEXT NOT NULL DEFAULT 'on_all_players'
+                CHECK (player_extraction_scope IN ('by_role', 'on_all_players')),
+            role_extraction_order TEXT NOT NULL DEFAULT 'in_order_P_D_C_A'
+                CHECK (role_extraction_order IN ('in_order_P_D_C_A', 'random')),
             points_goal_scored REAL NOT NULL DEFAULT 3 CHECK (points_goal_scored >= 0),
             points_goalkeeper_goal_conceded REAL NOT NULL DEFAULT -1
                 CHECK (points_goalkeeper_goal_conceded <= 0),
@@ -90,18 +98,15 @@ _TABLES = {
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) STRICT
     """,
-    # A user can manage one team in each auction. The host uses this same table;
-    # a separate host team is not necessary.
+    # This table associates users with auctions. Team identity remains on users,
+    # and the host participates through the same association as every other user.
     "fanta_managers": """
         CREATE TABLE IF NOT EXISTS fanta_managers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             auction_id INTEGER NOT NULL REFERENCES auctions(id) ON DELETE RESTRICT,
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-            team_name TEXT NOT NULL COLLATE NOCASE
-                CHECK (length(trim(team_name)) > 0 AND team_name = trim(team_name)),
             registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (auction_id, user_id),
-            UNIQUE (auction_id, team_name),
             UNIQUE (id, auction_id)
         ) STRICT
     """,
@@ -150,24 +155,6 @@ _TABLES = {
             UNIQUE (fanta_manager_id, key)
         ) STRICT
     """,
-    # Presence of a row represents a selected player. Imported CSV mln maps to
-    # max_bid; these preferences never create an actual bid or purchase.
-    "players_selected": """
-        CREATE TABLE IF NOT EXISTS players_selected (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            auction_id INTEGER NOT NULL,
-            fanta_manager_id INTEGER NOT NULL,
-            player_id INTEGER NOT NULL,
-            max_bid INTEGER CHECK (max_bid >= 0),
-            interest TEXT DEFAULT 'Da valutare',
-            description TEXT NOT NULL DEFAULT '',
-            FOREIGN KEY (fanta_manager_id, auction_id)
-                REFERENCES fanta_managers(id, auction_id) ON DELETE CASCADE,
-            FOREIGN KEY (player_id, auction_id)
-                REFERENCES players(id, auction_id) ON DELETE RESTRICT,
-            UNIQUE (fanta_manager_id, player_id)
-        ) STRICT
-    """,
 }
 
 _INDEXES = (
@@ -175,8 +162,6 @@ _INDEXES = (
     "CREATE INDEX IF NOT EXISTS fanta_managers_by_user ON fanta_managers(user_id)",
     "CREATE INDEX IF NOT EXISTS purchases_by_fanta_manager "
     "ON purchases(fanta_manager_id, auction_id)",
-    "CREATE INDEX IF NOT EXISTS players_selected_by_player "
-    "ON players_selected(player_id, auction_id)",
 )
 
 
@@ -212,7 +197,7 @@ def _connect(create_file: bool = False) -> sqlite3.Connection:
 
 
 def create_db() -> Path:
-    """Create the database directory, seven static tables and indexes if absent.
+    """Create the database directory, six static tables and indexes if absent.
 
     Return the absolute database path. Existing data is preserved and all schema
     statements run atomically. WAL permits readers during a write; SQLite still
@@ -220,7 +205,7 @@ def create_db() -> Path:
     No accounts, auction data or CSV imports are created automatically.
 
     SQLite 3.38+ is required for STRICT tables and built-in JSON validation.
-    This function initializes schema version 2; it is not a migration runner.
+    This function initializes schema version 4; it is not a migration runner.
 
     Returns
     -------
@@ -268,10 +253,14 @@ def transaction() -> Iterator[sqlite3.Connection]:
     Example::
 
         with transaction() as connection:
-            user_id = insert("users", {"username": "Mario"}, connection=connection)
+            user_id = insert(
+                "users",
+                {"username": "Mario", "team_name": "Mario FC"},
+                connection=connection,
+            )
             insert(
                 "fanta_managers",
-                {"auction_id": 1, "user_id": user_id, "team_name": "Mario FC"},
+                {"auction_id": 1, "user_id": user_id},
                 connection=connection,
             )
 
@@ -394,162 +383,6 @@ def _build_predicates_condition(pairs: list[tuple[str, SQLValue]]) -> tuple[str,
     return " AND ".join(clauses), parameters
 
 
-def get(
-    table: str,
-    filters: dict[str, SQLValue] | None = None,
-    connection: sqlite3.Connection | None = None,
-) -> list[dict[str, SQLValue]]:
-    """Return matching rows as dictionaries ordered by id, or [] if none exist.
-
-    ``get("users", {"username": "Mario"})`` filters by one column.
-    Multiple entries are combined with AND. Omitting ``filters`` reads every row;
-    ``{"auth_subject": None}`` instead matches SQL NULL.
-
-    Params
-    ----------
-    table : str
-        Declared table to read.
-    filters : dict or None
-        Equality conditions, or ``None``/an empty dictionary to read all rows.
-    connection : sqlite3.Connection or None
-        Active transaction connection to reuse, when provided.
-
-    Returns
-    -------
-    list of dict
-        Matching rows ordered by identifier.
-    """
-    with _get_connection_scope(connection) as conn_transaction:
-        allowed_columns = _get_allowed_columns(conn_transaction, table)
-        filter_pairs = _get_data_pairs(
-            {} if filters is None else filters,
-            allowed_columns,
-            allow_empty=True,
-        )
-        parameters = []
-        query = f'SELECT * FROM "{table}"'
-        if filter_pairs:
-            predicate, parameters = _build_predicates_condition(filter_pairs)
-            query += f" WHERE {predicate}"
-        return [dict(row) for row in conn_transaction.execute(query + ' ORDER BY "id"', parameters)]
-
-
-def insert(
-    table: str,
-    data: dict[str, SQLValue],
-    connection: sqlite3.Connection | None = None,
-) -> int:
-    """Insert one row and return its id; omitted fields use schema defaults.
-
-    Example: ``insert("users", {"username": "Mario", "auth_issuer":
-    "https://accounts.google.com", "auth_subject": "provider-subject"})``.
-    Duplicate keys, missing required fields and other constraint violations
-    propagate as sqlite3.IntegrityError. Existing rows are never replaced.
-
-    Params
-    ----------
-    table : str
-        Declared table to insert into.
-    data : dict
-        Columns and values to store.
-    connection : sqlite3.Connection or None
-        Active transaction connection to reuse, when provided.
-
-    Returns
-    -------
-    int
-        Identifier of the inserted row.
-    """
-    with _get_connection_scope(connection, write=True) as conn_transaction:
-        allowed_columns = _get_allowed_columns(conn_transaction, table)
-        pairs = _get_data_pairs(data, allowed_columns)
-        columns = ", ".join(f'"{name}"' for name, _ in pairs)
-        placeholders = ", ".join("?" for _ in pairs)
-        cursor = conn_transaction.execute(
-            f'INSERT INTO "{table}" ({columns}) VALUES ({placeholders})',
-            [item for _, item in pairs],
-        )
-        return cursor.lastrowid
-
-
-def update(
-    table: str,
-    data: dict[str, SQLValue],
-    filters: dict[str, SQLValue],
-    connection: sqlite3.Connection | None = None,
-) -> int:
-    """Set fields on rows matching a required nonempty filter; return row count.
-
-    Example: ``update("fanta_managers", {"team_name": "New FC"}, {"id": 7})``.
-    All filter entries are equality conditions joined by AND. Zero affected rows
-    is a valid result. When present, updated_at is refreshed automatically unless
-    explicitly supplied; version fields must be incremented by the service.
-    Empty filters are rejected to prevent accidental table-wide updates.
-
-    Params
-    ----------
-    table : str
-        Declared table to update.
-    data : dict
-        Columns and new values to store.
-    filters : dict
-        Required equality filters that select target rows.
-    connection : sqlite3.Connection or None
-        Active transaction connection to reuse, when provided.
-
-    Returns
-    -------
-    int
-        Number of updated rows.
-    """
-    with _get_connection_scope(connection, write=True) as conn_transaction:
-        allowed_columns = _get_allowed_columns(conn_transaction, table)
-        pairs = _get_data_pairs(data, allowed_columns)
-        filter_pairs = _get_data_pairs(filters, allowed_columns)
-        predicate, filter_values = _build_predicates_condition(filter_pairs)
-        assignments = [f'"{name}" = ?' for name, _ in pairs]
-        if "updated_at" in allowed_columns and "updated_at" not in data:
-            assignments.append('"updated_at" = CURRENT_TIMESTAMP')
-        cursor = conn_transaction.execute(
-            f'UPDATE "{table}" SET {", ".join(assignments)} WHERE {predicate}',
-            [item for _, item in pairs] + filter_values,
-        )
-        return cursor.rowcount
-
-
-def remove(
-    table: str,
-    filters: dict[str, SQLValue],
-    connection: sqlite3.Connection | None = None,
-) -> int:
-    """Delete matching rows and return their count; an explicit filter is required.
-
-    Example: ``remove("players_selected", {"fanta_manager_id": 3, "player_id": 7})``.
-    Passing None as a value matches SQL NULL, but an empty filter is not allowed.
-    Referenced auction/account/history rows are protected by foreign keys;
-    deleting an unreferenced Fanta Manager also removes personal settings and selections.
-
-    Params
-    ----------
-    table : str
-        Declared table to delete from.
-    filters : dict
-        Required equality filters that select rows to delete.
-    connection : sqlite3.Connection or None
-        Active transaction connection to reuse, when provided.
-
-    Returns
-    -------
-    int
-        Number of deleted rows.
-    """
-    with _get_connection_scope(connection, write=True) as conn_transaction:
-        allowed_columns = _get_allowed_columns(conn_transaction, table)
-        pairs = _get_data_pairs(filters, allowed_columns)
-        predicate, parameters = _build_predicates_condition(pairs)
-        cursor = conn_transaction.execute(f'DELETE FROM "{table}" WHERE {predicate}', parameters)
-        return cursor.rowcount
-
 
 def _get_join_condition(
     connection: sqlite3.Connection,
@@ -649,6 +482,164 @@ def _resolve_join_column(
             f"Ambiguous join column {column!r}; qualify it as 'table.column'."
         )
     return f'"{matching_tables[0]}"."{column}"'
+
+
+def get(
+    table: str,
+    filters: dict[str, SQLValue] | None = None,
+    connection: sqlite3.Connection | None = None,
+) -> list[dict[str, SQLValue]]:
+    """Return matching rows as dictionaries ordered by id, or [] if none exist.
+
+    ``get("users", {"username": "Mario"})`` filters by one column.
+    Multiple entries are combined with AND. Omitting ``filters`` reads every row;
+    ``{"auth_subject": None}`` instead matches SQL NULL.
+
+    Params
+    ----------
+    table : str
+        Declared table to read.
+    filters : dict or None
+        Equality conditions, or ``None``/an empty dictionary to read all rows.
+    connection : sqlite3.Connection or None
+        Active transaction connection to reuse, when provided.
+
+    Returns
+    -------
+    list of dict
+        Matching rows ordered by identifier.
+    """
+    with _get_connection_scope(connection) as conn_transaction:
+        allowed_columns = _get_allowed_columns(conn_transaction, table)
+        filter_pairs = _get_data_pairs(
+            {} if filters is None else filters,
+            allowed_columns,
+            allow_empty=True,
+        )
+        parameters = []
+        query = f'SELECT * FROM "{table}"'
+        if filter_pairs:
+            predicate, parameters = _build_predicates_condition(filter_pairs)
+            query += f" WHERE {predicate}"
+        return [dict(row) for row in conn_transaction.execute(query + ' ORDER BY "id"', parameters)]
+
+
+def insert(
+    table: str,
+    data: dict[str, SQLValue],
+    connection: sqlite3.Connection | None = None,
+) -> int:
+    """Insert one row and return its id; omitted fields use schema defaults.
+
+    Example: ``insert("users", {"username": "Mario", "team_name": "Mario FC",
+    "auth_issuer": "https://accounts.google.com",
+    "auth_subject": "provider-subject"})``.
+    Duplicate keys, missing required fields and other constraint violations
+    propagate as sqlite3.IntegrityError. Existing rows are never replaced.
+
+    Params
+    ----------
+    table : str
+        Declared table to insert into.
+    data : dict
+        Columns and values to store.
+    connection : sqlite3.Connection or None
+        Active transaction connection to reuse, when provided.
+
+    Returns
+    -------
+    int
+        Identifier of the inserted row.
+    """
+    with _get_connection_scope(connection, write=True) as conn_transaction:
+        allowed_columns = _get_allowed_columns(conn_transaction, table)
+        pairs = _get_data_pairs(data, allowed_columns)
+        columns = ", ".join(f'"{name}"' for name, _ in pairs)
+        placeholders = ", ".join("?" for _ in pairs)
+        cursor = conn_transaction.execute(
+            f'INSERT INTO "{table}" ({columns}) VALUES ({placeholders})',
+            [item for _, item in pairs],
+        )
+        return cursor.lastrowid
+
+
+def update(
+    table: str,
+    data: dict[str, SQLValue],
+    filters: dict[str, SQLValue],
+    connection: sqlite3.Connection | None = None,
+) -> int:
+    """Set fields on rows matching a required nonempty filter; return row count.
+
+    Example: ``update("fanta_managers", {"user_id": 9}, {"id": 7})``.
+    All filter entries are equality conditions joined by AND. Zero affected rows
+    is a valid result. When present, updated_at is refreshed automatically unless
+    explicitly supplied; version fields must be incremented by the service.
+    Empty filters are rejected to prevent accidental table-wide updates.
+
+    Params
+    ----------
+    table : str
+        Declared table to update.
+    data : dict
+        Columns and new values to store.
+    filters : dict
+        Required equality filters that select target rows.
+    connection : sqlite3.Connection or None
+        Active transaction connection to reuse, when provided.
+
+    Returns
+    -------
+    int
+        Number of updated rows.
+    """
+    with _get_connection_scope(connection, write=True) as conn_transaction:
+        allowed_columns = _get_allowed_columns(conn_transaction, table)
+        pairs = _get_data_pairs(data, allowed_columns)
+        filter_pairs = _get_data_pairs(filters, allowed_columns)
+        predicate, filter_values = _build_predicates_condition(filter_pairs)
+        assignments = [f'"{name}" = ?' for name, _ in pairs]
+        if "updated_at" in allowed_columns and "updated_at" not in data:
+            assignments.append('"updated_at" = CURRENT_TIMESTAMP')
+        cursor = conn_transaction.execute(
+            f'UPDATE "{table}" SET {", ".join(assignments)} WHERE {predicate}',
+            [item for _, item in pairs] + filter_values,
+        )
+        return cursor.rowcount
+
+
+def remove(
+    table: str,
+    filters: dict[str, SQLValue],
+    connection: sqlite3.Connection | None = None,
+) -> int:
+    """Delete matching rows and return their count; an explicit filter is required.
+
+    Example: ``remove("settings", {"fanta_manager_id": 3, "key": "theme"})``.
+    Passing None as a value matches SQL NULL, but an empty filter is not allowed.
+    Referenced auction/account/history rows are protected by foreign keys;
+    deleting an unreferenced Fanta Manager also removes personal settings.
+
+    Params
+    ----------
+    table : str
+        Declared table to delete from.
+    filters : dict
+        Required equality filters that select rows to delete.
+    connection : sqlite3.Connection or None
+        Active transaction connection to reuse, when provided.
+
+    Returns
+    -------
+    int
+        Number of deleted rows.
+    """
+    with _get_connection_scope(connection, write=True) as conn_transaction:
+        allowed_columns = _get_allowed_columns(conn_transaction, table)
+        pairs = _get_data_pairs(filters, allowed_columns)
+        predicate, parameters = _build_predicates_condition(pairs)
+        cursor = conn_transaction.execute(f'DELETE FROM "{table}" WHERE {predicate}', parameters)
+        return cursor.rowcount
 
 
 def join(

@@ -10,7 +10,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from src.backend import api
+from src.backend import db_api as api
 
 
 class BackendApiTests(unittest.TestCase):
@@ -26,6 +26,8 @@ class BackendApiTests(unittest.TestCase):
 
     def insert_row(self, table, connection=None, **fields):
         """Insert a fixture row through the public dictionary API."""
+        if table == "users":
+            fields.setdefault("team_name", f"Team {fields.get('username', 'user')}")
         return api.insert(table, fields, connection=connection)
 
     def make_auction(self, label):
@@ -37,7 +39,6 @@ class BackendApiTests(unittest.TestCase):
         )
         fanta_manager_id = self.insert_row(
             "fanta_managers", auction_id=auction_id, user_id=user_id,
-            team_name=f"Team {label}",
         )
         player_id = self.insert_row(
             "players", auction_id=auction_id, source_id=123,
@@ -53,7 +54,10 @@ class BackendApiTests(unittest.TestCase):
 
     def test_create_db_is_idempotent_and_data_persists_between_connections(self):
         """Keep existing rows when database initialization runs more than once."""
-        user_id = api.insert("users", {"username": "Persistent user"})
+        user_id = api.insert(
+            "users",
+            {"username": "Persistent user", "team_name": "Persistent team"},
+        )
         self.assertEqual(api.create_db(), self.db_path.resolve())
         self.assertTrue(self.db_path.is_file())
         self.assertEqual(
@@ -68,8 +72,9 @@ class BackendApiTests(unittest.TestCase):
             }
             self.assertTrue({
                 "users", "auctions", "fanta_managers", "players", "purchases",
-                "settings", "players_selected",
+                "settings",
             }.issubset(tables))
+            self.assertNotIn("players_selected", tables)
             self.assertTrue({"auction_lots", "bids"}.isdisjoint(tables))
             indexes = {
                 row[0] for row in connection.execute(
@@ -78,8 +83,9 @@ class BackendApiTests(unittest.TestCase):
             }
             self.assertTrue({
                 "auctions_by_host", "fanta_managers_by_user",
-                "purchases_by_fanta_manager", "players_selected_by_player",
+                "purchases_by_fanta_manager",
             }.issubset(indexes))
+            self.assertNotIn("players_selected_by_player", indexes)
             self.assertEqual(connection.execute("PRAGMA journal_mode").fetchone()[0], "wal")
 
     def test_reset_db_removes_database_and_companion_files(self):
@@ -103,6 +109,9 @@ class BackendApiTests(unittest.TestCase):
             "midfielder_slots": 8, "forward_slots": 6,
             "defender_modifier_enabled": 0, "midfielder_modifier_enabled": 0,
             "player_switch_enabled": 0,
+            "player_extraction_order": "random",
+            "player_extraction_scope": "on_all_players",
+            "role_extraction_order": "in_order_P_D_C_A",
             "points_goal_scored": 3.0, "points_goalkeeper_goal_conceded": -1.0,
             "points_assist": 1.0, "points_penalty_scored": 3.0,
             "points_penalty_missed": -3.0, "points_goalkeeper_penalty_conceded": -1.0,
@@ -113,6 +122,9 @@ class BackendApiTests(unittest.TestCase):
         for column, value in (
             ("total_budget", -1), ("forward_slots", -1),
             ("defender_modifier_enabled", 2), ("status", "unknown"),
+            ("player_extraction_order", "manual"),
+            ("player_extraction_scope", "unknown"),
+            ("role_extraction_order", "alphabetic_order"),
         ):
             with self.subTest(column=column), self.assertRaises(sqlite3.IntegrityError):
                 api.update(
@@ -123,7 +135,10 @@ class BackendApiTests(unittest.TestCase):
 
     def test_crud_supports_null_and_multiple_column_filters(self):
         """Read, update, and remove rows with dictionary filters."""
-        first_id = api.insert("users", {"username": "First"})
+        first_id = api.insert(
+            "users",
+            {"username": "First", "team_name": "First team"},
+        )
         second_id = self.insert_row(
             "users", username="Second", auth_issuer="issuer", auth_subject="subject",
         )
@@ -146,7 +161,10 @@ class BackendApiTests(unittest.TestCase):
     def test_values_are_bound_and_identifiers_are_validated(self):
         """Bind values safely and reject tables or columns outside the schema."""
         payload = "Robert'); DROP TABLE users; --"
-        user_id = api.insert("users", {"username": payload})
+        user_id = api.insert(
+            "users",
+            {"username": payload, "team_name": "Safe team"},
+        )
         self.assertEqual(api.get("users", {"username": payload})[0]["id"], user_id)
         for table, column in (
             ("users; DROP TABLE users", "id"),
@@ -184,31 +202,30 @@ class BackendApiTests(unittest.TestCase):
                 self.insert_row("users", **fields)
 
     def test_fanta_manager_uniqueness_is_scoped_to_each_auction(self):
-        """Allow one team per user and one unique team name in each auction."""
+        """Allow each user to become a Fanta Manager once per auction."""
         first = self.make_auction("first")
         second = self.make_auction("second")
-        guest_id = api.insert("users", {"username": "Guest"})
+        guest_id = api.insert(
+            "users",
+            {"username": "Guest", "team_name": "Guest team"},
+        )
         self.insert_row(
             "fanta_managers", auction_id=first["auction_id"], user_id=guest_id,
-            team_name="Guest team",
         )
-        for user_id, team_name in (
-            (guest_id, "Another team"), (second["user_id"], "Guest team"),
-        ):
-            with self.subTest(user_id=user_id), self.assertRaises(sqlite3.IntegrityError):
-                self.insert_row(
-                    "fanta_managers", auction_id=first["auction_id"],
-                    user_id=user_id, team_name=team_name,
-                )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.insert_row(
+                "fanta_managers",
+                auction_id=first["auction_id"],
+                user_id=guest_id,
+            )
         self.insert_row(
             "fanta_managers", auction_id=second["auction_id"], user_id=guest_id,
-            team_name="Guest team",
         )
 
     def test_foreign_keys_are_enabled_for_every_write(self):
         """Reject Fanta Managers that reference missing auctions or users."""
         with self.assertRaises(sqlite3.IntegrityError):
-            self.insert_row("fanta_managers", auction_id=999, user_id=999, team_name="Orphan")
+            self.insert_row("fanta_managers", auction_id=999, user_id=999)
         fixture = self.make_auction("valid")
         with self.assertRaises(sqlite3.IntegrityError):
             api.update(
@@ -218,7 +235,7 @@ class BackendApiTests(unittest.TestCase):
             )
 
     def test_cross_auction_references_are_rejected(self):
-        """Keep purchases and player selections inside one auction."""
+        """Keep purchases inside one auction."""
         first = self.make_auction("first")
         second = self.make_auction("second")
         invalid_rows = (
@@ -231,11 +248,6 @@ class BackendApiTests(unittest.TestCase):
                 "auction_id": first["auction_id"],
                 "fanta_manager_id": first["fanta_manager_id"],
                 "player_id": second["player_id"], "price": 5,
-            }),
-            ("players_selected", {
-                "auction_id": first["auction_id"],
-                "fanta_manager_id": first["fanta_manager_id"],
-                "player_id": second["player_id"],
             }),
         )
         for table, fields in invalid_rows:
@@ -270,21 +282,21 @@ class BackendApiTests(unittest.TestCase):
         manager_rows = api.join(
             ["users", "fanta_managers", "auctions"],
             {"auctions.id": fixture["auction_id"]},
-            ["users.username", "fanta_managers.team_name", "auctions.name"],
+            ["users.username", "users.team_name", "auctions.name"],
         )
         self.assertEqual(
             manager_rows,
             [{
                 "users.username": "host_joined",
-                "fanta_managers.team_name": "Team joined",
+                "users.team_name": "Team host_joined",
                 "auctions.name": "joined",
             }],
         )
 
         purchase_rows = api.join(
-            ["players", "purchases", "fanta_managers"],
+            ["players", "purchases", "fanta_managers", "users"],
             {"fanta_managers.id": fixture["fanta_manager_id"]},
-            ["players.player", "purchases.price", "fanta_managers.team_name"],
+            ["players.player", "purchases.price", "users.team_name"],
         )
         self.assertEqual(purchase_rows[0]["purchases.price"], 12)
         self.assertEqual(purchase_rows[0]["players.player"], "Example player")
@@ -313,10 +325,10 @@ class BackendApiTests(unittest.TestCase):
             with self.subTest(operation=index), self.assertRaises(ValueError):
                 operation()
 
-    def test_settings_and_selected_players_are_persisted(self):
-        """Store typed settings and one selection per Fanta Manager and player."""
+    def test_settings_are_persisted(self):
+        """Store one typed setting per Fanta Manager and key."""
         fixture = self.make_auction("selection")
-        key = "settings_A_budget_limit_key"
+        key = "settings_A_budget_limit_widget_key"
         setting_id = self.insert_row(
             "settings", fanta_manager_id=fixture["fanta_manager_id"],
             key=key, value_json="150",
@@ -332,23 +344,6 @@ class BackendApiTests(unittest.TestCase):
                 {"value_json": "not JSON"},
                 {"id": setting_id},
             )
-        fields = {
-            "auction_id": fixture["auction_id"],
-            "fanta_manager_id": fixture["fanta_manager_id"],
-            "player_id": fixture["player_id"],
-        }
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.insert_row("players_selected", **fields, max_bid=-1)
-        selection_id = self.insert_row(
-            "players_selected", **fields, max_bid=50,
-            interest="Altissimo", description="Watch this player",
-        )
-        self.assertEqual(
-            api.get("players_selected", {"id": selection_id})[0]["description"],
-            "Watch this player",
-        )
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.insert_row("players_selected", **fields, max_bid=100)
 
     def test_transactions_commit_as_a_unit_and_roll_back_on_failure(self):
         """Commit successful groups and roll back every row after a failure."""
@@ -362,16 +357,12 @@ class BackendApiTests(unittest.TestCase):
         self.assertEqual(api.get("users", {"username": "Rolled back"}), [])
 
     def test_remove_protects_purchases_and_cascades_personal_data(self):
-        """Protect purchase history and cascade settings and selections on removal."""
+        """Protect purchase history and cascade settings on removal."""
         fixture = self.make_auction("removal")
         fanta_manager_id = fixture["fanta_manager_id"]
         self.insert_row(
             "settings", fanta_manager_id=fanta_manager_id,
-            key="settings_A_budget_limit_key", value_json="150",
-        )
-        self.insert_row(
-            "players_selected", auction_id=fixture["auction_id"],
-            fanta_manager_id=fanta_manager_id, player_id=fixture["player_id"], max_bid=50,
+            key="settings_A_budget_limit_widget_key", value_json="150",
         )
         purchase_id = self.insert_row(
             "purchases", auction_id=fixture["auction_id"],
@@ -382,15 +373,11 @@ class BackendApiTests(unittest.TestCase):
         self.assertEqual(api.remove("purchases", {"id": purchase_id}), 1)
         self.assertEqual(api.remove("fanta_managers", {"id": fanta_manager_id}), 1)
         self.assertEqual(api.get("settings", {"fanta_manager_id": fanta_manager_id}), [])
-        self.assertEqual(
-            api.get("players_selected", {"fanta_manager_id": fanta_manager_id}),
-            [],
-        )
 
     def test_failed_multirow_update_does_not_partially_modify_users(self):
         """Roll back every row when one update violates a uniqueness constraint."""
-        api.insert("users", {"username": "First"})
-        api.insert("users", {"username": "Second"})
+        api.insert("users", {"username": "First", "team_name": "First team"})
+        api.insert("users", {"username": "Second", "team_name": "Second team"})
         with self.assertRaises(sqlite3.IntegrityError):
             api.update(
                 "users",
@@ -410,7 +397,10 @@ class BackendApiTests(unittest.TestCase):
             """Insert one shared username after both worker threads are ready."""
             barrier.wait(timeout=5)
             try:
-                api.insert("users", {"username": "Concurrent guest"})
+                api.insert(
+                    "users",
+                    {"username": "Concurrent guest", "team_name": "Concurrent team"},
+                )
             except sqlite3.IntegrityError:
                 return "duplicate"
             return "inserted"

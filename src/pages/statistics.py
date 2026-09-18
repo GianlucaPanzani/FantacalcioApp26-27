@@ -213,34 +213,9 @@ def players_filters(players: pd.DataFrame) -> pd.DataFrame:
         st.session_state[f"{page_name}_{column}_widget_key"] = selected_values
 
         st.multiselect(
-            f"Select {get_user_view_of_column(column).lower()}",
+            f"Select {get_user_view_of_column(column).capitalize()}",
             options=options,
             placeholder="Select one or more elements...",
-            key=f"{page_name}_{column}_widget_key",
-            on_change=sync_filter,
-            args=(f"{page_name}_{column}_key", f"{page_name}_{column}_widget_key"),
-        )
-
-    slider_columns = ["goals_per90", "nineties"]
-
-    for column in slider_columns:
-        options_df = apply_filters(
-            players,
-            exclude=column,
-            columns_to_filter_list=columns_to_filter_list,
-            compare_op_for_columns_to_filter_dict=compare_op_for_columns_to_filter_dict,
-            page=page_name
-        )
-        filter_key = f"{page_name}_{column}_key"
-        statistics_keys_set.add(filter_key)
-        st.session_state.setdefault(filter_key, get_default_value(players[column]))
-        st.session_state[f"{page_name}_{column}_widget_key"] = st.session_state[f"{page_name}_{column}_key"]
-
-        st.slider(
-            get_user_view_of_column(column),
-            min_value=0.0,
-            max_value=get_safe_slider_max(options_df, column, f"{page_name}_{column}_key"),
-            step=0.01,
             key=f"{page_name}_{column}_widget_key",
             on_change=sync_filter,
             args=(f"{page_name}_{column}_key", f"{page_name}_{column}_widget_key"),

@@ -112,7 +112,14 @@ def load_models(target_features: list) -> dict:
     return models_packages_dict
 
 
-def apply_filters(df: pd.DataFrame, exclude=None, columns_to_filter_list=[], compare_op_for_columns_to_filter_dict={}, page="unknown_page") -> pd.DataFrame:
+def apply_filters(
+    df: pd.DataFrame,
+    exclude=None,
+    columns_to_filter_list=[],
+    compare_op_for_columns_to_filter_dict={},
+    page="unknown_page",
+    filter_keys: dict[str, str] | None = None,
+) -> pd.DataFrame:
     """Apply the page filters stored in Streamlit Session State.
 
     Params
@@ -127,6 +134,8 @@ def apply_filters(df: pd.DataFrame, exclude=None, columns_to_filter_list=[], com
         Comparison operator configured for each filter column.
     page : str
         Page prefix used to build Session State keys.
+    filter_keys : dict or None
+        Optional Session State key to use for each filtered column.
 
     Returns
     -------
@@ -135,8 +144,13 @@ def apply_filters(df: pd.DataFrame, exclude=None, columns_to_filter_list=[], com
     """
     result = df.copy()
 
+    filter_keys = filter_keys or {}
     for column in columns_to_filter_list:
-        selected_values = st.session_state.get(f"{page}_{column}_key", get_default_value(result[column]))
+        filter_key = filter_keys.get(column, f"{page}_{column}_key")
+        selected_values = st.session_state.get(
+            filter_key,
+            get_default_value(result[column]),
+        )
         if exclude == column or not selected_values:
             continue
         result = result[
@@ -168,10 +182,10 @@ def get_stats_persistent_keys(player_ids, page_name="stats") -> list[str]:
 def get_role_limits() -> dict:
     """Return configured squad limits indexed by Fantacalcio role."""
     return {
-        "P": st.session_state.get("settings_P_limit_key", 3),
-        "D": st.session_state.get("settings_D_limit_key", 8),
-        "C": st.session_state.get("settings_C_limit_key", 8),
-        "A": st.session_state.get("settings_A_limit_key", 6),
+        "P": st.session_state.get("settings_P_limit_widget_key", 3),
+        "D": st.session_state.get("settings_D_limit_widget_key", 8),
+        "C": st.session_state.get("settings_C_limit_widget_key", 8),
+        "A": st.session_state.get("settings_A_limit_widget_key", 6),
     }
 
 
@@ -198,10 +212,10 @@ def get_roles_dict() -> dict:
 def get_role_budget_limits() -> dict:
     """Return configured spending targets indexed by Fantacalcio role."""
     return {
-        "P": st.session_state.get("settings_P_budget_limit_key", 50),
-        "D": st.session_state.get("settings_D_budget_limit_key", 100),
-        "C": st.session_state.get("settings_C_budget_limit_key", 200),
-        "A": st.session_state.get("settings_A_budget_limit_key", 150),
+        "P": st.session_state.get("settings_P_budget_limit_widget_key", 50),
+        "D": st.session_state.get("settings_D_budget_limit_widget_key", 100),
+        "C": st.session_state.get("settings_C_budget_limit_widget_key", 200),
+        "A": st.session_state.get("settings_A_budget_limit_widget_key", 150),
     }
 
 
@@ -434,7 +448,7 @@ def restore_personal_backup(upload_key: str, result_key: str) -> None:
     restored_widget_keys = {
         f"{key.removesuffix('_key')}_widget_key"
         for key in restored_keys
-        if key.endswith("_key")
+        if key.endswith("_key") and not key.endswith("_widget_key")
     }
 
     # Allow load_env() to reload the restored values on the next rerun.
@@ -501,10 +515,10 @@ def has_full_team(fanta_manager: str, page_name: str = "fantacalcio") -> bool:
     fanta_manager_players_dict = st.session_state.get(f"{page_name}_manager_players_dict_key", {})
     bought_players = fanta_manager_players_dict.get(fanta_manager, pd.DataFrame())
     role_limit_keys_dict = {
-        "P": "settings_P_limit_key",
-        "D": "settings_D_limit_key",
-        "C": "settings_C_limit_key",
-        "A": "settings_A_limit_key",
+        "P": "settings_P_limit_widget_key",
+        "D": "settings_D_limit_widget_key",
+        "C": "settings_C_limit_widget_key",
+        "A": "settings_A_limit_widget_key",
     }
 
     if not isinstance(bought_players, pd.DataFrame) or "role" not in bought_players.columns:
@@ -523,7 +537,7 @@ def has_full_team(fanta_manager: str, page_name: str = "fantacalcio") -> bool:
 def save_bought_players(page_name: str):
     """Generate the teams PDF and display its download controls in the sidebar."""
     fanta_manager_players_dict = st.session_state.get(f"{page_name}_manager_players_dict_key", {})
-    budget = st.session_state.get("settings_budget_key", 500)
+    budget = st.session_state.get("settings_budget_widget_key", 500)
 
     if not fanta_manager_players_dict:
         return

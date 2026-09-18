@@ -177,7 +177,7 @@ def set_dark_background():
 
 def set_player_card_background():
     """Apply the bundled image background to player portrait cards."""
-    image_path = Path(__file__).resolve().parents[1] / "img/player_card_bg.png"
+    image_path = Path(__file__).resolve().parents[2] / "img/background/player_card_bg.png"
     encoded_image = base64.b64encode(image_path.read_bytes()).decode("ascii")
 
     return st.html(

@@ -24,15 +24,15 @@ class GuestStateTests(unittest.TestCase):
         self.selection = Path("data/csv/pages/selection/selection_selected_players.csv")
         (self.source / ".env").write_text(
             "settings_my_manager_key=Guest\nsettings_my_manager_key_type=str\n"
-            "settings_P_budget_limit_key=40\nsettings_P_budget_limit_key_type=int\n"
+            "settings_P_budget_limit_widget_key=40\nsettings_P_budget_limit_widget_key_type=int\n"
             "settings_P_graphical_cols_key=saves_per90,clean_sheet_pct\n"
             "settings_P_graphical_cols_key_type=list\n"
             "settings_ai_enabled_key=true\nsettings_ai_enabled_key_type=bool\n"
-            "selection_R_key=P,D\nselection_R_key_type=list\n"
-            "fantacalcio_fanta_role_key=\nfantacalcio_fanta_role_key_type=NoneType\n"
-            "settings_budget_key=900\nsettings_budget_key_type=int\n"
+            "selection_R_widget_key=P\nselection_R_widget_key_type=str\n"
+            "fantacalcio_fanta_role_widget_key=\nfantacalcio_fanta_role_widget_key_type=NoneType\n"
+            "settings_budget_widget_key=900\nsettings_budget_widget_key_type=int\n"
             "settings_managers_key=Guest,Other\nsettings_managers_key_type=list\n"
-            "settings_D_limit_key=20\nsettings_D_limit_key_type=int\n"
+            "settings_D_limit_widget_key=20\nsettings_D_limit_widget_key_type=int\n"
             "settings_defender_modifier_enabled_key=true\n"
             "HF_TOKEN=source-private-token\n"
             "fantacalcio_bought_players_df_key=private-purchases.csv\n"
@@ -46,9 +46,9 @@ class GuestStateTests(unittest.TestCase):
         )
         self.existing_env = (
             "# Existing host configuration\nHF_TOKEN=target-private-token\n"
-            "settings_budget_key=500\nsettings_budget_key_type=int\n"
+            "settings_budget_widget_key=500\nsettings_budget_widget_key_type=int\n"
             "settings_managers_key=Host,Existing\nsettings_managers_key_type=list\n"
-            "settings_D_limit_key=8\nsettings_D_limit_key_type=int\n"
+            "settings_D_limit_widget_key=8\nsettings_D_limit_widget_key_type=int\n"
             "selection_selected_999_key=true\nselection_selected_999_key_type=bool\n"
             "selection_selection_players_restored_v2_key=true\n"
         )
@@ -86,18 +86,18 @@ class GuestStateTests(unittest.TestCase):
         payload = export_guest_state(self.source)
         with zipfile.ZipFile(io.BytesIO(payload)) as archive:
             exported = archive.read("personal.env").decode()
-            for forbidden in ("HF_TOKEN", "settings_managers", "settings_budget_key", "bought_players", "settings_D_limit", "modifier"):
+            for forbidden in ("HF_TOKEN", "settings_managers", "settings_budget_widget_key", "bought_players", "settings_D_limit", "modifier"):
                 self.assertNotIn(forbidden, exported)
         result = restore_guest_state(io.BytesIO(payload), self.target)
         self.assertEqual(result["selected_players"], 1)
-        self.assertEqual(result["settings"]["settings_P_budget_limit_key"], 40)
+        self.assertEqual(result["settings"]["settings_P_budget_limit_widget_key"], 40)
         self.assertEqual(result["settings"]["settings_P_graphical_cols_key"], ["saves_per90", "clean_sheet_pct"])
         self.assertIs(result["settings"]["settings_ai_enabled_key"], True)
-        self.assertIsNone(result["settings"]["fantacalcio_fanta_role_key"])
+        self.assertIsNone(result["settings"]["fantacalcio_fanta_role_widget_key"])
         restored = (self.target / ".env").read_text()
         self.assertIn("HF_TOKEN=target-private-token", restored)
-        self.assertIn("settings_budget_key=500", restored)
-        self.assertIn("settings_D_limit_key=8", restored)
+        self.assertIn("settings_budget_widget_key=500", restored)
+        self.assertIn("settings_D_limit_widget_key=8", restored)
         self.assertIn("settings_managers_key=Host,Existing", restored)
         self.assertNotIn("selection_selected_999_key", restored)
         self.assertNotIn("restored_v2_key", restored)
@@ -113,11 +113,11 @@ class GuestStateTests(unittest.TestCase):
         csv_before = (self.target / self.selection).read_bytes()
         invalid_archives = [
             self.make_archive(extra={"../../outside.txt": "bad"}),
-            self.make_archive(settings="settings_budget_key=999\nsettings_budget_key_type=int\n"),
-            self.make_archive(settings="settings_P_budget_limit_key=-1\nsettings_P_budget_limit_key_type=int\n"),
+            self.make_archive(settings="settings_budget_widget_key=999\nsettings_budget_widget_key_type=int\n"),
+            self.make_archive(settings="settings_P_budget_limit_widget_key=-1\nsettings_P_budget_limit_widget_key_type=int\n"),
             self.make_archive(settings="statistics_number_of_players_key=5\nstatistics_number_of_players_key_type=int\n"),
             self.make_archive(settings="statistics_seasons_to_plot_key=11\nstatistics_seasons_to_plot_key_type=int\n"),
-            self.make_archive(settings="fantacalcio_fanta_managers_split_value=6\nfantacalcio_fanta_managers_split_value_type=int\n"),
+            self.make_archive(settings="fantacalcio_fanta_managers_split_value_widget_key=6\nfantacalcio_fanta_managers_split_value_widget_key_type=int\n"),
             self.make_archive(settings="settings_ai_enabled_key=path.csv\nsettings_ai_enabled_key_type=pd.DataFrame\n"),
             self.make_archive(selection="Id,mln,interest,description\n1,-10,Basso,note\n"),
             self.make_archive(selection="Id,mln,interest,description\n1,1,Basso,a\n1,2,Alto,b\n"),

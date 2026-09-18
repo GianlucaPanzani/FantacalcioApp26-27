@@ -4,11 +4,10 @@ from lib.data_handler import (
     export_guest_state,
     restore_guest_state
 )
-from lib.utils import get_current_season
+from lib.utils import auction_settings, get_current_season
 from lib.streamlit_api.data_handler import (
     get_fanta_manager_players_dict,
     get_roles_dict,
-    sync_filter,
     add_graphical_columns,
     load_dataset,
     load_env,
@@ -155,8 +154,6 @@ with st.container(border=True, key=f"dark-card-{page_name}_fanta_managers_key"):
             index=None,
             placeholder="Select a manager...",
             key=f"{page_name}_remove_manager_widget_key",
-            on_change=sync_filter,
-            args=(f"{page_name}_remove_manager_key", f"{page_name}_remove_manager_widget_key"),
         )
 
         remove_warning = None
@@ -218,13 +215,9 @@ with st.container(border=True, key=f"dark-card-{page_name}_auction_key"):
             st.markdown("#### **Players per role**")
 
     for i, (role, role_name), default_value in zip(range(2,9,2), get_roles_dict().items(), [3,8,8,6]):
-        role_limit_key = f"{page_name}_{role}_limit_key"
-        st.session_state.setdefault(role_limit_key, default_value)
-        settings_keys_set.add(role_limit_key)
-
-        # Restore data of the widget
         role_limit_widget_key = f"{page_name}_{role}_limit_widget_key"
-        st.session_state[role_limit_widget_key] = st.session_state[role_limit_key]
+        st.session_state.setdefault(role_limit_widget_key, default_value)
+        settings_keys_set.add(role_limit_widget_key)
 
         with cols[i]:
             st.number_input(
@@ -232,18 +225,16 @@ with st.container(border=True, key=f"dark-card-{page_name}_auction_key"):
                 min_value=0,
                 step=1,
                 key=role_limit_widget_key,
-                on_change=sync_filter,
-                args=(role_limit_key, role_limit_widget_key)
             )
 
 # Budget limits settings
 with st.container(border=True, key=f"dark-card-{page_name}_budgets_key"):
-    budget_key = f"{page_name}_budget_key"
     budget_widget_key = f"{page_name}_budget_widget_key"
     budget_limits_sum_key = f"{page_name}_budget_limits_sum_key"
 
-    st.session_state.setdefault(budget_key, 500)
+    st.session_state.setdefault(budget_widget_key, 500)
     st.session_state.setdefault(budget_limits_sum_key, 500)
+    settings_keys_set.add(budget_widget_key)
 
     cols = st.columns([8,1,8,1,8,1,8,1,8])
 
@@ -255,92 +246,122 @@ with st.container(border=True, key=f"dark-card-{page_name}_budgets_key"):
             st.markdown("#### **Budget limits per role**")
 
     with cols[2]:
-        st.session_state.setdefault(budget_key, 500)
-        settings_keys_set.add(budget_key)
-        
-        # Restore data of the widget
-        st.session_state[budget_widget_key] = st.session_state[budget_key]
-
         budget = st.number_input(
             "Total Budget",
-            min_value=0,
+            min_value=250,
+            max_value=1000,
             step=50,
             key=budget_widget_key,
-            on_change=sync_filter,
-            args=(budget_key, budget_widget_key)
         )
 
-    cols = st.columns([8,1,8,1,8,1,8,1,8])
-
-    budget_limits = []
-    availabel_budget_label = 0
-    for i, (role, role_name) in zip(range(2,9,2), get_roles_dict().items()):
-        role_budget_limit_key = f"{page_name}_{role}_budget_limit_key"
-        st.session_state.setdefault(role_budget_limit_key, default_value)
-        settings_keys_set.add(role_budget_limit_key)
-        
-        # Restore data of the widget
-        role_budget_limit_widget_key = f"{page_name}_{role}_budget_limit_widget_key"
-        st.session_state[role_budget_limit_widget_key] = st.session_state[role_budget_limit_key]
-        
-        with cols[i]:
-            budget_limits.append(
-                st.number_input(
-                    f"Budget for {str(role_name).capitalize()}s",
-                    min_value=0,
-                    max_value=1000,
-                    step=5,
-                    key=role_budget_limit_widget_key,
-                    on_change=sync_filter,
-                    args=(role_budget_limit_key, role_budget_limit_widget_key)
-                )
-            )
-
-        st.session_state[budget_limits_sum_key] = sum(budget_limits)
-        availabel_budget_label += st.session_state[role_budget_limit_key]
-    
-    with cols[0]:
-        tot_budget = int(st.session_state[budget_key])
-        available_budget = tot_budget - st.session_state[budget_limits_sum_key]
-        left_or_exceed = "left" if available_budget > 0 else "exceed"
-        available_budget_str = f"{available_budget}" if available_budget < 0 else f"+{available_budget}"
-        
+    cols = st.columns([8,1,35])
+    with cols[2]:
         with st.container(border=True, height="stretch", width="stretch"):
+            sub_cols = st.columns([8,1,8,1,8,1,8])
+
+            budget_limits = []
+            availabel_budget_label = 0
+            for i, (role, role_name), default_value in zip(range(0,7,2), get_roles_dict().items(), [50,100,150,200]):
+                role_budget_limit_widget_key = f"{page_name}_{role}_budget_limit_widget_key"
+                st.session_state.setdefault(role_budget_limit_widget_key, default_value)
+                settings_keys_set.add(role_budget_limit_widget_key)
+                
+                with sub_cols[i]:
+                    budget_limits.append(
+                        st.number_input(
+                            f"Budget for {str(role_name).capitalize()}s",
+                            min_value=0,
+                            max_value=st.session_state[budget_widget_key],
+                            step=5,
+                            key=role_budget_limit_widget_key,
+                        )
+                    )
+
+                st.session_state[budget_limits_sum_key] = sum(budget_limits)
+                availabel_budget_label += st.session_state[role_budget_limit_widget_key]
+
+            tot_budget = int(st.session_state[budget_widget_key])
+            available_budget = tot_budget - st.session_state[budget_limits_sum_key]
+            left_or_exceed = "left" if available_budget > 0 else "exceed"
+            available_budget_str = f"{available_budget}" if available_budget < 0 else f"+{available_budget}"
             
-            if available_budget != 0:
+            if available_budget < 0:
                 st.metric(
-                    label=f"**Budget unbalanced**: {tot_budget} - {availabel_budget_label}",
-                    value=f":red[{available_budget_str}] mln",
+                    label=f"**Budget unbalanced**:", # {tot_budget} - {availabel_budget_label}",
+                    value=f":red[:material/cancel:] :red[{available_budget_str}] mln",
                     height="stretch",
                     width="stretch",
                 )
+                st.caption(f"You should decrease by {available_budget_str} mln.")
+            elif available_budget > 0:
+                st.metric(
+                    label=f"**Budget unbalanced**:", # {tot_budget} - {availabel_budget_label}",
+                    value=f":red[:material/cancel:] :green[{available_budget_str}] mln",
+                    height="stretch",
+                    width="stretch",
+                )
+                st.caption(f"You should increase by {available_budget_str} mln.")
             else:
                 st.metric(
                     label="**Budgets balanced**",
-                    value=":green[0] mln",
+                    value=":green[:material/check_circle:] 0 mln",
                     height="stretch",
                     width="stretch",
                 )
+                st.caption(f"Now you're ready to play!")
+
 
 # General auction rules and bonus/malus points
 with st.container(border=True, key=f"dark-card-{page_name}_auction_rules_key"):
 
-    # Initialize persistent auction rules.
+    # Initializations for auction widgets
+    extraction_settings = {
+        "player_extraction_type": (
+            "Player extraction type",
+            ["by_role", "on_all_players"],
+            "on_all_players",
+            {
+                "by_role": "By role",
+                "on_all_players": "On all players",
+            },
+        ),
+        "role_extraction_order": (
+            "Role extraction order",
+            ["in_order_P_D_C_A", "random"],
+            "in_order_P_D_C_A",
+            {
+                "in_order_P_D_C_A": "P → D → C → A",
+                "random": "Random",
+            },
+        ),
+        "player_extraction_order": (
+            "Player extraction order",
+            ["random", "alphabetic"],
+            "random",
+            {
+                "random": "Random",
+                "alphabetic": "Alphabetical",
+            },
+        ),
+    }
+    for setting_name, (_, _, default_value, _) in extraction_settings.items():
+        widget_key = f"{page_name}_{setting_name}_widget_key"
+        settings_keys_set.add(widget_key)
+        st.session_state.setdefault(widget_key, default_value)
     auction_rule_settings = [
         ("defender_modifier", "Defender modifier"),
         ("midfielder_modifier", "Midfielder modifier"),
         ("player_switch", "Player switch"),
     ]
     for setting_name, _ in auction_rule_settings:
-        setting_key = f"{page_name}_auction_{setting_name}_key"
-        settings_keys_set.add(setting_key)
-        st.session_state.setdefault(setting_key, False)
-
+        widget_key = f"{page_name}_auction_{setting_name}_widget_key"
+        settings_keys_set.add(widget_key)
+        st.session_state.setdefault(widget_key, False)
     for setting_name, _, default_points, _, value_type in auction_settings:
-        setting_key = f"{page_name}_points_{setting_name}_key"
-        settings_keys_set.add(setting_key)
-        st.session_state.setdefault(setting_key, default_points)
-        st.session_state[setting_key] = value_type(st.session_state[setting_key])
+        widget_key = f"{page_name}_points_{setting_name}_widget_key"
+        settings_keys_set.add(widget_key)
+        st.session_state.setdefault(widget_key, default_points)
+        st.session_state[widget_key] = value_type(st.session_state[widget_key])
 
     cols = st.columns([8,1,8,1,8,1,8,1,8])
     with cols[0]:
@@ -350,37 +371,50 @@ with st.container(border=True, key=f"dark-card-{page_name}_auction_rules_key"):
         with col2:
             st.markdown("#### **Auction rules and points**")
 
-    # Display bonus and penalty values on separate rows.
+    # Configure how players and roles are extracted during the auction
+    for i, (setting_name, setting_config) in zip(range(2,8,2), extraction_settings.items()):
+        label, options, _, labels = setting_config
+        widget_key = f"{page_name}_{setting_name}_widget_key"
+
+        with cols[i]:
+            st.segmented_control(
+                label,
+                options=options,
+                required=True,
+                format_func=labels.get,
+                key=widget_key,
+                width="stretch",
+                disabled=(
+                    setting_name == "role_extraction_order"
+                    and
+                    st.session_state[f"{page_name}_player_extraction_type_widget_key"] == "on_all_players"
+                ),
+            )
+
+    # Display bonus and penalty values on separate rows
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
     for row_start in range(0, len(auction_settings), 4):
         scoring_settings_chunk = auction_settings[row_start:row_start + 4]
-        for idx, (setting_name, label, default_value, help_str, type) in zip(range(2,9,2), scoring_settings_chunk):
-            setting_key = f"{page_name}_points_{setting_name}_key"
+        for i, (setting_name, label, default_value, help_str, type) in zip(range(2,9,2), scoring_settings_chunk):
             widget_key = f"{page_name}_points_{setting_name}_widget_key"
-            st.session_state[widget_key] = st.session_state[setting_key]
-            with cols[idx]:
+            with cols[i]:
                 st.number_input(
                     label,
                     step=1 if type is int else 0.5,
                     format="%d" if type is int else "%.1f",
                     help=help_str,
                     key=widget_key,
-                    on_change=sync_filter,
-                    args=(setting_key, widget_key),
                 )
     
     # Display each auction rule once in the first row.
     cols = st.columns([8,1,8,1,8,1,8,1,8])
-    for idx, (setting_name, label) in zip(range(2,8,2), auction_rule_settings):
-        setting_key = f"{page_name}_auction_{setting_name}_key"
+    for i, (setting_name, label) in zip(range(2,8,2), auction_rule_settings):
         widget_key = f"{page_name}_auction_{setting_name}_widget_key"
-        st.session_state[widget_key] = st.session_state[setting_key]
 
-        with cols[idx]:
+        with cols[i]:
             st.toggle(
                 label,
                 key=widget_key,
-                on_change=sync_filter,
-                args=(setting_key, widget_key),
             )
 
 # Graphics settings
@@ -401,12 +435,16 @@ with st.container(border=True, key=f"dark-card-{page_name}_graphics_key"):
                 f"{get_circular_role_icon(role)} $\\quad$ **{str(role_name).capitalize()} statistics**",
                 unsafe_allow_html=True
             )
+            st.space(1)
 
             graphical_cols_key = f"{page_name}_{role}_graphical_cols_key"
             st.session_state.setdefault(graphical_cols_key, [])
             settings_keys_set.add(graphical_cols_key)
 
-            for column_idx, column in enumerate(st.session_state[graphical_cols_key]):
+            if not st.session_state[graphical_cols_key]:
+                st.info("No statistics selected")
+
+            for i, column in enumerate(st.session_state[graphical_cols_key]):
                 with st.container(border=True):
                     col1, col2 = st.columns([8,2], vertical_alignment="center")
                     with col1:
@@ -418,12 +456,13 @@ with st.container(border=True, key=f"dark-card-{page_name}_graphics_key"):
                             type="tertiary",
                             help="Remove this statistic",
                             width="stretch",
-                            key=f"{page_name}_remove_{role}_graphical_col_{column_idx}_key"
+                            key=f"{page_name}_remove_{role}_graphical_col_{i}_key"
                         )
                 if remove_graphical_col_button:
                     st.session_state[graphical_cols_key].remove(column)
                     st.rerun()
 
+    st.space(1)
 
     cols = st.columns([8,1,8,1,8,1,8,1,8])
     for i, role in zip(range(2,9,2), get_roles_dict().keys()):
@@ -437,7 +476,6 @@ with st.container(border=True, key=f"dark-card-{page_name}_graphics_key"):
         ]
 
         with cols[i]:
-            st.divider()
 
             selected_graphical_cols = st.multiselect(
                 "Select fields to use for statistics",

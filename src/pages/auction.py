@@ -10,7 +10,6 @@ from lib.utils import (
 from lib.streamlit_api.data_handler import (
     load_dataset,
     load_models,
-    sync_filter,
     get_roles_dict,
     load_env,
     store_env,
@@ -32,6 +31,24 @@ from lib.streamlit_api.visualization_handler import (
     print_models_predictions,
     create_horizontal_teams,
     create_vertical_teams,
+)
+from backend.fanta_managers_db import (
+    get_fanta_managers,
+    get_fanta_manager,
+    set_fanta_manager,
+    update_fanta_manager
+)
+from backend.auctions_db import (
+    get_auction,
+    get_auctions,
+    set_auction,
+    update_auction
+)
+from backend.users_db import (
+    get_user,
+    get_users,
+    set_user,
+    update_user
 )
 
 page_name = "auction"
@@ -58,8 +75,7 @@ compare_op_for_columns_to_filter_dict = {
     "fanta_role": "eq",
 }
 
-fanta_manager_split_value_key = f"{page_name}_fanta_managers_split_value"
-fanta_manager_split_value_widget_key = f"{page_name}_fanta_managers_split_value_widget"
+fanta_manager_split_value_widget_key = f"{page_name}_fanta_managers_split_value_widget_key"
 enable_bought_players_stats_key = f"{page_name}_bought_players_stats_key"
 enable_player_preferences_key = f"{page_name}_enable_player_preferences_key"
 reset_managers_widget_key = f"{page_name}_reset_managers_widget_key"
@@ -98,86 +114,65 @@ def player_filters(fanta_players: pd.DataFrame) -> pd.DataFrame:
     filtered_df = fanta_players.copy()
 
     # Role filter
-    role_filter_key = f"{page_name}_fanta_role_key"
     role_widget_key = f"{page_name}_fanta_role_widget_key"
-    auction_keys_set.add(role_filter_key)
-    st.session_state.setdefault(role_filter_key, None)
+    auction_keys_set.add(role_widget_key)
+    st.session_state.setdefault(role_widget_key, None)
     role_options = get_roles_dict().keys()
-    st.session_state[role_widget_key] = (
-        st.session_state[role_filter_key]
-        if st.session_state[role_filter_key] in role_options
-        else None
-    )
+    if st.session_state[role_widget_key] not in role_options:
+        st.session_state[role_widget_key] = None
     selected_role = st.pills(
         "Select fanta role",
         options=role_options,
         selection_mode="single",
         key=role_widget_key,
-        on_change=sync_filter,
-        args=(role_filter_key, role_widget_key),
     )
     if selected_role:
         filtered_df = filtered_df[filtered_df["fanta_role"].eq(selected_role)]
 
     # Fanta Manager filter
-    manager_filter_key = f"{page_name}_selected_manager_key"
     manager_widget_key = f"{page_name}_selected_manager_widget_key"
-    auction_keys_set.add(manager_filter_key)
-    st.session_state.setdefault(manager_filter_key, None)
+    auction_keys_set.add(manager_widget_key)
+    st.session_state.setdefault(manager_widget_key, None)
     manager_options = ["Free"] + st.session_state.get("settings_managers_key", [])
-    st.session_state[manager_widget_key] = (
-        st.session_state[manager_filter_key]
-        if st.session_state[manager_filter_key] in manager_options
-        else None
-    )
+    if st.session_state[manager_widget_key] not in manager_options:
+        st.session_state[manager_widget_key] = None
     selected_fanta_manager = st.pills(
         "Select a Fanta Manager",
         options=manager_options,
         selection_mode="single",
         key=manager_widget_key,
-        on_change=sync_filter,
-        args=(manager_filter_key, manager_widget_key),
     )
 
     # Player filter
-    player_filter_key = f"{page_name}_player_key"
     player_widget_key = f"{page_name}_player_widget_key"
-    auction_keys_set.add(player_filter_key)
-    st.session_state.setdefault(player_filter_key, None)
-    selected_player = st.session_state[player_filter_key]
+    auction_keys_set.add(player_widget_key)
+    st.session_state.setdefault(player_widget_key, None)
     player_options = sorted(fanta_players["player"].dropna().astype(str).unique())
-    st.session_state[player_widget_key] = selected_player if selected_player in player_options else None
+    if st.session_state[player_widget_key] not in player_options:
+        st.session_state[player_widget_key] = None
     selected_player = st.selectbox(
         "Search a player",
         options=player_options,
         index=None,
         placeholder="Select a player...",
         key=player_widget_key,
-        on_change=sync_filter,
-        args=(player_filter_key, player_widget_key),
     )
     if selected_player:
         filtered_df = filtered_df[filtered_df["player"].eq(selected_player)]
 
     # Team filter
-    team_filter_key = f"{page_name}_team_key"
     team_widget_key = f"{page_name}_team_widget_key"
-    auction_keys_set.add(team_filter_key)
-    st.session_state.setdefault(team_filter_key, None)
+    auction_keys_set.add(team_widget_key)
+    st.session_state.setdefault(team_widget_key, None)
     team_options = sorted(fanta_players["team"].dropna().astype(str).unique())
-    st.session_state[team_widget_key] = (
-        st.session_state[team_filter_key]
-        if st.session_state[team_filter_key] in team_options
-        else None
-    )
+    if st.session_state[team_widget_key] not in team_options:
+        st.session_state[team_widget_key] = None
     selected_team = st.selectbox(
         "Select a team",
         options=team_options,
         index=None,
         placeholder="Select a team...",
         key=team_widget_key,
-        on_change=sync_filter,
-        args=(team_filter_key, team_widget_key),
     )
     if selected_team:
         filtered_df = filtered_df[filtered_df["team"].eq(selected_team)]
@@ -221,16 +216,13 @@ def general_filters():
     """Render general controls for team layout and optional table columns."""
 
     # Set the number of columns of the view of the teams made by the fanta managers
-    auction_keys_set.add(fanta_manager_split_value_key)
-    st.session_state.setdefault(fanta_manager_split_value_key, 5)
-    st.session_state[fanta_manager_split_value_widget_key] = st.session_state[fanta_manager_split_value_key]
+    auction_keys_set.add(fanta_manager_split_value_widget_key)
+    st.session_state.setdefault(fanta_manager_split_value_widget_key, 5)
     n_cols_selected = st.number_input(
         label="Set the number of columns used for the teams:",
         min_value=1,
         max_value=5,
         key=fanta_manager_split_value_widget_key,
-        on_change=sync_filter,
-        args=(fanta_manager_split_value_key, fanta_manager_split_value_widget_key),
         persist_state="session",
     )
 
@@ -822,7 +814,7 @@ def remove_bought_player(player: dict) -> None:
 # =============================== SCRIPT ======================================
 # =============================================================================
 
-# Block 1: Load Fanta Manager settings and require at least two managers.
+# Load env
 loaded_env_values = load_env(path=".env")
 
 # Track the persistent keys already stored for this page.
@@ -832,25 +824,27 @@ auction_keys_set = {
     if key.startswith(f"{page_name}_")
 }
 
-# Initialize missing manager and auction settings.
+# Initialize auction settings
 settings_my_manager_key = "settings_my_manager_key"
 auction_keys_set.add(settings_my_manager_key)
 st.session_state.setdefault(settings_my_manager_key, "Me")
-settings_managers_key = "settings_managers_key"
-auction_keys_set.add(settings_managers_key)
-st.session_state.setdefault(settings_managers_key, [st.session_state[settings_my_manager_key]])
-settings_budget_key = "settings_budget_key"
-auction_keys_set.add(settings_budget_key)
-st.session_state.setdefault(settings_budget_key, 500)
+settings_budget_widget_key = "settings_budget_widget_key"
+auction_keys_set.add(settings_budget_widget_key)
+st.session_state.setdefault(settings_budget_widget_key, 500)
 settings_ai_enabled_key = "settings_ai_enabled_key"
 auction_keys_set.add(settings_ai_enabled_key)
 st.session_state.setdefault(settings_ai_enabled_key, False)
 
-# Show the current Fanta Manager first and check for at least one other manager.
+# Initialize fanta managers
 my_fanta_manager = st.session_state[settings_my_manager_key]
-fanta_managers = st.session_state[settings_managers_key]
+fanta_managers_key = f"{page_name}_fanta_managers_key"
+auction_keys_set.add(fanta_managers_key)
+st.session_state.setdefault(fanta_managers_key, [my_fanta_manager])
+
+# Show the current Fanta Manager list
+fanta_managers = 
 fanta_managers = [my_fanta_manager] + [manager for manager in fanta_managers if manager != my_fanta_manager]
-st.session_state[settings_managers_key] = fanta_managers
+st.session_state[fanta_managers_key] = fanta_managers
 
 '''
 try:
@@ -1002,7 +996,7 @@ else:
 
 # Display manager squads in the selected horizontal or vertical layout.
 with managers_col:
-    split_value = st.session_state[fanta_manager_split_value_key]
+    split_value = st.session_state[fanta_manager_split_value_widget_key]
     ordered_manager_items = [
         (my_fanta_manager, fanta_manager_players_dict.get(my_fanta_manager, pd.DataFrame())),
     ] + [

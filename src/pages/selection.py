@@ -4,7 +4,6 @@ import streamlit as st
 from lib.utils import interest_colors_dict
 from lib.streamlit_api.data_handler import (
     set_format_interest,
-    sync_filter,
     apply_filters,
     get_roles_dict,
     load_dataset,
@@ -51,6 +50,12 @@ compare_op_for_columns_to_filter_dict = {
     "Squadra": "eq",
 }
 
+filter_keys_dict = {
+    "Nome": f"{page_name}_Nome_key",
+    "Squadra": f"{page_name}_Squadra_widget_key",
+    "R": f"{page_name}_R_widget_key",
+}
+
 hidden_selection_columns = [
     "Id",
     "RM",
@@ -90,31 +95,32 @@ def players_filters(players: pd.DataFrame, columns_to_filter_list: list[str]) ->
     )
 
     # Team selection
-    team_filter_key = f"{page_name}_Squadra_key"
     team_widget_key = f"{page_name}_Squadra_widget_key"
-    selection_keys_set.update({team_filter_key})
+    selection_keys_set.add(team_widget_key)
     team_options = sorted(players["Squadra"].dropna().unique(), key=str)
+    selected_teams = st.session_state.setdefault(team_widget_key, [])
+    st.session_state[team_widget_key] = [
+        team for team in selected_teams if team in team_options
+    ]
     st.multiselect(
         "Select teams",
         options=team_options,
         placeholder="Select one or more teams...",
         key=team_widget_key,
-        on_change=sync_filter,
-        args=(team_filter_key, team_widget_key),
     )
 
     # Fanta role selection
-    role_filter_key = f"{page_name}_R_key"
     role_widget_key = f"{page_name}_R_widget_key"
-    selection_keys_set.update({role_filter_key})
+    selection_keys_set.add(role_widget_key)
     role_options = get_roles_dict().keys()
+    st.session_state.setdefault(role_widget_key, None)
+    if st.session_state[role_widget_key] not in role_options:
+        st.session_state[role_widget_key] = None
     st.pills(
         "Select a role",
         options=role_options,
         selection_mode="single",
         key=role_widget_key,
-        on_change=sync_filter,
-        args=(role_filter_key, role_widget_key),
     )
 
     # Apply filters only to the returned data
@@ -123,6 +129,7 @@ def players_filters(players: pd.DataFrame, columns_to_filter_list: list[str]) ->
         columns_to_filter_list=columns_to_filter_list,
         compare_op_for_columns_to_filter_dict=compare_op_for_columns_to_filter_dict,
         page=page_name,
+        filter_keys=filter_keys_dict,
     )
 
     st.session_state[f"{page_name}_filtered_selection_players_key"] = filtered_players
@@ -1210,6 +1217,7 @@ selected_tables_players = apply_filters(
     columns_to_filter_list=columns_to_filter_list,
     compare_op_for_columns_to_filter_dict=compare_op_for_columns_to_filter_dict,
     page=page_name,
+    filter_keys=filter_keys_dict,
 )
 
 # Filter the visible columns

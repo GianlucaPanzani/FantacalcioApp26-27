@@ -1,6 +1,6 @@
 import streamlit as st
 
-from backend.user_services import get_user
+from backend.users_db import get_users
 
 from lib.streamlit_api.design_handler import get_icon, sidebar_navigation_size
 
@@ -15,10 +15,13 @@ if not st.user.is_logged_in:
     st.stop()
 
 # Recover the registered account using the identity supplied by Google.
-user = get_user(
-    auth_issuer=st.user.iss,
-    auth_subject=st.user.sub,
+users = get_users(
+    filters={
+        "auth_issuer": st.user.iss,
+        "auth_subject": st.user.sub,
+    },
 )
+user = users[0] if users else None
 
 # New users must complete registration before entering the application.
 if user is None:
@@ -33,7 +36,7 @@ if user is None:
 sidebar_navigation_size(font_size=1.28)
 
 pages = {
-    "Pages": [
+    "FantAI": [
         st.Page("pages/auction.py", title=f"{get_icon('auction')} Auction"),
         st.Page("pages/fantacalcio.py", title=f"{get_icon('ball')} Fantacalcio"),
         st.Page("pages/statistics.py", title=f"{get_icon('graphic')} Statistics"),

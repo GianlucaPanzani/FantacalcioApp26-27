@@ -127,25 +127,68 @@ TOTALS_IN_2025_26 = {
 # Only personal preferences may travel between a guest's app and an auction.
 # Official budgets, squad limits, purchases, paths and credentials stay local.
 _GUEST_SETTING_KEYS = {
-    "settings_my_manager_key", "settings_ai_enabled_key",
-    *(f"settings_{role}_{field}_key" for role in "PDCA"
-      for field in ("budget_limit", "graphical_cols")),
-    *(f"selection_{field}_key" for field in ("Nome", "Squadra", "R")),
-    *(f"statistics_{field}_key" for field in (
-        "season", "competition", "team", "nineties", "fanta_role",
-        "goals_per90", "player", "number_of_players", "seasons_to_plot", "role",
-    )),
-    *(f"fantacalcio_{field}_key" for field in (
-        "player", "team", "fanta_role", "enable_player_preferences",
-        "enable_ai_predictions", "show_ai_predictions", "show_ai_explainations",
-        "show_ai_plots", "hide_other_fantamanagers", "bought_players_stats",
-    )),
-    "fantacalcio_fanta_managers_split_value",
+    "settings_my_manager_key",
+    "settings_ai_enabled_key",
+    "settings_P_budget_limit_widget_key",
+    "settings_D_budget_limit_widget_key",
+    "settings_C_budget_limit_widget_key",
+    "settings_A_budget_limit_widget_key",
+    "settings_P_graphical_cols_key",
+    "settings_D_graphical_cols_key",
+    "settings_C_graphical_cols_key",
+    "settings_A_graphical_cols_key",
+    "selection_Nome_key",
+    "selection_Squadra_widget_key",
+    "selection_R_widget_key",
+    "statistics_season_key",
+    "statistics_competition_key",
+    "statistics_team_key",
+    "statistics_nineties_key",
+    "statistics_fanta_role_key",
+    "statistics_goals_per90_key",
+    "statistics_player_key",
+    "statistics_number_of_players_key",
+    "statistics_seasons_to_plot_key",
+    "statistics_role_key",
+    "fantacalcio_player_widget_key",
+    "fantacalcio_team_widget_key",
+    "fantacalcio_fanta_role_widget_key",
+    "fantacalcio_enable_player_preferences_key",
+    "fantacalcio_enable_ai_predictions_key",
+    "fantacalcio_show_ai_predictions_key",
+    "fantacalcio_show_ai_explainations_key",
+    "fantacalcio_show_ai_plots_key",
+    "fantacalcio_hide_other_fantamanagers_key",
+    "fantacalcio_bought_players_stats_key",
+    "fantacalcio_fanta_managers_split_value_widget_key",
 }
-_GUEST_SELECTION_PATH = Path("data/csv/pages/selection/selection_selected_players.csv")
-_GUEST_ARCHIVE_FILES = {"manifest.json", "personal.env", "selection_selected_players.csv"}
-_GUEST_ARCHIVE_LIMIT = 10 * 1024 * 1024
-_GUEST_PLAYER_KEY = re.compile(r"selection_(selected|mln|interest|description)_\d+_key(?:_type)?$")
+_GUEST_SELECTION_PATH = Path(
+    "data/csv/pages/selection/selection_selected_players.csv"
+)
+_GUEST_ARCHIVE_FILES = {
+    "manifest.json",
+    "personal.env",
+    "selection_selected_players.csv",
+}
+_GUEST_ARCHIVE_LIMIT_BYTES = 10_485_760  # 10 MiB
+_GUEST_PLAYER_FIELDS = {
+    "selected",
+    "mln",
+    "interest",
+    "description",
+}
+
+
+def _is_guest_key_correct(key: str) -> bool:
+    """Return whether a key stores one player's personal selection data."""
+    parts = key.removesuffix("_type").split("_")
+    return (
+        len(parts) == 4
+        and parts[0] == "selection"
+        and parts[1] in _GUEST_PLAYER_FIELDS
+        and parts[2].isdigit()
+        and parts[3] == "key"
+    )
 
 
 def _read_guest_env(content: str, strict: bool = False) -> dict[str, str]:
@@ -202,18 +245,18 @@ def _validate_guest_settings_zip_data(values: dict[str, str]) -> dict:
 
         if key == "settings_my_manager_key":
             valid = isinstance(value, str) and 0 < len(value.strip()) <= 200
-        elif key.endswith("_budget_limit_key"):
+        elif key.endswith("_budget_limit_widget_key"):
             valid = type(value) is int and 0 <= value <= 1000
         elif key.endswith("_graphical_cols_key"):
             valid = isinstance(value, list)
         elif key in {
             "statistics_number_of_players_key", "statistics_seasons_to_plot_key",
-            "fantacalcio_fanta_managers_split_value",
+            "fantacalcio_fanta_managers_split_value_widget_key",
         }:
             maximum = {
                 "statistics_number_of_players_key": 4,
                 "statistics_seasons_to_plot_key": 10,
-                "fantacalcio_fanta_managers_split_value": 5,
+                "fantacalcio_fanta_managers_split_value_widget_key": 5,
             }[key]
             valid = type(value) is int and 1 <= value <= maximum
         elif key in {"statistics_nineties_key", "statistics_goals_per90_key"}:
@@ -264,7 +307,12 @@ def _validate_guest_selection_zip_data(content: bytes) -> tuple[bytes, int]:
 
 def _guest_selection_target(src_dir: Path, env_values: dict[str, str]) -> Path:
     """Honor a local shortlist path, never a path supplied by an imported ZIP."""
-    target = Path(env_values.get("selection_selected_players_csv_path_key", str(_GUEST_SELECTION_PATH)))
+    target = Path(
+        env_values.get(
+            "selection_selected_players_csv_path_key",
+            str(_GUEST_SELECTION_PATH),
+        )
+    )
     target = (src_dir / target).resolve()
     if not target.is_relative_to(src_dir) or target.suffix.lower() != ".csv":
         raise ValueError("The local selection CSV must be inside src_dir.")
@@ -295,7 +343,10 @@ def export_guest_state(src_dir: str | Path | None = None) -> bytes:
     }
     _validate_guest_settings_zip_data(personal_values)
     selection_path = _guest_selection_target(root, env_values)
-    if selection_path.exists() and selection_path.stat().st_size > _GUEST_ARCHIVE_LIMIT:
+    if (
+        selection_path.exists()
+        and selection_path.stat().st_size > _GUEST_ARCHIVE_LIMIT_BYTES
+    ):
         raise ValueError("Selection CSV is too large.")
     selection_bytes, _ = _validate_guest_selection_zip_data(
         selection_path.read_bytes() if selection_path.exists()
@@ -326,22 +377,33 @@ def restore_guest_state(archive: bytes | BinaryIO, src_dir: str | Path | None = 
     clear selection_* state and imported settings plus their widget keys before
     rerunning, so old selections cannot overwrite the restored CSV.
     """
-    content = archive if isinstance(archive, bytes) else archive.read(_GUEST_ARCHIVE_LIMIT + 1)
-    if len(content) > _GUEST_ARCHIVE_LIMIT:
+    content = (
+        archive
+        if isinstance(archive, bytes)
+        else archive.read(_GUEST_ARCHIVE_LIMIT_BYTES + 1)
+    )
+    if len(content) > _GUEST_ARCHIVE_LIMIT_BYTES:
         raise ValueError("Guest archive is too large.")
+
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as bundle:
             members = bundle.infolist()
-            if len(members) != 3 or {item.filename for item in members} != _GUEST_ARCHIVE_FILES:
+            if (
+                len(members) != len(_GUEST_ARCHIVE_FILES)
+                or {item.filename for item in members} != _GUEST_ARCHIVE_FILES
+            ):
                 raise ValueError("Unexpected or missing guest archive files.")
             if any(item.flag_bits & 1 for item in members):
                 raise ValueError("Encrypted archives are not supported.")
-            if sum(item.file_size for item in members) > _GUEST_ARCHIVE_LIMIT:
+            if sum(item.file_size for item in members) > _GUEST_ARCHIVE_LIMIT_BYTES:
                 raise ValueError("Uncompressed guest archive is too large.")
             manifest = json.loads(bundle.read("manifest.json"))
             if manifest != {"format": "fantacalcio-guest-state", "version": 1}:
                 raise ValueError("Unsupported guest archive format or version.")
-            personal_values = _read_guest_env(bundle.read("personal.env").decode("utf-8"), strict=True)
+            personal_values = _read_guest_env(
+                bundle.read("personal.env").decode("utf-8"),
+                strict=True,
+            )
             settings = _validate_guest_settings_zip_data(personal_values)
             selection_bytes, selection_count = _validate_guest_selection_zip_data(bundle.read("selection_selected_players.csv"))
     except (zipfile.BadZipFile, UnicodeError, csv.Error, json.JSONDecodeError, NotImplementedError) as exc:
@@ -355,8 +417,12 @@ def restore_guest_state(archive: bytes | BinaryIO, src_dir: str | Path | None = 
     for line in original_env.splitlines(keepends=True):
         key = line.split("=", 1)[0].strip() if "=" in line else ""
         # The CSV is authoritative; remove stale per-player copies and flags.
-        if (key.removesuffix("_type") in settings or _GUEST_PLAYER_KEY.fullmatch(key)
-                or key.removesuffix("_type") == "selection_selection_players_restored_v2_key"):
+        if (
+            key.removesuffix("_type") in settings
+            or _is_guest_key_correct(key)
+            or key.removesuffix("_type")
+            == "selection_selection_players_restored_v2_key"
+        ):
             continue
         retained_lines.append(line)
     merged_env = "".join(retained_lines)
@@ -1014,3 +1080,59 @@ def filter_history_relaxed_matches(
         fanta_normalized_df.index.name = fanta_df.index.name
 
     return history_normalized_df, fanta_normalized_df
+
+
+def parse_guest_archive(archive: bytes) -> dict:
+    """Validate and decode a personal backup without writing local files.
+
+    Params
+    ----------
+    archive : bytes
+        ZIP archive generated by :func:`export_guest_state`.
+
+    Returns
+    -------
+    dict
+        Decoded personal settings and the validated selected-players CSV.
+    """
+    if len(archive) > _GUEST_ARCHIVE_LIMIT_BYTES:
+        raise ValueError("Guest archive is too large.")
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+            members = bundle.infolist()
+            if (
+                len(members) != len(_GUEST_ARCHIVE_FILES)
+                or {item.filename for item in members} != _GUEST_ARCHIVE_FILES
+            ):
+                raise ValueError("Unexpected or missing guest archive files.")
+            if any(item.flag_bits & 1 for item in members):
+                raise ValueError("Encrypted archives are not supported.")
+            if sum(item.file_size for item in members) > _GUEST_ARCHIVE_LIMIT_BYTES:
+                raise ValueError("Uncompressed guest archive is too large.")
+
+            manifest = json.loads(bundle.read("manifest.json"))
+            if manifest != {"format": "fantacalcio-guest-state", "version": 1}:
+                raise ValueError("Unsupported guest archive format or version.")
+
+            personal_values = _read_guest_env(
+                bundle.read("personal.env").decode("utf-8"),
+                strict=True,
+            )
+            settings = _validate_guest_settings_zip_data(personal_values)
+            selection_bytes, _ = _validate_guest_selection_zip_data(
+                bundle.read("selection_selected_players.csv")
+            )
+    except (
+        zipfile.BadZipFile,
+        UnicodeError,
+        csv.Error,
+        json.JSONDecodeError,
+        NotImplementedError,
+    ) as exc:
+        raise ValueError("Invalid guest archive.") from exc
+
+    return {
+        "settings": settings,
+        "selection_csv": selection_bytes,
+    }
