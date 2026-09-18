@@ -4,7 +4,7 @@ from lib.data_handler import (
     export_guest_state,
     restore_guest_state
 )
-from lib.utils import auction_settings, get_current_season
+from lib.utils import auction_settings, get_current_season, get_current_date
 from lib.streamlit_api.data_handler import (
     get_fanta_manager_players_dict,
     get_roles_dict,
@@ -555,7 +555,7 @@ with st.container(border=True, key=f"dark-card-{page_name}_backup_key"):
         st.download_button(
             "Download backup",
             data=backup_archive,
-            file_name=f"FantAI_backup_fantacalcio{get_current_season()}.zip",
+            file_name=f"FantAI_{get_current_season()}_backup_{get_current_date()}.zip",
             disabled=download_disabled,
             mime="application/zip",
             icon=":material/download:",

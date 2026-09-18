@@ -23,7 +23,7 @@ import sqlite3
 
 # Resolve the database relative to this module, regardless of the working folder.
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "db" / "fantacalcio.sqlite3"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 CONNECTION_TIMEOUT = 5.0
 
 SQLValue = str | int | float | bytes | None
@@ -33,11 +33,12 @@ SQLValue = str | int | float | bytes | None
 # explicit migration; CREATE TABLE IF NOT EXISTS does not alter existing columns.
 # STRICT tables require SQLite >= 3.37; built-in JSON support requires >= 3.38.
 _TABLES = {
-    # An account exists independently of the auctions managed by the user.
-    # Optional OIDC identity uses both issuer and subject, never a display name.
+    # A user is also the Fanta Manager participating in one auction. The auction
+    # is nullable while the host account is being created before its auction.
     "users": """
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            auction_id INTEGER REFERENCES auctions(id) ON DELETE RESTRICT,
             username TEXT NOT NULL COLLATE NOCASE UNIQUE
                 CHECK (length(trim(username)) > 0 AND username = trim(username)),
             team_name TEXT NOT NULL COLLATE NOCASE UNIQUE
@@ -46,6 +47,7 @@ _TABLES = {
             auth_subject TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (auth_issuer, auth_subject),
+            UNIQUE (id, auction_id),
             CHECK (
                 (auth_issuer IS NULL AND auth_subject IS NULL)
                 OR (auth_issuer IS NOT NULL AND auth_subject IS NOT NULL
@@ -98,18 +100,6 @@ _TABLES = {
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) STRICT
     """,
-    # This table associates users with auctions. Team identity remains on users,
-    # and the host participates through the same association as every other user.
-    "fanta_managers": """
-        CREATE TABLE IF NOT EXISTS fanta_managers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            auction_id INTEGER NOT NULL REFERENCES auctions(id) ON DELETE RESTRICT,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-            registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE (auction_id, user_id),
-            UNIQUE (id, auction_id)
-        ) STRICT
-    """,
     # Each auction has a snapshot of its player catalog. source_id maps to CSV
     # Id/id; id is the internal DB identifier. Season comes from the parent auction.
     "players": """
@@ -132,13 +122,13 @@ _TABLES = {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             auction_id INTEGER NOT NULL,
             player_id INTEGER NOT NULL,
-            fanta_manager_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
             price INTEGER NOT NULL CHECK (price > 0),
             purchased_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (player_id, auction_id)
                 REFERENCES players(id, auction_id) ON DELETE RESTRICT,
-            FOREIGN KEY (fanta_manager_id, auction_id)
-                REFERENCES fanta_managers(id, auction_id) ON DELETE RESTRICT,
+            FOREIGN KEY (user_id, auction_id)
+                REFERENCES users(id, auction_id) ON DELETE RESTRICT,
             UNIQUE (auction_id, player_id)
         ) STRICT
     """,
@@ -147,21 +137,20 @@ _TABLES = {
     "settings": """
         CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fanta_manager_id INTEGER NOT NULL
-                REFERENCES fanta_managers(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             key TEXT NOT NULL CHECK (length(trim(key)) > 0),
             value_json TEXT NOT NULL CHECK (json_valid(value_json)),
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE (fanta_manager_id, key)
+            UNIQUE (user_id, key)
         ) STRICT
     """,
 }
 
 _INDEXES = (
     "CREATE INDEX IF NOT EXISTS auctions_by_host ON auctions(host_user_id)",
-    "CREATE INDEX IF NOT EXISTS fanta_managers_by_user ON fanta_managers(user_id)",
-    "CREATE INDEX IF NOT EXISTS purchases_by_fanta_manager "
-    "ON purchases(fanta_manager_id, auction_id)",
+    "CREATE INDEX IF NOT EXISTS users_by_auction ON users(auction_id)",
+    "CREATE INDEX IF NOT EXISTS purchases_by_user "
+    "ON purchases(user_id, auction_id)",
 )
 
 
@@ -197,7 +186,7 @@ def _connect(create_file: bool = False) -> sqlite3.Connection:
 
 
 def create_db() -> Path:
-    """Create the database directory, six static tables and indexes if absent.
+    """Create the database directory, five static tables and indexes if absent.
 
     Return the absolute database path. Existing data is preserved and all schema
     statements run atomically. WAL permits readers during a write; SQLite still
@@ -205,7 +194,7 @@ def create_db() -> Path:
     No accounts, auction data or CSV imports are created automatically.
 
     SQLite 3.38+ is required for STRICT tables and built-in JSON validation.
-    This function initializes schema version 4; it is not a migration runner.
+    This function initializes schema version 5; it is not a migration runner.
 
     Returns
     -------
@@ -258,9 +247,8 @@ def transaction() -> Iterator[sqlite3.Connection]:
                 {"username": "Mario", "team_name": "Mario FC"},
                 connection=connection,
             )
-            insert(
-                "fanta_managers",
-                {"auction_id": 1, "user_id": user_id},
+            update(
+                "users", {"auction_id": 1}, {"id": user_id},
                 connection=connection,
             )
 
@@ -487,13 +475,16 @@ def _resolve_join_column(
 def get(
     table: str,
     filters: dict[str, SQLValue] | None = None,
+    proj: list[str] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> list[dict[str, SQLValue]]:
     """Return matching rows as dictionaries ordered by id, or [] if none exist.
 
-    ``get("users", {"username": "Mario"})`` filters by one column.
+    ``get("users", {"username": "Mario"}, ["id", "username"])`` filters by
+    one column and returns only the requested fields.
     Multiple entries are combined with AND. Omitting ``filters`` reads every row;
-    ``{"auth_subject": None}`` instead matches SQL NULL.
+    ``{"auth_subject": None}`` instead matches SQL NULL. Omitting ``proj``
+    returns every column.
 
     Params
     ----------
@@ -501,6 +492,8 @@ def get(
         Declared table to read.
     filters : dict or None
         Equality conditions, or ``None``/an empty dictionary to read all rows.
+    proj : list of str or None
+        Columns to return, or ``None`` to return every table column.
     connection : sqlite3.Connection or None
         Active transaction connection to reuse, when provided.
 
@@ -511,13 +504,25 @@ def get(
     """
     with _get_connection_scope(connection) as conn_transaction:
         allowed_columns = _get_allowed_columns(conn_transaction, table)
+        if proj is None:
+            projection = "*"
+        else:
+            if not isinstance(proj, list) or not proj:
+                raise ValueError("proj must be a nonempty list of column names.")
+            if any(
+                not isinstance(column, str) or column not in allowed_columns
+                for column in proj
+            ):
+                raise ValueError("Unknown projection column name.")
+            projection = ", ".join(f'"{column}"' for column in proj)
+
         filter_pairs = _get_data_pairs(
             {} if filters is None else filters,
             allowed_columns,
             allow_empty=True,
         )
         parameters = []
-        query = f'SELECT * FROM "{table}"'
+        query = f'SELECT {projection} FROM "{table}"'
         if filter_pairs:
             predicate, parameters = _build_predicates_condition(filter_pairs)
             query += f" WHERE {predicate}"
@@ -571,7 +576,7 @@ def update(
 ) -> int:
     """Set fields on rows matching a required nonempty filter; return row count.
 
-    Example: ``update("fanta_managers", {"user_id": 9}, {"id": 7})``.
+    Example: ``update("users", {"auction_id": 9}, {"id": 7})``.
     All filter entries are equality conditions joined by AND. Zero affected rows
     is a valid result. When present, updated_at is refreshed automatically unless
     explicitly supplied; version fields must be incremented by the service.
@@ -615,10 +620,10 @@ def remove(
 ) -> int:
     """Delete matching rows and return their count; an explicit filter is required.
 
-    Example: ``remove("settings", {"fanta_manager_id": 3, "key": "theme"})``.
+    Example: ``remove("settings", {"user_id": 3, "key": "theme"})``.
     Passing None as a value matches SQL NULL, but an empty filter is not allowed.
     Referenced auction/account/history rows are protected by foreign keys;
-    deleting an unreferenced Fanta Manager also removes personal settings.
+    deleting an unreferenced user also removes personal settings.
 
     Params
     ----------

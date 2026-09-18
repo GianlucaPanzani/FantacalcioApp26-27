@@ -26,12 +26,79 @@ team names and CSV IDs are not foreign keys.
 
 | Table | Data and important relationships |
 | --- | --- |
-| `users` | Unique username and team name; optional OIDC `auth_issuer` + `auth_subject`, unique as a pair. Neither passwords nor authentication sessions are implemented here. |
+| `users` | Auction participants, with unique username and team name and optional OIDC `auth_issuer` + `auth_subject`. Each user belongs to at most one auction. |
 | `auctions` | Host user, season, invitation hash, status, official budget, role slots, extraction modes, three toggles and nine scoring values. Defaults match the settings page. |
-| `fanta_managers` | Associates one user with one auction. The team name remains in `users`. |
 | `players` | Snapshot of the catalog for an auction, including name, team, classic role and Mantra role. `source_id` identifies the original CSV `Id`/`id`; season is inherited from the auction. |
-| `purchases` | Final Fanta Manager, player and positive price. A player has one owner per auction; temporary offers are not persisted. |
-| `settings` | Personal Fanta Manager settings: per-role spending targets, graphical options and filters. `key` stores the setting name; `value_json` preserves its type. |
+| `purchases` | Final user, player and positive price. A player has one owner per auction; temporary offers are not persisted. |
+| `settings` | Personal user settings: per-role spending targets, graphical options and filters. `key` stores the setting name; `value_json` preserves its type. |
+
+## Table metadata
+
+The following Python-facing types correspond to the columns declared in the
+SQLite schema. Boolean auction flags are stored as integers constrained to 0 or 1,
+and timestamps are returned as strings.
+
+- `users`:
+  - `id`: `int`
+  - `auction_id`: `int | None`
+  - `username`: `str`
+  - `team_name`: `str`
+  - `auth_issuer`: `str | None`
+  - `auth_subject`: `str | None`
+  - `created_at`: `str`
+
+- `auctions`:
+  - `id`: `int`
+  - `name`: `str`
+  - `season`: `str`
+  - `host_user_id`: `int`
+  - `invite_code_hash`: `str`
+  - `status`: `str`
+  - `total_budget`: `int`
+  - `goalkeeper_slots`: `int`
+  - `defender_slots`: `int`
+  - `midfielder_slots`: `int`
+  - `forward_slots`: `int`
+  - `defender_modifier_enabled`: `int`
+  - `midfielder_modifier_enabled`: `int`
+  - `player_switch_enabled`: `int`
+  - `player_extraction_order`: `str`
+  - `player_extraction_scope`: `str`
+  - `role_extraction_order`: `str`
+  - `points_goal_scored`: `float`
+  - `points_goalkeeper_goal_conceded`: `float`
+  - `points_assist`: `float`
+  - `points_penalty_scored`: `float`
+  - `points_penalty_missed`: `float`
+  - `points_goalkeeper_penalty_conceded`: `float`
+  - `points_goalkeeper_penalty_saved`: `float`
+  - `points_yellow_card`: `float`
+  - `points_red_card`: `float`
+  - `created_at`: `str`
+
+- `players`:
+  - `id`: `int`
+  - `auction_id`: `int`
+  - `source_id`: `str`
+  - `player`: `str`
+  - `team`: `str`
+  - `fanta_role`: `str`
+  - `mantra_role`: `str`
+
+- `purchases`:
+  - `id`: `int`
+  - `auction_id`: `int`
+  - `player_id`: `int`
+  - `user_id`: `int`
+  - `price`: `int`
+  - `purchased_at`: `str`
+
+- `settings`:
+  - `id`: `int`
+  - `user_id`: `int`
+  - `key`: `str`
+  - `value_json`: `str`
+  - `updated_at`: `str`
 
 Accounts and team names currently use SQLite `NOCASE` uniqueness, which ignores
 ASCII letter case. Unicode normalization belongs in the future registration
@@ -42,11 +109,11 @@ the CRUD layer does not hash invitation codes automatically.
 
 Each auction has its own catalog snapshot, so source IDs and roles are not mixed
 between seasons. Import that catalog before purchase rows. Composite foreign keys
-keep Fanta Managers and purchases within the same auction. Personal player
-selections remain in one CSV per Fanta Manager.
+keep users and purchases within the same auction. Personal player selections
+remain in one CSV per user.
 
 Rosters and ownership come from `purchases`. Remaining budget is
-`auctions.total_budget - SUM(purchases.price)` for a Fanta Manager. Remaining slots
+`auctions.total_budget - SUM(purchases.price)` for a user. Remaining slots
 are the corresponding official limit minus the count of purchased players with
 that role. Missing purchases count as zero. These values are derived rather than
 stored in additional mutable columns.
@@ -96,9 +163,9 @@ user_id = db_api.insert(
 
 # Tables form an explicit consecutive chain through declared foreign keys.
 rows = db_api.join(
-    ["users", "fanta_managers", "auctions"],
-    {"auctions.id": 1},
-    ["users.username", "users.team_name", "auctions.name"],
+    ["users", "settings"],
+    {"users.id": 1},
+    ["users.username", "settings.key", "settings.value_json"],
 )
 ```
 
@@ -129,12 +196,10 @@ with db_api.transaction() as connection:
         {"username": "Guest", "team_name": "Guest FC"},
         connection=connection,
     )
-    fanta_manager_id = db_api.insert(
-        "fanta_managers",
-        {
-            "auction_id": existing_auction_id,
-            "user_id": user_id,
-        },
+    db_api.update(
+        "users",
+        {"auction_id": existing_auction_id},
+        {"id": user_id},
         connection=connection,
     )
 ```
@@ -157,21 +222,21 @@ not inferred by generic CRUD calls. The service must also freeze official rules
 and catalog roles once relevant to an ongoing auction. `updated_at`, when present,
 is refreshed automatically by `update()` unless explicitly supplied.
 
-Historical references use `ON DELETE RESTRICT`. For example, removing a user or
-Fanta Manager linked to a purchase raises an integrity error. Removing an
-otherwise unreferenced Fanta Manager also removes personal settings and selected
-players. Purchase undo behavior belongs in the auction service.
+Historical references use `ON DELETE RESTRICT`. For example, removing a user
+linked to a purchase raises an integrity error. Removing an otherwise unreferenced
+user also removes personal settings. Purchase undo behavior belongs in the
+auction service.
 
-The current schema is version 4 (`PRAGMA user_version`). `create_db()` can initialize
+The current schema is version 5 (`PRAGMA user_version`). `create_db()` can initialize
 it repeatedly, but does not migrate existing columns. Future schema changes need
-an explicit migration. Account and Fanta Manager lookups are connected to the
+an explicit migration. Account and auction-participant lookups are connected to the
 application entry point. Registration writes are implemented; CSV imports and
 auction actions still need their service implementations.
 
 ## Table-specific modules and Google login
 
-Each active table has a dedicated module: `users_db`, `auctions_db`,
-`fanta_managers_db`, `players_db`, `purchases_db` and `settings_db`.
+Each active table has a dedicated module: `users_db`, `auctions_db`, `players_db`,
+`purchases_db` and `settings_db`.
 Every module exposes a singular getter by ID, a plural getter with optional filters,
 a `set_*` insert accepting one data dictionary and an `update_*` accepting the row
 ID plus a data dictionary.
@@ -180,9 +245,9 @@ Use `users_db.get_users({"auth_issuer": issuer, "auth_subject": subject})` to
 look up an authenticated account. The chosen username and team name are separate
 from the identity returned by Google.
 
-`fanta_managers_db.register_to_auction(...)` locates users through their OIDC
-identity and updates their username and team name when the account already exists.
-It then inserts or reuses the association between that user and the auction.
+`services.register_to_auction(...)` locates users through their OIDC identity,
+updates their profile when the account already exists and associates the user
+directly with the auction through `users.auction_id`.
 Identity claims must come from the verified `st.user`, not editable form inputs.
 
 `register_to_auction(...)` checks the invitation and performs all database writes
@@ -190,7 +255,7 @@ in one transaction, so a constraint failure also rolls back account creation or
 renaming.
 Auctions in `lobby` or `running` accept registrations; completed auctions do not.
 The account is identified by provider and subject, never by a submitted username.
-Repeated submissions reuse the same account and Fanta Manager record.
+Repeated submissions reuse the same user record.
 
 The registration page currently stores the authenticated user and team through
 `users_db.set_user()`. The invitation flow can call `register_to_auction(...)`

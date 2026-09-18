@@ -13,7 +13,6 @@ from src.backend.auctions_db import (
     set_auction,
     update_auction,
 )
-from src.backend.fanta_managers_db import set_fanta_manager
 from src.backend.players_db import (
     get_player,
     get_players,
@@ -32,7 +31,7 @@ from src.backend.settings_db import (
     set_setting,
     update_setting,
 )
-from src.backend.users_db import set_user
+from src.backend.users_db import set_user, update_user
 
 
 class TableDatabaseModulesTests(unittest.TestCase):
@@ -58,10 +57,7 @@ class TableDatabaseModulesTests(unittest.TestCase):
             "host_user_id": user["id"],
             "invite_code_hash": hashlib.sha256(b"invite").hexdigest(),
         })
-        fanta_manager = set_fanta_manager({
-            "auction_id": auction["id"],
-            "user_id": user["id"],
-        })
+        user = update_user(user["id"], {"auction_id": auction["id"]})
         player = set_player({
             "auction_id": auction["id"],
             "source_id": "10",
@@ -73,11 +69,11 @@ class TableDatabaseModulesTests(unittest.TestCase):
         purchase = set_purchase({
             "auction_id": auction["id"],
             "player_id": player["id"],
-            "fanta_manager_id": fanta_manager["id"],
+            "user_id": user["id"],
             "price": 10,
         })
         setting = set_setting({
-            "fanta_manager_id": fanta_manager["id"],
+            "user_id": user["id"],
             "key": "example",
             "value_json": "true",
         })
@@ -101,7 +97,7 @@ class TableDatabaseModulesTests(unittest.TestCase):
 
         self.assertEqual(get_purchase(purchase["id"]), purchase)
         self.assertEqual(
-            get_purchases({"fanta_manager_id": fanta_manager["id"]}),
+            get_purchases({"user_id": user["id"]}),
             [purchase],
         )
         self.assertEqual(
@@ -111,7 +107,7 @@ class TableDatabaseModulesTests(unittest.TestCase):
 
         self.assertEqual(get_setting(setting["id"]), setting)
         self.assertEqual(
-            get_settings({"fanta_manager_id": fanta_manager["id"]}),
+            get_settings({"user_id": user["id"]}),
             [setting],
         )
         self.assertEqual(

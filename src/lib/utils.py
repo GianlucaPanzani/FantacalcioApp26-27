@@ -139,7 +139,7 @@ def get_current_year():
 
 def get_current_date():
     """Return the current local calendar date."""
-    return datetime.now().date
+    return datetime.now().date().isoformat()
 
 def get_current_season():
     """Return the season starting in the current calendar year."""

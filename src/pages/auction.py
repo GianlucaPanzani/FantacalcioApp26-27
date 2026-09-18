@@ -32,12 +32,6 @@ from lib.streamlit_api.visualization_handler import (
     create_horizontal_teams,
     create_vertical_teams,
 )
-from backend.fanta_managers_db import (
-    get_fanta_managers,
-    get_fanta_manager,
-    set_fanta_manager,
-    update_fanta_manager
-)
 from backend.auctions_db import (
     get_auction,
     get_auctions,
@@ -842,26 +836,12 @@ auction_keys_set.add(fanta_managers_key)
 st.session_state.setdefault(fanta_managers_key, [my_fanta_manager])
 
 # Show the current Fanta Manager list
-fanta_managers = 
-fanta_managers = [my_fanta_manager] + [manager for manager in fanta_managers if manager != my_fanta_manager]
+users = get_users(
+    filters={"auction_id": st.session_state.get("auction_id_key")},
+    proj=["username"],
+)
+fanta_managers = [my_fanta_manager] + [user["username"] for user in users if user["username"] != my_fanta_manager]
 st.session_state[fanta_managers_key] = fanta_managers
-
-'''
-try:
-    fanta_manager = register_to_auction(
-        auth_issuer=st.user.iss,
-        auth_subject=st.user.sub,
-        username=st.session_state[f"{page_name}_username_key"],
-        invite_code=st.session_state[f"{page_name}_invite_code_key"],
-        team_name=st.session_state[f"{page_name}_team_name_key"],
-    )
-except ValueError as error:
-    st.error(error)
-    st.stop()
-except sqlite3.IntegrityError:
-    st.warning("This username or team name is already in use.")
-    st.stop()
-'''
 
 # Case of no other managers different by my_fantamanager in the list
 if not any(manager != my_fanta_manager for manager in fanta_managers):

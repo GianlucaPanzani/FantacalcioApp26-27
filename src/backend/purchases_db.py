@@ -10,19 +10,21 @@ TABLE_NAME = "purchases"
 
 def get_purchase(
     purchase_id: int,
+    proj: list[str] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> dict | None:
     """Return one purchase by identifier, or ``None`` when it does not exist."""
-    purchases = get_purchases({"id": purchase_id}, connection=connection)
+    purchases = get_purchases({"id": purchase_id}, proj=proj, connection=connection)
     return purchases[0] if purchases else None
 
 
 def get_purchases(
     filters: dict[str, db_api.SQLValue] | None = None,
+    proj: list[str] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> list[dict]:
     """Return purchases matching all optional equality filters."""
-    return db_api.get(TABLE_NAME, filters, connection=connection)
+    return db_api.get(TABLE_NAME, filters, proj, connection=connection)
 
 
 def set_purchase(

@@ -10,19 +10,21 @@ TABLE_NAME = "settings"
 
 def get_setting(
     setting_id: int,
+    proj: list[str] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> dict | None:
     """Return one setting by identifier, or ``None`` when it does not exist."""
-    settings = get_settings({"id": setting_id}, connection=connection)
+    settings = get_settings({"id": setting_id}, proj=proj, connection=connection)
     return settings[0] if settings else None
 
 
 def get_settings(
     filters: dict[str, db_api.SQLValue] | None = None,
+    proj: list[str] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> list[dict]:
     """Return settings matching all optional equality filters."""
-    return db_api.get(TABLE_NAME, filters, connection=connection)
+    return db_api.get(TABLE_NAME, filters, proj, connection=connection)
 
 
 def set_setting(

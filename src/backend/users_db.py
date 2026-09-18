@@ -10,15 +10,17 @@ TABLE_NAME = "users"
 
 def get_user(
     user_id: int,
+    proj: list[str] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> dict | None:
     """Return one user by identifier, or ``None`` when it does not exist."""
-    users = get_users({"id": user_id}, connection=connection)
+    users = get_users({"id": user_id}, proj=proj, connection=connection)
     return users[0] if users else None
 
 
 def get_users(
     filters: dict[str, db_api.SQLValue] | None = None,
+    proj: list[str] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> list[dict]:
     """Return users matching all optional equality filters.
@@ -27,6 +29,8 @@ def get_users(
     ----------
     filters : dict or None
         Column/value conditions, or ``None`` to return every user.
+    proj : list of str or None
+        Columns to return, or ``None`` to return every user column.
     connection : sqlite3.Connection or None
         Active database transaction to reuse, when provided.
 
@@ -35,7 +39,7 @@ def get_users(
     list of dict
         Matching users ordered by identifier.
     """
-    return db_api.get(TABLE_NAME, filters, connection=connection)
+    return db_api.get(TABLE_NAME, filters, proj, connection=connection)
 
 
 def set_user(

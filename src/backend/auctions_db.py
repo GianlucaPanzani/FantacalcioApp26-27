@@ -10,19 +10,21 @@ TABLE_NAME = "auctions"
 
 def get_auction(
     auction_id: int,
+    proj: list[str] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> dict | None:
     """Return one auction by identifier, or ``None`` when it does not exist."""
-    auctions = get_auctions({"id": auction_id}, connection=connection)
+    auctions = get_auctions({"id": auction_id}, proj=proj, connection=connection)
     return auctions[0] if auctions else None
 
 
 def get_auctions(
     filters: dict[str, db_api.SQLValue] | None = None,
+    proj: list[str] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> list[dict]:
     """Return auctions matching all optional equality filters."""
-    return db_api.get(TABLE_NAME, filters, connection=connection)
+    return db_api.get(TABLE_NAME, filters, proj, connection=connection)
 
 
 def set_auction(

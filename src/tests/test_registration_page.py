@@ -1,6 +1,7 @@
 """Exercise the Streamlit registration callback with a simulated Google identity."""
 
 from pathlib import Path
+import hashlib
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -11,7 +12,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from src import backend
-from src.backend import db_api, users_db
+from src.backend import auctions_db, db_api, services, settings_db, users_db
 
 
 class RegistrationPageTests(unittest.TestCase):
@@ -19,26 +20,33 @@ class RegistrationPageTests(unittest.TestCase):
         """Create an isolated database and load the registration page."""
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.enterContext(
-            patch.object(
-                db_api,
-                "DB_PATH",
-                Path(directory.name) / "registration.sqlite3",
-            )
-        )
+        database_path = Path(directory.name) / "registration.sqlite3"
+        self.enterContext(patch.object(db_api, "DB_PATH", database_path))
+        self.enterContext(patch.object(services.db_api, "DB_PATH", database_path))
         self.enterContext(patch.dict(sys.modules, {
             "backend": backend,
             "backend.db_api": db_api,
+            "backend.auctions_db": auctions_db,
+            "backend.services": services,
+            "backend.settings_db": settings_db,
             "backend.users_db": users_db,
         }))
         self.identity = SimpleNamespace(is_logged_in=True, iss="google", sub="guest-123")
         self.enterContext(patch.object(st, "user", self.identity))
         db_api.create_db()
+        host = users_db.set_user({"username": "Host", "team_name": "Host FC"})
+        self.auction = auctions_db.set_auction({
+            "name": "Test auction",
+            "season": "2026-27",
+            "host_user_id": host["id"],
+            "invite_code_hash": hashlib.sha256(b"123456").hexdigest(),
+        })
         page = Path(__file__).resolve().parents[1] / "pages" / "registration.py"
         self.app = AppTest.from_file(str(page)).run()
 
     def submit(self, username="Guest", team_name="Guest FC"):
         """Submit the registration form with the supplied values."""
+        self.app.text_input(key="registration_invite_code_widget_key").set_value("123456")
         self.app.text_input(key="registration_username_key").set_value(username)
         self.app.text_input(key="registration_team_name_key").set_value(team_name)
         self.app.button(key="registration_confirmation_button_key").click().run()
@@ -55,7 +63,11 @@ class RegistrationPageTests(unittest.TestCase):
         user = users[0]
         self.assertEqual(user["username"], "Fresh username")
         self.assertEqual(user["team_name"], "Guest FC")
-        self.assertEqual(self.app.session_state["user_id"], user["id"])
+        self.assertEqual(self.app.session_state["user_id_key"], user["id"])
+        self.assertEqual(
+            self.app.session_state["auction_id_key"],
+            self.auction["id"],
+        )
         self.assertIn("successfully completed", self.app.success[0].value)
 
     def test_empty_username_shows_feedback_without_creating_user(self):

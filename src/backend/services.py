@@ -11,7 +11,6 @@ from backend import db_api
 from lib.data_handler import parse_guest_archive
 from .auctions_db import get_auctions
 from .users_db import get_users, set_user, update_user
-from .fanta_managers_db import get_fanta_managers, set_fanta_manager
 from .settings_db import rm_settings, set_setting
 
 
@@ -51,7 +50,7 @@ def register_to_auction(
     invite_code: str,
     zip_archive: bytes | None = None,
 ) -> dict:
-    """Register an authenticated user as a Fanta Manager in an auction.
+    """Register an authenticated user in an auction.
 
     Params
     ----------
@@ -65,7 +64,7 @@ def register_to_auction(
     Returns
     -------
     dict
-        Existing or newly inserted Fanta Manager row.
+        Existing or newly inserted user row associated with the auction.
     """
 
     account_data = {
@@ -92,6 +91,8 @@ def register_to_auction(
         )
         if not auctions or auctions[0]["status"] == "completed":
             raise ValueError("Invalid invitation or auction no longer open.")
+        auction_id = auctions[0]["id"]
+        account_data["auction_id"] = auction_id
 
         # Get the user if exists
         users = get_users(
@@ -115,38 +116,17 @@ def register_to_auction(
                 connection=connection,
             )
 
-        # Get the associated fanta manager
-        fanta_managers = get_fanta_managers(
-            filters={
-                "user_id": user["id"],
-                "auction_id": auctions[0]["id"],
-            },
-            connection=connection,
-        )
-        # Case of existing fanta manager
-        if fanta_managers:
-            fanta_manager = fanta_managers[0]
-        # Case of fanta manager to be created
-        else:
-            fanta_manager = set_fanta_manager(
-                data={
-                    "user_id": user["id"],
-                    "auction_id": auctions[0]["id"],
-                },
-                connection=connection,
-            )
-
         # Handle archive zip file
         if backup is not None:
             rm_settings(
-                {"fanta_manager_id": fanta_manager["id"]},
+                {"user_id": user["id"]},
                 connection=connection,
             )
 
             for key, value in backup["settings"].items():
                 set_setting(
                     data={
-                        "fanta_manager_id": fanta_manager["id"],
+                        "user_id": user["id"],
                         "key": key,
                         "value_json": json.dumps(value, ensure_ascii=False),
                     },
@@ -159,11 +139,11 @@ def register_to_auction(
             )
             set_setting(
                 data={
-                    "fanta_manager_id": fanta_manager["id"],
+                    "user_id": user["id"],
                     "key": "selection_selected_players_csv_path_key",
                     "value_json": json.dumps(selection_csv_path),
                 },
                 connection=connection,
             )
 
-        return fanta_manager
+        return user

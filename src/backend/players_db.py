@@ -10,19 +10,21 @@ TABLE_NAME = "players"
 
 def get_player(
     player_id: int,
+    proj: list[str] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> dict | None:
     """Return one player by identifier, or ``None`` when it does not exist."""
-    players = get_players({"id": player_id}, connection=connection)
+    players = get_players({"id": player_id}, proj=proj, connection=connection)
     return players[0] if players else None
 
 
 def get_players(
     filters: dict[str, db_api.SQLValue] | None = None,
+    proj: list[str] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> list[dict]:
     """Return players matching all optional equality filters."""
-    return db_api.get(TABLE_NAME, filters, connection=connection)
+    return db_api.get(TABLE_NAME, filters, proj, connection=connection)
 
 
 def set_player(

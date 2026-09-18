@@ -1,9 +1,13 @@
 import streamlit as st
 
 from backend.users_db import get_users
-
+from backend.db_api import create_db
 from lib.streamlit_api.design_handler import get_icon, sidebar_navigation_size
 
+try:
+    create_db()
+except:
+    pass
 
 # Case of user not logged with google
 if not st.user.is_logged_in:

@@ -1,7 +1,6 @@
 import sqlite3
 import streamlit as st
 
-from backend.users_db import set_user
 from backend.services import register_to_auction
 from lib.streamlit_api.design_handler import get_emoji
 
@@ -29,7 +28,7 @@ def save_data():
         if not team_name:
             raise ValueError("Enter a team name.")
         
-        fanta_manager = register_to_auction(
+        user = register_to_auction(
             user_data={
                 "auth_issuer": st.user.iss,
                 "auth_subject": st.user.sub,
@@ -41,13 +40,15 @@ def save_data():
         )
     except ValueError as error:
         st.session_state[error_key] = str(error)
+        return
     except sqlite3.IntegrityError:
         st.session_state[error_key] = "This username or team name is already in use."
+        return
 
-    # Save in session state the own IDs of the user
-    st.session_state["user_id_key"] = fanta_manager["user_id"]
-    st.session_state["fanta_manager_id_key"] = fanta_manager["id"]
-    st.session_state["auction_id_key"] = fanta_manager["auction_id"]
+    # Save the identifiers of the registered user and auction.
+    st.session_state["user_id_key"] = user["id"]
+    st.session_state["auction_id_key"] = user["auction_id"]
+    st.session_state["settings_my_manager_key"] = user["username"]
     st.session_state[saved_key] = True
     return
 
