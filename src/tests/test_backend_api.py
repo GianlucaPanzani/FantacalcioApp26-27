@@ -35,9 +35,10 @@ class BackendApiTests(unittest.TestCase):
         user_id = self.insert_row("users", username=f"host_{label}")
         auction_id = self.insert_row(
             "auctions", name=label, season="2026-27", host_user_id=user_id,
-            invite_code_hash=hashlib.sha256(label.encode()).hexdigest(),
+            auction_code_hash=hashlib.sha256(label.encode()).hexdigest(),
         )
-        api.update("users", {"auction_id": auction_id}, {"id": user_id})
+        api.update("users", {"current_auction_id": auction_id}, {"id": user_id})
+        self.insert_row("users_auctions", user_id=user_id, auction_id=auction_id)
         player_id = self.insert_row(
             "players", auction_id=auction_id, source_id=123,
             player="Example player", team="Example club", fanta_role="A",
@@ -68,7 +69,8 @@ class BackendApiTests(unittest.TestCase):
                 )
             }
             self.assertTrue({
-                "users", "auctions", "players", "purchases", "settings",
+                "users", "auctions", "users_auctions", "players",
+                "purchases", "settings",
             }.issubset(tables))
             self.assertNotIn("players_selected", tables)
             self.assertTrue({"auction_lots", "bids"}.isdisjoint(tables))
@@ -78,7 +80,8 @@ class BackendApiTests(unittest.TestCase):
                 )
             }
             self.assertTrue({
-                "auctions_by_host", "users_by_auction", "purchases_by_user",
+                "auctions_by_host", "users_by_current_auction",
+                "users_auctions_by_auction", "purchases_by_user",
             }.issubset(indexes))
             self.assertNotIn("players_selected_by_player", indexes)
             self.assertEqual(connection.execute("PRAGMA journal_mode").fetchone()[0], "wal")
@@ -196,27 +199,36 @@ class BackendApiTests(unittest.TestCase):
             with self.subTest(fields=fields), self.assertRaises(sqlite3.IntegrityError):
                 self.insert_row("users", **fields)
 
-    def test_user_belongs_to_one_auction(self):
-        """Store one current auction directly on each participating user."""
+    def test_user_can_join_several_auctions_and_select_one_current(self):
+        """Preserve memberships while changing the user's current auction."""
         first = self.make_auction("first")
         second = self.make_auction("second")
         guest_id = api.insert(
             "users",
             {"username": "Guest", "team_name": "Guest team"},
         )
-        api.update("users", {"auction_id": first["auction_id"]}, {"id": guest_id})
-        self.assertEqual(api.get("users", {"id": guest_id})[0]["auction_id"], first["auction_id"])
-        api.update("users", {"auction_id": second["auction_id"]}, {"id": guest_id})
-        self.assertEqual(api.get("users", {"id": guest_id})[0]["auction_id"], second["auction_id"])
+        self.insert_row("users_auctions", user_id=guest_id, auction_id=first["auction_id"])
+        self.insert_row("users_auctions", user_id=guest_id, auction_id=second["auction_id"])
+        api.update(
+            "users", {"current_auction_id": second["auction_id"]}, {"id": guest_id}
+        )
+        self.assertEqual(
+            len(api.get("users_auctions", {"user_id": guest_id})),
+            2,
+        )
+        self.assertEqual(
+            api.get("users", {"id": guest_id})[0]["current_auction_id"],
+            second["auction_id"],
+        )
 
     def test_foreign_keys_are_enabled_for_every_write(self):
         """Reject users that reference missing auctions."""
         with self.assertRaises(sqlite3.IntegrityError):
-            self.insert_row("users", username="Invalid", auction_id=999)
+            self.insert_row("users", username="Invalid", current_auction_id=999)
         fixture = self.make_auction("valid")
         with self.assertRaises(sqlite3.IntegrityError):
             api.update(
-                "users", {"auction_id": 999}, {"id": fixture["user_id"]},
+                "users", {"current_auction_id": 999}, {"id": fixture["user_id"]},
             )
 
     def test_cross_auction_references_are_rejected(self):
@@ -265,7 +277,7 @@ class BackendApiTests(unittest.TestCase):
         )
 
         purchase_rows = api.join(
-            ["players", "purchases", "users"],
+            ["players", "purchases", "users_auctions", "users"],
             {"users.id": fixture["user_id"]},
             ["players.player", "purchases.price", "users.team_name"],
         )

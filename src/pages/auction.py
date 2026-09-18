@@ -31,6 +31,7 @@ from lib.streamlit_api.visualization_handler import (
     print_models_predictions,
     create_horizontal_teams,
     create_vertical_teams,
+    create_fanta_managers_lobby,
 )
 from backend.auctions_db import (
     get_auction,
@@ -837,11 +838,13 @@ st.session_state.setdefault(fanta_managers_key, [my_fanta_manager])
 
 # Show the current Fanta Manager list
 users = get_users(
-    filters={"auction_id": st.session_state.get("auction_id_key")},
+    filters={"current_auction_id": st.session_state.get("auction_id_key")},
     proj=["username"],
 )
 fanta_managers = [my_fanta_manager] + [user["username"] for user in users if user["username"] != my_fanta_manager]
 st.session_state[fanta_managers_key] = fanta_managers
+
+create_fanta_managers_lobby(fanta_managers)
 
 # Case of no other managers different by my_fantamanager in the list
 if not any(manager != my_fanta_manager for manager in fanta_managers):

@@ -39,14 +39,14 @@ class RegistrationPageTests(unittest.TestCase):
             "name": "Test auction",
             "season": "2026-27",
             "host_user_id": host["id"],
-            "invite_code_hash": hashlib.sha256(b"123456").hexdigest(),
+            "auction_code_hash": hashlib.sha256(b"123456").hexdigest(),
         })
         page = Path(__file__).resolve().parents[1] / "pages" / "registration.py"
         self.app = AppTest.from_file(str(page)).run()
 
     def submit(self, username="Guest", team_name="Guest FC"):
         """Submit the registration form with the supplied values."""
-        self.app.text_input(key="registration_invite_code_widget_key").set_value("123456")
+        self.app.text_input(key="registration_auction_code_widget_key").set_value("123456")
         self.app.text_input(key="registration_username_key").set_value(username)
         self.app.text_input(key="registration_team_name_key").set_value(team_name)
         self.app.button(key="registration_confirmation_button_key").click().run()

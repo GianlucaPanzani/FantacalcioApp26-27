@@ -1,7 +1,7 @@
 import sqlite3
 import streamlit as st
 
-from backend.services import register_to_auction
+from backend.services import register_user
 from lib.streamlit_api.design_handler import get_emoji
 
 page_name = "registration"
@@ -19,7 +19,6 @@ def save_data():
     st.session_state[error_key] = None
     st.session_state[saved_key] = False
     try:
-        invite_code = st.session_state[invite_code_key]
         username = st.session_state[username_key].strip()
         team_name = st.session_state[team_name_key].strip()
         archive = st.session_state[zip_key]
@@ -28,14 +27,13 @@ def save_data():
         if not team_name:
             raise ValueError("Enter a team name.")
         
-        user = register_to_auction(
+        user = register_user(
             user_data={
                 "auth_issuer": st.user.iss,
                 "auth_subject": st.user.sub,
                 "username": username,
                 "team_name": team_name,
             },
-            invite_code=invite_code,
             zip_archive=archive.getvalue() if archive is not None else None
         )
     except ValueError as error:
@@ -47,15 +45,16 @@ def save_data():
 
     # Save the identifiers of the registered user and auction.
     st.session_state["user_id_key"] = user["id"]
-    st.session_state["auction_id_key"] = user["auction_id"]
+    st.session_state["auction_id_key"] = user["current_auction_id"]
     st.session_state["settings_my_manager_key"] = user["username"]
+    st.session_state["settings_managers_key"] = user["username"]
     st.session_state[saved_key] = True
     return
 
 
 
 # Session state keys
-invite_code_key = f"{page_name}_invite_code_widget_key"
+auction_code_key = f"{page_name}_auction_code_widget_key"
 username_key = f"{page_name}_username_key"
 team_name_key = f"{page_name}_team_name_key"
 zip_key = f"{page_name}_zip_key"
@@ -74,15 +73,6 @@ if not st.user.is_logged_in:
 st.title("Complete your registration")
 
 with st.form(f"{page_name}_form"):
-    st.text_input(
-        "Auction invitation code",
-        max_chars=6,
-        type="phone",
-        autocomplete="one-time-code",
-        placeholder="000000",
-        key=invite_code_key,
-        validate=(r"^\d{6}$", "Enter the 6-digit invitation code."),
-    )
     st.text_input("Username", key=username_key)
     st.text_input("Team name", key=team_name_key)
     st.file_uploader(

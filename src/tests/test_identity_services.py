@@ -26,14 +26,14 @@ class IdentityServicesTests(unittest.TestCase):
         self.addCleanup(database.stop)
         db_api.create_db()
 
-    def create_auction(self, invite_code="JOIN-ME", status="lobby") -> int:
+    def create_auction(self, auction_code="JOIN-ME", status="lobby") -> int:
         """Create an auction and return its identifier."""
         host = set_user({"username": "Host", "team_name": "Host FC"})
         auction = set_auction({
             "name": "Test auction",
             "season": "2026-27",
             "host_user_id": host["id"],
-            "invite_code_hash": hashlib.sha256(invite_code.encode()).hexdigest(),
+            "auction_code_hash": hashlib.sha256(auction_code.encode()).hexdigest(),
             "status": status,
         })
         return auction["id"]
@@ -51,8 +51,8 @@ class IdentityServicesTests(unittest.TestCase):
         repeated = register_to_auction(data, "JOIN-ME")
 
         self.assertEqual(repeated["id"], user["id"])
-        self.assertEqual(user["auction_id"], auction_id)
-        self.assertEqual(len(get_users({"auction_id": auction_id})), 1)
+        self.assertEqual(user["current_auction_id"], auction_id)
+        self.assertEqual(len(get_users({"current_auction_id": auction_id})), 1)
 
     def test_invalid_invitation_does_not_create_account(self):
         """Reject an unknown invitation without a partial user insert."""

@@ -21,13 +21,15 @@ afterwards when a clean database is required.
 
 ## Tables
 
-All tables have an integer `id`. Foreign keys link these internal IDs; usernames,
-team names and CSV IDs are not foreign keys.
+Every entity table has an integer `id`. The `users_auctions` association instead
+uses its two foreign keys as a composite primary key. Usernames, team names and
+CSV IDs are not foreign keys.
 
 | Table | Data and important relationships |
 | --- | --- |
-| `users` | Auction participants, with unique username and team name and optional OIDC `auth_issuer` + `auth_subject`. Each user belongs to at most one auction. |
-| `auctions` | Host user, season, invitation hash, status, official budget, role slots, extraction modes, three toggles and nine scoring values. Defaults match the settings page. |
+| `users` | Accounts with unique username and team name, optional OIDC identity and the currently selected auction. |
+| `auctions` | Host user, season, auction-code hash, status, official budget, role slots, extraction modes, three toggles and nine scoring values. Defaults match the settings page. |
+| `users_auctions` | Many-to-many membership between users and every auction they have joined. |
 | `players` | Snapshot of the catalog for an auction, including name, team, classic role and Mantra role. `source_id` identifies the original CSV `Id`/`id`; season is inherited from the auction. |
 | `purchases` | Final user, player and positive price. A player has one owner per auction; temporary offers are not persisted. |
 | `settings` | Personal user settings: per-role spending targets, graphical options and filters. `key` stores the setting name; `value_json` preserves its type. |
@@ -40,7 +42,7 @@ and timestamps are returned as strings.
 
 - `users`:
   - `id`: `int`
-  - `auction_id`: `int | None`
+  - `current_auction_id`: `int | None`
   - `username`: `str`
   - `team_name`: `str`
   - `auth_issuer`: `str | None`
@@ -52,7 +54,7 @@ and timestamps are returned as strings.
   - `name`: `str`
   - `season`: `str`
   - `host_user_id`: `int`
-  - `invite_code_hash`: `str`
+  - `auction_code_hash`: `str`
   - `status`: `str`
   - `total_budget`: `int`
   - `goalkeeper_slots`: `int`
@@ -75,6 +77,10 @@ and timestamps are returned as strings.
   - `points_yellow_card`: `float`
   - `points_red_card`: `float`
   - `created_at`: `str`
+
+- `users_auctions`:
+  - `user_id`: `int`
+  - `auction_id`: `int`
 
 - `players`:
   - `id`: `int`
@@ -103,14 +109,14 @@ and timestamps are returned as strings.
 Accounts and team names currently use SQLite `NOCASE` uniqueness, which ignores
 ASCII letter case. Unicode normalization belongs in the future registration
 service. Optional OIDC identity fields must either both be absent or both be
-nonempty. Registration hashes the trimmed invitation code with SHA-256 before
-looking it up. The auction creator must store the hash using the same convention;
-the CRUD layer does not hash invitation codes automatically.
+nonempty. Registration hashes the trimmed auction code with SHA-256 before looking
+it up. The auction creator must store the hash using the same convention; the CRUD
+layer does not hash auction codes automatically.
 
 Each auction has its own catalog snapshot, so source IDs and roles are not mixed
 between seasons. Import that catalog before purchase rows. Composite foreign keys
-keep users and purchases within the same auction. Personal player selections
-remain in one CSV per user.
+ensure that a purchase belongs to a user registered for the same auction.
+Personal player selections remain in one CSV per user.
 
 Rosters and ownership come from `purchases`. Remaining budget is
 `auctions.total_budget - SUM(purchases.price)` for a user. Remaining slots
@@ -127,7 +133,7 @@ bound SQL parameters. No raw SQL predicates are accepted.
 
 | Method | Meaning | Return value |
 | --- | --- | --- |
-| `get(table, filters=None)` | Read rows matching every filter. Omit filters to read all rows. | List of dictionaries, ordered by `id`; `[]` if absent. |
+| `get(table, filters=None)` | Read rows matching every filter. Omit filters to read all rows. | Deterministically ordered list of dictionaries; `[]` if absent. |
 | `insert(table, data)` | Insert one row; omitted fields use database defaults. | Inserted row's `id`. |
 | `update(table, data, filters)` | Set fields on rows matching the required filters. | Number of affected rows. |
 | `remove(table, filters)` | Delete rows matching the required filters. | Number of affected rows. |
@@ -198,8 +204,13 @@ with db_api.transaction() as connection:
     )
     db_api.update(
         "users",
-        {"auction_id": existing_auction_id},
+        {"current_auction_id": existing_auction_id},
         {"id": user_id},
+        connection=connection,
+    )
+    db_api.insert(
+        "users_auctions",
+        {"user_id": user_id, "auction_id": existing_auction_id},
         connection=connection,
     )
 ```
@@ -227,7 +238,7 @@ linked to a purchase raises an integrity error. Removing an otherwise unreferenc
 user also removes personal settings. Purchase undo behavior belongs in the
 auction service.
 
-The current schema is version 5 (`PRAGMA user_version`). `create_db()` can initialize
+The current schema is version 7 (`PRAGMA user_version`). `create_db()` can initialize
 it repeatedly, but does not migrate existing columns. Future schema changes need
 an explicit migration. Account and auction-participant lookups are connected to the
 application entry point. Registration writes are implemented; CSV imports and
@@ -235,19 +246,23 @@ auction actions still need their service implementations.
 
 ## Table-specific modules and Google login
 
-Each active table has a dedicated module: `users_db`, `auctions_db`, `players_db`,
-`purchases_db` and `settings_db`.
+Each active table has a dedicated module: `users_db`, `auctions_db`,
+`users_auctions_db`, `players_db`, `purchases_db` and `settings_db`.
 Every module exposes a singular getter by ID, a plural getter with optional filters,
 a `set_*` insert accepting one data dictionary and an `update_*` accepting the row
-ID plus a data dictionary.
+ID plus a data dictionary. The association module is the exception: it exposes
+`get_user_auction(user_id, auction_id, connection)` and
+`set_user_auction(user_id, auction_id, connection)` because its composite primary
+key is the pair of foreign keys.
 
 Use `users_db.get_users({"auth_issuer": issuer, "auth_subject": subject})` to
 look up an authenticated account. The chosen username and team name are separate
 from the identity returned by Google.
 
 `services.register_to_auction(...)` locates users through their OIDC identity,
-updates their profile when the account already exists and associates the user
-directly with the auction through `users.auction_id`.
+updates their profile when the account already exists, stores the current auction
+in `users.current_auction_id` and inserts the persistent membership in
+`users_auctions` when it is not already present.
 Identity claims must come from the verified `st.user`, not editable form inputs.
 
 `register_to_auction(...)` checks the invitation and performs all database writes
@@ -288,7 +303,7 @@ with the same `/oauth2callback` path.
 
 Google login has not been tested end to end: client credentials and the Authlib
 dependency are still missing. Registration also requires an existing auction
-with a valid invitation hash. The initial host/auction creation flow remains to
+with a valid auction-code hash. The initial host/auction creation flow remains to
 be implemented; tests create fixtures in temporary databases.
 
 ## Tests

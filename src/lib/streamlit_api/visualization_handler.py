@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 import time
 
-from lib.utils import columns_to_user_view_dict
+from lib.utils import columns_to_user_view_dict, generate_auction_code
 from lib.shap_explainability import (
     build_model_explaination_response,
 )
@@ -1106,4 +1106,17 @@ def create_horizontal_teams(
                     if available_budget < 0:
                         st.error("Budget exceeded")
                 
+    return
+
+
+def create_auction_preset_view():
+
+
+    cols = st.columns([9,1,20])
+    with cols[0]:
+        st.markdown("Generate auction code")
+
+
+def create_fanta_managers_lobby(fanta_managers: list[str]):
+
     return

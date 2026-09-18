@@ -23,7 +23,7 @@ import sqlite3
 
 # Resolve the database relative to this module, regardless of the working folder.
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "db" / "fantacalcio.sqlite3"
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
 CONNECTION_TIMEOUT = 5.0
 
 SQLValue = str | int | float | bytes | None
@@ -33,12 +33,12 @@ SQLValue = str | int | float | bytes | None
 # explicit migration; CREATE TABLE IF NOT EXISTS does not alter existing columns.
 # STRICT tables require SQLite >= 3.37; built-in JSON support requires >= 3.38.
 _TABLES = {
-    # A user is also the Fanta Manager participating in one auction. The auction
-    # is nullable while the host account is being created before its auction.
+    # A user may join several auctions. current_auction_id identifies only the
+    # auction currently selected in the application.
     "users": """
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            auction_id INTEGER REFERENCES auctions(id) ON DELETE RESTRICT,
+            current_auction_id INTEGER REFERENCES auctions(id) ON DELETE RESTRICT,
             username TEXT NOT NULL COLLATE NOCASE UNIQUE
                 CHECK (length(trim(username)) > 0 AND username = trim(username)),
             team_name TEXT NOT NULL COLLATE NOCASE UNIQUE
@@ -47,7 +47,6 @@ _TABLES = {
             auth_subject TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (auth_issuer, auth_subject),
-            UNIQUE (id, auction_id),
             CHECK (
                 (auth_issuer IS NULL AND auth_subject IS NULL)
                 OR (auth_issuer IS NOT NULL AND auth_subject IS NOT NULL
@@ -64,8 +63,8 @@ _TABLES = {
             name TEXT NOT NULL CHECK (length(trim(name)) > 0),
             season TEXT NOT NULL CHECK (length(trim(season)) > 0),
             host_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-            invite_code_hash TEXT NOT NULL UNIQUE
-                CHECK (length(trim(invite_code_hash)) > 0),
+            auction_code_hash TEXT NOT NULL UNIQUE
+                CHECK (length(trim(auction_code_hash)) > 0),
             status TEXT NOT NULL DEFAULT 'lobby'
                 CHECK (status IN ('lobby', 'running', 'completed')),
             total_budget INTEGER NOT NULL DEFAULT 500 CHECK (total_budget >= 0),
@@ -100,6 +99,15 @@ _TABLES = {
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) STRICT
     """,
+    # Membership is many-to-many. The composite primary key prevents duplicate
+    # registrations without introducing an identifier that has no other purpose.
+    "users_auctions": """
+        CREATE TABLE IF NOT EXISTS users_auctions (
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            auction_id INTEGER NOT NULL REFERENCES auctions(id) ON DELETE CASCADE,
+            PRIMARY KEY (user_id, auction_id)
+        ) STRICT
+    """,
     # Each auction has a snapshot of its player catalog. source_id maps to CSV
     # Id/id; id is the internal DB identifier. Season comes from the parent auction.
     "players": """
@@ -128,7 +136,7 @@ _TABLES = {
             FOREIGN KEY (player_id, auction_id)
                 REFERENCES players(id, auction_id) ON DELETE RESTRICT,
             FOREIGN KEY (user_id, auction_id)
-                REFERENCES users(id, auction_id) ON DELETE RESTRICT,
+                REFERENCES users_auctions(user_id, auction_id) ON DELETE RESTRICT,
             UNIQUE (auction_id, player_id)
         ) STRICT
     """,
@@ -148,7 +156,10 @@ _TABLES = {
 
 _INDEXES = (
     "CREATE INDEX IF NOT EXISTS auctions_by_host ON auctions(host_user_id)",
-    "CREATE INDEX IF NOT EXISTS users_by_auction ON users(auction_id)",
+    "CREATE INDEX IF NOT EXISTS users_by_current_auction "
+    "ON users(current_auction_id)",
+    "CREATE INDEX IF NOT EXISTS users_auctions_by_auction "
+    "ON users_auctions(auction_id, user_id)",
     "CREATE INDEX IF NOT EXISTS purchases_by_user "
     "ON purchases(user_id, auction_id)",
 )
@@ -186,7 +197,7 @@ def _connect(create_file: bool = False) -> sqlite3.Connection:
 
 
 def create_db() -> Path:
-    """Create the database directory, five static tables and indexes if absent.
+    """Create the database directory, six static tables and indexes if absent.
 
     Return the absolute database path. Existing data is preserved and all schema
     statements run atomically. WAL permits readers during a write; SQLite still
@@ -194,7 +205,7 @@ def create_db() -> Path:
     No accounts, auction data or CSV imports are created automatically.
 
     SQLite 3.38+ is required for STRICT tables and built-in JSON validation.
-    This function initializes schema version 5; it is not a migration runner.
+    This function initializes schema version 7; it is not a migration runner.
 
     Returns
     -------
@@ -248,7 +259,7 @@ def transaction() -> Iterator[sqlite3.Connection]:
                 connection=connection,
             )
             update(
-                "users", {"auction_id": 1}, {"id": user_id},
+                "users", {"current_auction_id": 1}, {"id": user_id},
                 connection=connection,
             )
 
@@ -478,7 +489,7 @@ def get(
     proj: list[str] | None = None,
     connection: sqlite3.Connection | None = None,
 ) -> list[dict[str, SQLValue]]:
-    """Return matching rows as dictionaries ordered by id, or [] if none exist.
+    """Return matching rows as dictionaries in deterministic order, or [].
 
     ``get("users", {"username": "Mario"}, ["id", "username"])`` filters by
     one column and returns only the requested fields.
@@ -500,7 +511,7 @@ def get(
     Returns
     -------
     list of dict
-        Matching rows ordered by identifier.
+        Matching rows ordered by identifier or, for tables without one, columns.
     """
     with _get_connection_scope(connection) as conn_transaction:
         allowed_columns = _get_allowed_columns(conn_transaction, table)
@@ -526,7 +537,15 @@ def get(
         if filter_pairs:
             predicate, parameters = _build_predicates_condition(filter_pairs)
             query += f" WHERE {predicate}"
-        return [dict(row) for row in conn_transaction.execute(query + ' ORDER BY "id"', parameters)]
+        order_columns = ["id"] if "id" in allowed_columns else sorted(allowed_columns)
+        order_by = ", ".join(f'"{column}"' for column in order_columns)
+        return [
+            dict(row)
+            for row in conn_transaction.execute(
+                query + f" ORDER BY {order_by}",
+                parameters,
+            )
+        ]
 
 
 def insert(
@@ -576,7 +595,7 @@ def update(
 ) -> int:
     """Set fields on rows matching a required nonempty filter; return row count.
 
-    Example: ``update("users", {"auction_id": 9}, {"id": 7})``.
+    Example: ``update("users", {"current_auction_id": 9}, {"id": 7})``.
     All filter entries are equality conditions joined by AND. Zero affected rows
     is a valid result. When present, updated_at is refreshed automatically unless
     explicitly supplied; version fields must be incremented by the service.

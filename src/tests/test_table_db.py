@@ -32,6 +32,7 @@ from src.backend.settings_db import (
     update_setting,
 )
 from src.backend.users_db import set_user, update_user
+from src.backend.users_auctions_db import get_user_auction, set_user_auction
 
 
 class TableDatabaseModulesTests(unittest.TestCase):
@@ -55,9 +56,10 @@ class TableDatabaseModulesTests(unittest.TestCase):
             "name": "Test auction",
             "season": "2026-27",
             "host_user_id": user["id"],
-            "invite_code_hash": hashlib.sha256(b"invite").hexdigest(),
+            "auction_code_hash": hashlib.sha256(b"auction").hexdigest(),
         })
-        user = update_user(user["id"], {"auction_id": auction["id"]})
+        user = update_user(user["id"], {"current_auction_id": auction["id"]})
+        user_auction = set_user_auction(user["id"], auction["id"])
         player = set_player({
             "auction_id": auction["id"],
             "source_id": "10",
@@ -79,6 +81,10 @@ class TableDatabaseModulesTests(unittest.TestCase):
         })
 
         self.assertEqual(get_auction(auction["id"]), auction)
+        self.assertEqual(
+            get_user_auction(user["id"], auction["id"]),
+            user_auction,
+        )
         self.assertEqual(get_auctions({"host_user_id": user["id"]}), [auction])
         self.assertEqual(
             update_auction(

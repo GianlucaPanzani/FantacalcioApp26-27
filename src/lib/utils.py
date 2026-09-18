@@ -1,4 +1,5 @@
 from datetime import datetime
+import secrets
 
 
 stats_persistent_key_fields = [
@@ -145,3 +146,7 @@ def get_current_season():
     """Return the season starting in the current calendar year."""
     year = get_current_year()
     return f"{year}-{str(year+1)[2:]}"
+
+def generate_auction_code() -> str:
+    """Generate a cryptographically secure six-digit auction code."""
+    return f"{secrets.randbelow(1_000_000):06d}"

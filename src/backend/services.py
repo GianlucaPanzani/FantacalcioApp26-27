@@ -11,6 +11,7 @@ from backend import db_api
 from lib.data_handler import parse_guest_archive
 from .auctions_db import get_auctions
 from .users_db import get_users, set_user, update_user
+from .users_auctions_db import get_user_auction, set_user_auction
 from .settings_db import rm_settings, set_setting
 
 
@@ -45,19 +46,16 @@ def _store_selected_players_csv(username: str, df: pd.DataFrame) -> str:
         return selection_path.as_posix()
 
 
-def register_to_auction(
+def register_user(
     user_data: dict[str, str],
-    invite_code: str,
     zip_archive: bytes | None = None,
 ) -> dict:
-    """Register an authenticated user in an auction.
+    """Register an authenticated user.
 
     Params
     ----------
     user_data : dict of str
         Verified identity, username and team name of the registering user.
-    invite_code : str
-        Plain invitation code used to locate the auction.
     zip_archive : bytes or None
         Optional personal backup containing settings and selected players.
 
@@ -72,27 +70,16 @@ def register_to_auction(
         "auth_subject": user_data["auth_subject"],
         "username": user_data["username"].strip(),
         "team_name": user_data["team_name"].strip(),
+        "current_auction_id": None
     }
     if not account_data["username"]:
         raise ValueError("Enter a username.")
     if not account_data["team_name"]:
         raise ValueError("Enter a team name.")
-    invite_code = invite_code.strip()
-    if not invite_code:
-        raise ValueError("Enter the auction invitation code.")
 
     backup = parse_guest_archive(zip_archive) if zip_archive is not None else None
 
-    invite_hash = hashlib.sha256(invite_code.encode("utf-8")).hexdigest()
     with db_api.transaction() as connection:
-        auctions = get_auctions(
-            {"invite_code_hash": invite_hash},
-            connection=connection,
-        )
-        if not auctions or auctions[0]["status"] == "completed":
-            raise ValueError("Invalid invitation or auction no longer open.")
-        auction_id = auctions[0]["id"]
-        account_data["auction_id"] = auction_id
 
         # Get the user if exists
         users = get_users(
@@ -147,3 +134,25 @@ def register_to_auction(
             )
 
         return user
+
+
+def register_to_auction(user_id: int, auction_code: str):
+    
+    code_hash = hashlib.sha256(auction_code.encode("utf-8")).hexdigest()
+    with db_api.transaction() as connection:
+        auctions = get_auctions(
+            filters={"auction_code_hash": code_hash},
+            connection=connection,
+        )
+        if not auctions or auctions[0]["status"] == "completed":
+            raise ValueError("Invalid invitation or auction no longer open.")
+        auction_id = auctions[0]["id"]
+
+        update_user(
+            user_id=user_id,
+            data={"current_auction_id": auction_id}
+        )
+        set_user_auction(
+            user_id=user_id,
+            auction_id=auction_id
+        )
