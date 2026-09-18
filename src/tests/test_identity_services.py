@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from backend import db_api
 from backend.auctions_db import set_auction
-from backend.services import register_to_auction
+from backend.services import register_to_auction, register_user
 from backend.users_db import get_users, set_user
 
 
@@ -47,8 +47,9 @@ class IdentityServicesTests(unittest.TestCase):
             "username": "Mario",
             "team_name": "Mario FC",
         }
-        user = register_to_auction(data, " JOIN-ME ")
-        repeated = register_to_auction(data, "JOIN-ME")
+        registered = register_user(data)
+        user = register_to_auction(registered["id"], " JOIN-ME ")
+        repeated = register_to_auction(registered["id"], "JOIN-ME")
 
         self.assertEqual(repeated["id"], user["id"])
         self.assertEqual(user["current_auction_id"], auction_id)
@@ -57,14 +58,15 @@ class IdentityServicesTests(unittest.TestCase):
     def test_invalid_invitation_does_not_create_account(self):
         """Reject an unknown invitation without a partial user insert."""
         self.create_auction()
+        user = register_user({
+            "auth_issuer": "google",
+            "auth_subject": "123",
+            "username": "Guest",
+            "team_name": "Guest FC",
+        })
         with self.assertRaises(ValueError):
-            register_to_auction({
-                "auth_issuer": "google",
-                "auth_subject": "123",
-                "username": "Guest",
-                "team_name": "Guest FC",
-            }, "UNKNOWN")
-        self.assertEqual(get_users({"auth_subject": "123"}), [])
+            register_to_auction(user["id"], "UNKNOWN")
+        self.assertIsNone(get_users({"auth_subject": "123"})[0]["current_auction_id"])
 
 
 if __name__ == "__main__":

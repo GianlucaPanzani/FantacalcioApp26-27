@@ -1,5 +1,8 @@
 from datetime import datetime
 import secrets
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+import streamlit as st
 
 
 stats_persistent_key_fields = [
@@ -147,6 +150,53 @@ def get_current_season():
     year = get_current_year()
     return f"{year}-{str(year+1)[2:]}"
 
-def generate_auction_code() -> str:
+def gen_auction_code() -> str:
     """Generate a cryptographically secure six-digit auction code."""
     return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def get_auction_link(auction_code: str) -> str:
+    """Build the public application URL containing an auction code.
+
+    Params
+    ----------
+    auction_code : str
+        Six-digit code of the auction to join.
+
+    Returns
+    -------
+    str
+        Current application URL with the auction code as a query parameter.
+    """
+    auction_code = str(auction_code).strip()
+    if len(auction_code) != 6 or not auction_code.isdigit():
+        raise ValueError("The auction code must contain exactly six digits.")
+
+    url_parts = urlsplit(st.context.url)
+    query = dict(parse_qsl(url_parts.query, keep_blank_values=True))
+    query["auction_code"] = auction_code
+    return urlunsplit(url_parts._replace(query=urlencode(query), fragment=""))
+
+
+def join_auction(auction_code: str) -> str:
+    """Display a browser link that opens an auction in a new tab.
+
+    Params
+    ----------
+    auction_code : str
+        Six-digit code of the auction to join.
+
+    Returns
+    -------
+    str
+        Public URL displayed by the link button.
+    """
+    auction_link = get_auction_link(auction_code)
+    st.link_button(
+        "Open auction",
+        auction_link,
+        icon=":material/open_in_new:",
+        type="primary",
+        width="stretch",
+    )
+    return auction_link

@@ -1,4 +1,5 @@
 from io import BytesIO
+import json
 import joblib
 from numbers import Integral, Real
 from pathlib import Path
@@ -13,7 +14,14 @@ from pandas.api.types import (
     is_string_dtype,
 )
 import streamlit as st
-from lib.data_handler import restore_guest_state
+from backend import db_api
+from backend.persistent_state_db import (
+    get_persistent_state,
+    get_persistent_states,
+    set_persistent_state,
+    update_persistent_state,
+)
+from lib.data_handler import store_guest_archive
 from lib.utils import (
     stats_persistent_key_fields,
     get_current_date,
@@ -254,7 +262,6 @@ def get_fanta_manager_players_dict() -> dict:
     fanta_manager_players_dict = st.session_state["fantacalcio_manager_players_dict_key"]
     return fanta_manager_players_dict
 
-
 def get_from_session_state(key: str):
     """Return a Session State value, or ``None`` when its key is absent."""
     if key in st.session_state:
@@ -262,8 +269,123 @@ def get_from_session_state(key: str):
     return None
 
 
-def load_env(keys: list[str] | None = None, path: str = ".env") -> dict:
-    """Load selected typed values from an environment file into Session State.
+def _serialize_persistent_value(value) -> str:
+    """Serialize one supported Session State value as valid JSON."""
+    if isinstance(value, pd.DataFrame):
+        value = {
+            "__persistent_type__": "pandas.DataFrame",
+            "value": value.to_json(orient="split"),
+        }
+    elif isinstance(value, tuple):
+        value = {"__persistent_type__": "tuple", "value": list(value)}
+    elif isinstance(value, Integral) and not isinstance(value, bool):
+        value = int(value)
+    elif isinstance(value, Real) and not isinstance(value, bool):
+        value = float(value)
+    return json.dumps(value, ensure_ascii=False, allow_nan=False)
+
+
+def _deserialize_persistent_value(value_json: str):
+    """Decode one JSON value, restoring supported structured Python types."""
+    value = json.loads(value_json)
+    if isinstance(value, dict) and value.get("__persistent_type__") == "pandas.DataFrame":
+        return pd.read_json(BytesIO(value["value"].encode("utf-8")), orient="split")
+    if isinstance(value, dict) and value.get("__persistent_type__") == "tuple":
+        return tuple(value["value"])
+    return value
+
+
+def load_persistent_state(
+    user_id: int,
+    page_names: list[str] | None = None,
+) -> dict:
+    """Load persisted user values into Session State without overwriting it.
+
+    Params
+    ----------
+    user_id : int
+        Identifier of the authenticated user.
+    page_names : list of str or None
+        Pages to load, or ``None`` to load every persisted page.
+
+    Returns
+    -------
+    dict
+        Loaded values, including values already initialized in this session.
+    """
+    rows = get_persistent_states({"user_id": user_id})
+    if page_names is not None:
+        allowed_pages = set(page_names)
+        rows = [row for row in rows if row["page_name"] in allowed_pages]
+
+    scope = "all" if page_names is None else ",".join(sorted(page_names))
+    loaded_marker = f"_persistent_state_loaded_{user_id}_{scope}"
+    first_load = not st.session_state.get(loaded_marker, False)
+    loaded_values = {}
+    for row in rows:
+        key = row["key"]
+        if first_load or key not in st.session_state:
+            st.session_state[key] = _deserialize_persistent_value(row["value_json"])
+        loaded_values[key] = st.session_state[key]
+    st.session_state[loaded_marker] = True
+    return loaded_values
+
+
+def store_persistent_state(user_id: int, data_dict: dict) -> dict:
+    """Persist changed Session State values for one user in one transaction.
+
+    Params
+    ----------
+    user_id : int
+        Identifier of the authenticated user.
+    data_dict : dict
+        Persistent keys mapped to their current values.
+
+    Returns
+    -------
+    dict
+        Values successfully serialized and stored.
+    """
+    stored_values = {}
+    with db_api.transaction() as connection:
+        existing_rows = get_persistent_states(
+            {"user_id": user_id},
+            connection=connection,
+        )
+        existing_values = {
+            (row["page_name"], row["key"]): row["value_json"]
+            for row in existing_rows
+        }
+        for key, value in data_dict.items():
+            if not isinstance(key, str) or "_" not in key:
+                continue
+            page_name = key.split("_", 1)[0]
+            value_json = _serialize_persistent_value(value)
+            existing_value = existing_values.get((page_name, key))
+            if existing_value is None:
+                set_persistent_state(
+                    {
+                        "user_id": user_id,
+                        "page_name": page_name,
+                        "key": key,
+                        "value_json": value_json,
+                    },
+                    connection=connection,
+                )
+            elif existing_value != value_json:
+                update_persistent_state(
+                    user_id,
+                    page_name,
+                    key,
+                    {"value_json": value_json},
+                    connection=connection,
+                )
+            stored_values[key] = value
+    return stored_values
+
+
+def load_config(keys: list[str] | None = None, path: str = ".env") -> dict:
+    """Load selected typed configuration values into Session State.
 
     Params
     ----------
@@ -341,8 +463,8 @@ def load_env(keys: list[str] | None = None, path: str = ".env") -> dict:
     return loaded_values
 
 
-def store_env(data_dict: dict, path: str = ".env") -> dict:
-    """Persist supported Python values in the application's typed env format.
+def store_config(data_dict: dict, path: str = ".env") -> dict:
+    """Persist non-user configuration in the application's typed env format.
 
     Params
     ----------
@@ -423,7 +545,12 @@ def store_env(data_dict: dict, path: str = ".env") -> dict:
     return stored_values
 
 
-def restore_personal_backup(upload_key: str, result_key: str) -> None:
+def restore_personal_backup(
+    upload_key: str,
+    result_key: str,
+    user_id: int,
+    username: str,
+) -> None:
     """Restore a personal backup and clear stale Session State values.
 
     Params
@@ -432,11 +559,19 @@ def restore_personal_backup(upload_key: str, result_key: str) -> None:
         Session State key containing the uploaded ZIP file.
     result_key : str
         Session State key that receives a success or error message.
+    user_id : int
+        Identifier of the user whose persistent state is replaced.
+    username : str
+        Username used for the restored selected-player CSV filename.
     """
     uploaded_archive = st.session_state.get(upload_key)
 
     try:
-        result = restore_guest_state(uploaded_archive.getvalue())
+        result = store_guest_archive(
+            uploaded_archive.getvalue(),
+            user_id,
+            username,
+        )
     except (ValueError, OSError) as error:
         st.session_state[result_key] = {
             "success": False,
@@ -451,7 +586,7 @@ def restore_personal_backup(upload_key: str, result_key: str) -> None:
         if key.endswith("_key") and not key.endswith("_widget_key")
     }
 
-    # Allow load_env() to reload the restored values on the next rerun.
+    # Allow load_persistent_state() to reload restored values on the next rerun.
     for key in list(st.session_state):
         if (
             key.startswith("selection_")

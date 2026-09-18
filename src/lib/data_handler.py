@@ -16,6 +16,15 @@ import zipfile
 from rapidfuzz import fuzz
 from rapidfuzz.distance import Levenshtein
 
+from backend import db_api
+from backend.persistent_state_db import (
+    get_persistent_state,
+    get_persistent_states,
+    rm_persistent_states,
+    set_persistent_state,
+    update_persistent_state,
+)
+
 
 # ========================================================
 #                   DATA STRUCTURES
@@ -126,7 +135,7 @@ TOTALS_IN_2025_26 = {
 
 # Only personal preferences may travel between a guest's app and an auction.
 # Official budgets, squad limits, purchases, paths and credentials stay local.
-_GUEST_SETTING_KEYS = {
+_GUEST_PERMANENT_STATE_KEYS = {
     "settings_my_manager_key",
     "settings_ai_enabled_key",
     "settings_P_budget_limit_widget_key",
@@ -167,7 +176,7 @@ _GUEST_SELECTION_PATH = Path(
 )
 _GUEST_ARCHIVE_FILES = {
     "manifest.json",
-    "personal.env",
+    "persistent_state.json",
     "selection_selected_players.csv",
 }
 _GUEST_ARCHIVE_LIMIT_BYTES = 10_485_760  # 10 MiB
@@ -191,58 +200,16 @@ def _is_guest_key_correct(key: str) -> bool:
     )
 
 
-def _read_guest_env(content: str, strict: bool = False) -> dict[str, str]:
-    """Read the app's KEY/value + KEY_type format without loading credentials."""
-    values = {}
-    for line in content.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "=" not in line:
-            if strict:
-                raise ValueError("Invalid personal.env line.")
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if strict and key in values:
-            raise ValueError("Duplicate personal.env key.")
-        values[key] = value.strip().strip('"').strip("'")
-    return values
-
-
-def _validate_guest_settings_zip_data(values: dict[str, str]) -> dict:
-    """Validate allowlisted settings while retaining the existing type encoding."""
-    decoded = {}
-    for key in values:
-        base_key = key.removesuffix("_type")
-        if base_key not in _GUEST_SETTING_KEYS or base_key not in values:
+def _validate_backup_persistent_state(values: dict) -> dict:
+    """Validate the allowlisted persistent values stored in a backup."""
+    if not isinstance(values, dict):
+        raise ValueError("persistent_state.json must contain a JSON object.")
+    validated = {}
+    for key, value in values.items():
+        if not isinstance(key, str) or key not in _GUEST_PERMANENT_STATE_KEYS:
             raise ValueError(f"Unsupported personal setting: {key}")
-        if key.endswith("_type"):
-            continue
-        raw = values[key]
-        value_type = values.get(f"{key}_type", "str")
-        try:
-            if value_type == "str":
-                value = raw
-            elif value_type == "bool" and raw.lower() in {"true", "false"}:
-                value = raw.lower() == "true"
-            elif value_type == "int":
-                value = int(raw)
-            elif value_type == "float":
-                value = float(raw)
-                if not math.isfinite(value):
-                    raise ValueError
-            elif value_type in {"list", "tuple"}:
-                value = [item.strip() for item in raw.split(",") if item.strip()]
-                if value_type == "tuple":
-                    value = tuple(value)
-            elif value_type in {"None", "NoneType"} and not raw:
-                value = None
-            else:
-                raise ValueError
-        except (ValueError, OverflowError) as exc:
-            raise ValueError(f"Invalid value or type for {key}.") from exc
-
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError(f"Invalid personal setting: {key}")
         if key == "settings_my_manager_key":
             valid = isinstance(value, str) and 0 < len(value.strip()) <= 200
         elif key.endswith("_budget_limit_widget_key"):
@@ -266,11 +233,11 @@ def _validate_guest_settings_zip_data(values: dict[str, str]) -> dict:
         )):
             valid = type(value) is bool
         else:
-            valid = value is None or isinstance(value, (str, list, tuple))
-        if not valid or len(raw) > 100_000:
+            valid = value is None or isinstance(value, (str, list))
+        if not valid or len(json.dumps(value, ensure_ascii=False)) > 100_000:
             raise ValueError(f"Invalid personal setting: {key}")
-        decoded[key] = value
-    return decoded
+        validated[key] = value
+    return validated
 
 
 def _validate_guest_selection_zip_data(content: bytes) -> tuple[bytes, int]:
@@ -322,27 +289,31 @@ def _guest_selection_target(src_dir: Path, env_values: dict[str, str]) -> Path:
     return target
 
 
-def export_guest_state(src_dir: str | Path | None = None) -> bytes:
+def export_guest_state(user_id: int, src_dir: str | Path | None = None) -> bytes:
     """Build a downloadable ZIP of persisted personal settings and shortlist.
 
-    The archive contains ``personal.env`` (an allowlisted subset of ``.env``),
-    ``selection_selected_players.csv`` and a versioned manifest. It excludes
+    The archive contains ``persistent_state.json``, the selected-player CSV and
+    a versioned manifest. It excludes
     purchases, Fanta Managers, official auction rules, dataset paths and secrets.
     An absent shortlist is exported as an empty CSV. ``src_dir`` defaults to
     this project's src directory, independently of the working directory.
 
-    This exports files already saved on disk, not unsaved Session State values.
-    The returned bytes can be passed directly to ``st.download_button``.
+    Values come from ``persistent_state`` rather than the local ``.env`` file.
     """
     root = Path(src_dir).resolve() if src_dir is not None else Path(__file__).resolve().parents[1]
-    env_path = root / ".env"
-    env_values = _read_guest_env(env_path.read_text(encoding="utf-8") if env_path.exists() else "")
-    personal_values = {
-        key: value for key, value in env_values.items()
-        if key.removesuffix("_type") in _GUEST_SETTING_KEYS
-    }
-    _validate_guest_settings_zip_data(personal_values)
-    selection_path = _guest_selection_target(root, env_values)
+    rows = get_persistent_states({"user_id": user_id})
+    values = {row["key"]: json.loads(row["value_json"]) for row in rows}
+    persistent_values = _validate_backup_persistent_state({
+        key: value
+        for key, value in values.items()
+        if key in _GUEST_PERMANENT_STATE_KEYS
+    })
+    selection_path = _guest_selection_target(root, {
+        "selection_selected_players_csv_path_key": values.get(
+            "selection_selected_players_csv_path_key",
+            str(_GUEST_SELECTION_PATH),
+        )
+    })
     if (
         selection_path.exists()
         and selection_path.stat().st_size > _GUEST_ARCHIVE_LIMIT_BYTES
@@ -352,108 +323,46 @@ def export_guest_state(src_dir: str | Path | None = None) -> bytes:
         selection_path.read_bytes() if selection_path.exists()
         else b"Id,mln,interest,description\n"
     )
-    personal_content = "".join(f"{key}={value}\n" for key, value in personal_values.items())
     payload = io.BytesIO()
     with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("manifest.json", json.dumps({"format": "fantacalcio-guest-state", "version": 1}))
-        archive.writestr("personal.env", personal_content)
+        archive.writestr(
+            "manifest.json",
+            json.dumps({"format": "fantacalcio-persistent-state", "version": 1}),
+        )
+        archive.writestr(
+            "persistent_state.json",
+            json.dumps(persistent_values, ensure_ascii=False),
+        )
         archive.writestr("selection_selected_players.csv", selection_bytes)
     return payload.getvalue()
 
 
-def restore_guest_state(archive: bytes | BinaryIO, src_dir: str | Path | None = None) -> dict:
-    """Validate a guest ZIP, merge personal .env keys and replace the shortlist.
+def restore_guest_state(
+    archive: bytes | BinaryIO,
+    user_id: int,
+    username: str,
+    src_dir: str | Path | None = None,
+) -> dict:
+    """Restore a ZIP into the user's persistent DB state and personal CSV.
 
-    Use this on the guest's local installation (or a separate guest directory),
-    never against the shared host .env for every account. Purchases and official
-    rules are left untouched; account association belongs to the future backend.
-    All archive members and values are validated before any file is written.
-    Each destination is replaced atomically, with rollback on a write failure;
-    this is a local restore operation, not a concurrent database transaction.
+    Params
+    ----------
+    archive : bytes or BinaryIO
+        Backup archive to validate and restore.
+    user_id : int
+        Identifier of the user receiving the restored state.
+    username : str
+        Username used for the selected-player CSV filename.
+    src_dir : str, pathlib.Path or None
+        Application data root, or the project ``src`` directory when omitted.
 
-    The returned ``settings`` contains decoded values and ``selected_players``
-    their count. Restart/reload the Streamlit session after import: load_env
-    keeps existing Session State values. If integrating a restore callback,
-    clear selection_* state and imported settings plus their widget keys before
-    rerunning, so old selections cannot overwrite the restored CSV.
+    Returns
+    -------
+    dict
+        Restored settings, selected-player count and CSV path.
     """
-    content = (
-        archive
-        if isinstance(archive, bytes)
-        else archive.read(_GUEST_ARCHIVE_LIMIT_BYTES + 1)
-    )
-    if len(content) > _GUEST_ARCHIVE_LIMIT_BYTES:
-        raise ValueError("Guest archive is too large.")
-
-    try:
-        with zipfile.ZipFile(io.BytesIO(content)) as bundle:
-            members = bundle.infolist()
-            if (
-                len(members) != len(_GUEST_ARCHIVE_FILES)
-                or {item.filename for item in members} != _GUEST_ARCHIVE_FILES
-            ):
-                raise ValueError("Unexpected or missing guest archive files.")
-            if any(item.flag_bits & 1 for item in members):
-                raise ValueError("Encrypted archives are not supported.")
-            if sum(item.file_size for item in members) > _GUEST_ARCHIVE_LIMIT_BYTES:
-                raise ValueError("Uncompressed guest archive is too large.")
-            manifest = json.loads(bundle.read("manifest.json"))
-            if manifest != {"format": "fantacalcio-guest-state", "version": 1}:
-                raise ValueError("Unsupported guest archive format or version.")
-            personal_values = _read_guest_env(
-                bundle.read("personal.env").decode("utf-8"),
-                strict=True,
-            )
-            settings = _validate_guest_settings_zip_data(personal_values)
-            selection_bytes, selection_count = _validate_guest_selection_zip_data(bundle.read("selection_selected_players.csv"))
-    except (zipfile.BadZipFile, UnicodeError, csv.Error, json.JSONDecodeError, NotImplementedError) as exc:
-        raise ValueError("Invalid guest archive.") from exc
-
-    root = Path(src_dir).resolve() if src_dir is not None else Path(__file__).resolve().parents[1]
-    env_path = root / ".env"
-    original_env = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
-    selection_path = _guest_selection_target(root, _read_guest_env(original_env))
-    retained_lines = []
-    for line in original_env.splitlines(keepends=True):
-        key = line.split("=", 1)[0].strip() if "=" in line else ""
-        # The CSV is authoritative; remove stale per-player copies and flags.
-        if (
-            key.removesuffix("_type") in settings
-            or _is_guest_key_correct(key)
-            or key.removesuffix("_type")
-            == "selection_selection_players_restored_v2_key"
-        ):
-            continue
-        retained_lines.append(line)
-    merged_env = "".join(retained_lines)
-    if merged_env and not merged_env.endswith("\n"):
-        merged_env += "\n"
-    merged_env += "".join(f"{key}={value}\n" for key, value in personal_values.items())
-
-    replacements = {env_path: merged_env.encode("utf-8"), selection_path: selection_bytes}
-    originals = {path: path.read_bytes() if path.exists() else None for path in replacements}
-    staged = {}
-    applied = []
-    try:
-        for path, data in replacements.items():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as temporary:
-                staged[path] = Path(temporary.name)
-                temporary.write(data)
-        for path, temporary_path in staged.items():
-            os.replace(temporary_path, path)
-            applied.append(path)
-    except OSError:
-        for path in reversed(applied):
-            if originals[path] is None:
-                path.unlink(missing_ok=True)
-            else:
-                path.write_bytes(originals[path])
-        raise
-    finally:
-        for temporary_path in staged.values():
-            temporary_path.unlink(missing_ok=True)
-    return {"settings": settings, "selected_players": selection_count}
+    content = archive if isinstance(archive, bytes) else archive.read()
+    return store_guest_archive(content, user_id, username, src_dir=src_dir)
 
 
 def download_dataset(out_dir: str, path_kaggle: str) -> None:
@@ -1112,15 +1021,17 @@ def parse_guest_archive(archive: bytes) -> dict:
                 raise ValueError("Uncompressed guest archive is too large.")
 
             manifest = json.loads(bundle.read("manifest.json"))
-            if manifest != {"format": "fantacalcio-guest-state", "version": 1}:
+            if manifest != {
+                "format": "fantacalcio-persistent-state",
+                "version": 1,
+            }:
                 raise ValueError("Unsupported guest archive format or version.")
 
-            personal_values = _read_guest_env(
-                bundle.read("personal.env").decode("utf-8"),
-                strict=True,
+            persistent_values = json.loads(
+                bundle.read("persistent_state.json").decode("utf-8")
             )
-            settings = _validate_guest_settings_zip_data(personal_values)
-            selection_bytes, _ = _validate_guest_selection_zip_data(
+            settings = _validate_backup_persistent_state(persistent_values)
+            selection_bytes, selection_count = _validate_guest_selection_zip_data(
                 bundle.read("selection_selected_players.csv")
             )
     except (
@@ -1135,4 +1046,99 @@ def parse_guest_archive(archive: bytes) -> dict:
     return {
         "settings": settings,
         "selection_csv": selection_bytes,
+        "selected_players": selection_count,
+    }
+
+
+def store_guest_archive(
+    archive: bytes,
+    user_id: int,
+    username: str,
+    connection=None,
+    src_dir: str | Path | None = None,
+) -> dict:
+    """Store a validated backup in persistent state and the user's CSV file.
+
+    Params
+    ----------
+    archive : bytes
+        ZIP backup generated by :func:`export_guest_state`.
+    user_id : int
+        Identifier of the user receiving the restored data.
+    username : str
+        Username used for the personal selected-player CSV filename.
+    connection : sqlite3.Connection or None
+        Active database transaction to reuse, when provided.
+    src_dir : str or pathlib.Path or None
+        Application data root, or the project ``src`` directory when omitted.
+
+    Returns
+    -------
+    dict
+        Restored settings and number of selected players.
+    """
+    backup = parse_guest_archive(archive)
+    root = (
+        Path(src_dir).resolve()
+        if src_dir is not None
+        else Path(__file__).resolve().parents[1]
+    )
+    selection_dir = root / "data/csv/pages/selection"
+    selection_dir.mkdir(parents=True, exist_ok=True)
+    selection_path = selection_dir / f"selection_selected_players_{username}.csv"
+    stored_path = selection_path.relative_to(root).as_posix()
+
+    def store_rows(active_connection):
+        current_rows = get_persistent_states(
+            {"user_id": user_id},
+            connection=active_connection,
+        )
+        for row in current_rows:
+            if (
+                row["key"] in _GUEST_PERMANENT_STATE_KEYS
+                or _is_guest_key_correct(row["key"])
+                or row["key"] == "selection_selected_players_csv_path_key"
+            ):
+                rm_persistent_states(
+                    {
+                        "user_id": user_id,
+                        "page_name": row["page_name"],
+                        "key": row["key"],
+                    },
+                    connection=active_connection,
+                )
+
+        restored_values = {
+            **backup["settings"],
+            "selection_selected_players_csv_path_key": stored_path,
+        }
+        for key, value in restored_values.items():
+            set_persistent_state(
+                {
+                    "user_id": user_id,
+                    "page_name": key.split("_", 1)[0],
+                    "key": key,
+                    "value_json": json.dumps(value, ensure_ascii=False),
+                },
+                connection=active_connection,
+            )
+
+    if connection is None:
+        with db_api.transaction() as active_connection:
+            store_rows(active_connection)
+    else:
+        store_rows(connection)
+
+    with tempfile.NamedTemporaryFile(dir=selection_dir, delete=False) as temporary:
+        temporary_path = Path(temporary.name)
+        temporary.write(backup["selection_csv"])
+    try:
+        os.replace(temporary_path, selection_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+    return {
+        "settings": backup["settings"],
+        "selected_players": backup["selected_players"],
+        "selection_csv_path": stored_path,
     }

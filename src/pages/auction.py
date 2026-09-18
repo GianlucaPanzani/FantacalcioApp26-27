@@ -4,6 +4,7 @@ from lib.xgboost_predictor import (
     features_to_predict_list
 )
 from lib.utils import (
+    get_current_season,
     interest_colors_dict,
     get_current_year,
 )
@@ -11,8 +12,8 @@ from lib.streamlit_api.data_handler import (
     load_dataset,
     load_models,
     get_roles_dict,
-    load_env,
-    store_env,
+    load_persistent_state,
+    store_persistent_state,
     restore_bought_players,
     has_full_team,
     save_bought_players,
@@ -32,6 +33,7 @@ from lib.streamlit_api.visualization_handler import (
     create_horizontal_teams,
     create_vertical_teams,
     create_fanta_managers_lobby,
+    create_auction_preset_view,
 )
 from backend.auctions_db import (
     get_auction,
@@ -502,9 +504,9 @@ def reset_fanta_manager_boughts(selection_key: str) -> None:
         if str(key).startswith(f"{page_name}_purchase_editor_"):
             del st.session_state[key]
 
-    store_env(
-        data_dict={f"{page_name}_bought_players_df_key": bought_players_df},
-        path=".env",
+    store_persistent_state(
+        st.session_state["user_id_key"],
+        {f"{page_name}_bought_players_df_key": bought_players_df},
     )
     st.session_state[selection_key] = []
     st.session_state[reset_bought_message_key] = "Purchases reset for: {', '.join(selected_managers)}"
@@ -810,12 +812,15 @@ def remove_bought_player(player: dict) -> None:
 # =============================================================================
 
 # Load env
-loaded_env_values = load_env(path=".env")
+loaded_persistent_values = load_persistent_state(
+    st.session_state["user_id_key"],
+    page_names=[page_name, "settings"],
+)
 
 # Track the persistent keys already stored for this page.
 auction_keys_set = {
     key
-    for key in loaded_env_values
+    for key in loaded_persistent_values
     if key.startswith(f"{page_name}_")
 }
 
@@ -844,12 +849,19 @@ users = get_users(
 fanta_managers = [my_fanta_manager] + [user["username"] for user in users if user["username"] != my_fanta_manager]
 st.session_state[fanta_managers_key] = fanta_managers
 
-create_fanta_managers_lobby(fanta_managers)
+# Title
+cols = st.columns([1,15])
+with cols[0]:
+    st.markdown(f"{get_icon('auction')}", unsafe_allow_html=True)
+with cols[1]:
+    st.title(f"Auction {get_current_season()}")
+st.caption(
+    "Create a new auction or join an existing one using its six-digit code, wait for the other Fanta Managers, "
+    "confirm when everyone is ready, and start the auction with the extraction settings you selected."
+)
 
-# Case of no other managers different by my_fantamanager in the list
-if not any(manager != my_fanta_manager for manager in fanta_managers):
-    st.info("Add at least one other Fanta Manager in Settings before accessing the auction.")
-    st.stop()
+create_auction_preset_view(page_name)
+create_fanta_managers_lobby(fanta_managers)
 
 # Load data
 models_packages_dict = load_models(target_features=features_to_predict_list)
@@ -1007,13 +1019,13 @@ with managers_col:
                 remove_bought_player,
             )
 
-# Persist the existing page settings and purchases using the current storage format.
+# Persist the existing page settings and purchases.
 fantacalcio_bought_players_df_key = f"{page_name}_bought_players_df_key"
 auction_keys_set.add(fantacalcio_bought_players_df_key)
 fantacalcio_keys_list = list(auction_keys_set)
-store_env(
-    data_dict={key: st.session_state[key] for key in fantacalcio_keys_list if key in st.session_state},
-    path=".env",
+store_persistent_state(
+    st.session_state["user_id_key"],
+    {key: st.session_state[key] for key in fantacalcio_keys_list if key in st.session_state},
 )
 
 # Render the page footer.

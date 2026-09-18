@@ -23,7 +23,7 @@ import sqlite3
 
 # Resolve the database relative to this module, regardless of the working folder.
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "db" / "fantacalcio.sqlite3"
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 CONNECTION_TIMEOUT = 5.0
 
 SQLValue = str | int | float | bytes | None
@@ -140,16 +140,16 @@ _TABLES = {
             UNIQUE (auction_id, player_id)
         ) STRICT
     """,
-    # JSON preserves imported preference types (numbers, lists, booleans, null).
-    # Only personal settings belong here; official rules remain in auctions.
-    "settings": """
-        CREATE TABLE IF NOT EXISTS settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+    # Persist only selected user state; transient Streamlit widget state remains
+    # in memory. Page names allow each page to load only its own values.
+    "persistent_state": """
+        CREATE TABLE IF NOT EXISTS persistent_state (
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            page_name TEXT NOT NULL CHECK (length(trim(page_name)) > 0),
             key TEXT NOT NULL CHECK (length(trim(key)) > 0),
             value_json TEXT NOT NULL CHECK (json_valid(value_json)),
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE (user_id, key)
+            PRIMARY KEY (user_id, page_name, key)
         ) STRICT
     """,
 }
@@ -162,6 +162,8 @@ _INDEXES = (
     "ON users_auctions(auction_id, user_id)",
     "CREATE INDEX IF NOT EXISTS purchases_by_user "
     "ON purchases(user_id, auction_id)",
+    "CREATE INDEX IF NOT EXISTS persistent_state_by_user_page "
+    "ON persistent_state(user_id, page_name)",
 )
 
 
@@ -205,7 +207,7 @@ def create_db() -> Path:
     No accounts, auction data or CSV imports are created automatically.
 
     SQLite 3.38+ is required for STRICT tables and built-in JSON validation.
-    This function initializes schema version 7; it is not a migration runner.
+    This function initializes schema version 8; it is not a migration runner.
 
     Returns
     -------
@@ -639,10 +641,10 @@ def remove(
 ) -> int:
     """Delete matching rows and return their count; an explicit filter is required.
 
-    Example: ``remove("settings", {"user_id": 3, "key": "theme"})``.
+    Example: ``remove("persistent_state", {"user_id": 3, "key": "theme"})``.
     Passing None as a value matches SQL NULL, but an empty filter is not allowed.
     Referenced auction/account/history rows are protected by foreign keys;
-    deleting an unreferenced user also removes personal settings.
+    deleting an unreferenced user also removes their persistent state.
 
     Params
     ----------

@@ -1,49 +1,11 @@
 
 import hashlib
-from io import BytesIO
-import json
-import os
-from pathlib import Path
-import pandas as pd
-import tempfile
 
 from backend import db_api
-from lib.data_handler import parse_guest_archive
+from lib.data_handler import parse_guest_archive, store_guest_archive
 from .auctions_db import get_auctions
 from .users_db import get_users, set_user, update_user
 from .users_auctions_db import get_user_auction, set_user_auction
-from .settings_db import rm_settings, set_setting
-
-
-
-
-def _store_selected_players_csv(username: str, df: pd.DataFrame) -> str:
-    """Atomically store one Fanta Manager's validated selection CSV.
-
-    Params
-    ----------
-    username : str
-        Username used to identify the personal selection file.
-    content : bytes
-        Validated CSV content extracted from the personal backup.
-
-    Returns
-    -------
-    str
-        Selection CSV path relative to the ``src`` directory.
-    """
-
-    selection_dir = Path(__file__).resolve().parents[1] / "data/csv/pages/selection"
-    selection_dir.mkdir(parents=True, exist_ok=True)
-    selection_path = selection_dir / f"selection_selected_players_{username}.csv"
-    
-    df.to_csv(selection_path)
-
-    src_directory = Path(__file__).resolve().parents[1]
-    try:
-        return selection_path.relative_to(src_directory).as_posix()
-    except ValueError:
-        return selection_path.as_posix()
 
 
 def register_user(
@@ -77,7 +39,8 @@ def register_user(
     if not account_data["team_name"]:
         raise ValueError("Enter a team name.")
 
-    backup = parse_guest_archive(zip_archive) if zip_archive is not None else None
+    if zip_archive is not None:
+        parse_guest_archive(zip_archive)
 
     with db_api.transaction() as connection:
 
@@ -104,32 +67,11 @@ def register_user(
             )
 
         # Handle archive zip file
-        if backup is not None:
-            rm_settings(
-                {"user_id": user["id"]},
-                connection=connection,
-            )
-
-            for key, value in backup["settings"].items():
-                set_setting(
-                    data={
-                        "user_id": user["id"],
-                        "key": key,
-                        "value_json": json.dumps(value, ensure_ascii=False),
-                    },
-                    connection=connection,
-                )
-
-            selection_csv_path = _store_selected_players_csv(
+        if zip_archive is not None:
+            store_guest_archive(
+                zip_archive,
+                user["id"],
                 account_data["username"],
-                pd.read_csv(BytesIO(backup["selection_csv"])),
-            )
-            set_setting(
-                data={
-                    "user_id": user["id"],
-                    "key": "selection_selected_players_csv_path_key",
-                    "value_json": json.dumps(selection_csv_path),
-                },
                 connection=connection,
             )
 
@@ -137,7 +79,23 @@ def register_user(
 
 
 def register_to_auction(user_id: int, auction_code: str):
-    
+    """Associate an existing user with the auction identified by its code.
+
+    Params
+    ----------
+    user_id : int
+        Identifier of the registered user.
+    auction_code : str
+        Plain six-character code identifying the auction.
+
+    Returns
+    -------
+    dict
+        Updated user with the selected auction identifier.
+    """
+    auction_code = auction_code.strip()
+    if not auction_code:
+        raise ValueError("Enter the auction code.")
     code_hash = hashlib.sha256(auction_code.encode("utf-8")).hexdigest()
     with db_api.transaction() as connection:
         auctions = get_auctions(
@@ -148,11 +106,15 @@ def register_to_auction(user_id: int, auction_code: str):
             raise ValueError("Invalid invitation or auction no longer open.")
         auction_id = auctions[0]["id"]
 
-        update_user(
+        user = update_user(
             user_id=user_id,
-            data={"current_auction_id": auction_id}
+            data={"current_auction_id": auction_id},
+            connection=connection,
         )
-        set_user_auction(
-            user_id=user_id,
-            auction_id=auction_id
-        )
+        if get_user_auction(user_id, auction_id, connection=connection) is None:
+            set_user_auction(
+                user_id=user_id,
+                auction_id=auction_id,
+                connection=connection,
+            )
+        return user

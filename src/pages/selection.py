@@ -8,8 +8,8 @@ from lib.streamlit_api.data_handler import (
     get_roles_dict,
     load_dataset,
     load_models,
-    load_env,
-    store_env,
+    load_persistent_state,
+    store_persistent_state,
 )
 from lib.streamlit_api.design_handler import (
     bottom_caption,
@@ -1181,8 +1181,13 @@ def set_visible_cols(df: pd.DataFrame, key: str, expander_key: str):
 
 fanta_players = load_dataset("data/csv/models_generated/predicted_fanta_players.csv")
 history_players = load_dataset("data/csv/notebooks_generated/serie_a_players_history.csv")
-loaded_env_values = load_env(path=".env")
-selection_keys_set = {key for key in loaded_env_values if key.startswith(f"{page_name}_")}
+loaded_persistent_values = load_persistent_state(
+    st.session_state["user_id_key"],
+    page_names=[page_name, "settings"],
+)
+selection_keys_set = {
+    key for key in loaded_persistent_values if key.startswith(f"{page_name}_")
+}
 models_packages_dict = load_models(target_features=features_to_predict_list)
 
 # Save the path to the csv file with selected players
@@ -1284,13 +1289,13 @@ for fanta_role, role_name in get_roles_dict().items():
 store_selected_players(fanta_players, st.session_state[selection_players_key])
 
 selection_keys_list = list(selection_keys_set)
-store_env(
-    data_dict={
+store_persistent_state(
+    st.session_state["user_id_key"],
+    {
         key: st.session_state[key]
         for key in selection_keys_list
         if key in st.session_state
     },
-    path=".env",
 )
 
 bottom_caption()

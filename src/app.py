@@ -36,6 +36,10 @@ if user is None:
     navigation.run()
     st.stop()
 
+st.session_state["user_id_key"] = user["id"]
+st.session_state["auction_id_key"] = user["current_auction_id"]
+st.session_state["username_key"] = user["username"]
+
 
 sidebar_navigation_size(font_size=1.28)
 

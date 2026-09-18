@@ -70,7 +70,7 @@ class BackendApiTests(unittest.TestCase):
             }
             self.assertTrue({
                 "users", "auctions", "users_auctions", "players",
-                "purchases", "settings",
+                "purchases", "persistent_state",
             }.issubset(tables))
             self.assertNotIn("players_selected", tables)
             self.assertTrue({"auction_lots", "bids"}.isdisjoint(tables))
@@ -82,6 +82,7 @@ class BackendApiTests(unittest.TestCase):
             self.assertTrue({
                 "auctions_by_host", "users_by_current_auction",
                 "users_auctions_by_auction", "purchases_by_user",
+                "persistent_state_by_user_page",
             }.issubset(indexes))
             self.assertNotIn("players_selected_by_player", indexes)
             self.assertEqual(connection.execute("PRAGMA journal_mode").fetchone()[0], "wal")
@@ -308,24 +309,28 @@ class BackendApiTests(unittest.TestCase):
             with self.subTest(operation=index), self.assertRaises(ValueError):
                 operation()
 
-    def test_settings_are_persisted(self):
-        """Store one typed setting per user and key."""
+    def test_state_values_are_persisted(self):
+        """Store one typed value per user, page and key."""
         fixture = self.make_auction("selection")
         key = "settings_A_budget_limit_widget_key"
-        setting_id = self.insert_row(
-            "settings", user_id=fixture["user_id"],
-            key=key, value_json="150",
+        self.insert_row(
+            "persistent_state", user_id=fixture["user_id"],
+            page_name="settings", key=key, value_json="150",
         )
         with self.assertRaises(sqlite3.IntegrityError):
             self.insert_row(
-                "settings", user_id=fixture["user_id"],
-                key=key, value_json="200",
+                "persistent_state", user_id=fixture["user_id"],
+                page_name="settings", key=key, value_json="200",
             )
         with self.assertRaises(sqlite3.IntegrityError):
             api.update(
-                "settings",
+                "persistent_state",
                 {"value_json": "not JSON"},
-                {"id": setting_id},
+                {
+                    "user_id": fixture["user_id"],
+                    "page_name": "settings",
+                    "key": key,
+                },
             )
 
     def test_transactions_commit_as_a_unit_and_roll_back_on_failure(self):
@@ -344,7 +349,7 @@ class BackendApiTests(unittest.TestCase):
         fixture = self.make_auction("removal")
         user_id = fixture["user_id"]
         self.insert_row(
-            "settings", user_id=user_id,
+            "persistent_state", user_id=user_id, page_name="settings",
             key="settings_A_budget_limit_widget_key", value_json="150",
         )
         purchase_id = self.insert_row(
@@ -356,7 +361,7 @@ class BackendApiTests(unittest.TestCase):
         self.assertEqual(api.remove("purchases", {"id": purchase_id}), 1)
         with self.assertRaises(sqlite3.IntegrityError):
             api.remove("users", {"id": user_id})
-        self.assertEqual(len(api.get("settings", {"user_id": user_id})), 1)
+        self.assertEqual(len(api.get("persistent_state", {"user_id": user_id})), 1)
 
     def test_failed_multirow_update_does_not_partially_modify_users(self):
         """Roll back every row when one update violates a uniqueness constraint."""

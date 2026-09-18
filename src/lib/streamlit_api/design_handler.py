@@ -4,7 +4,117 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from lib.utils import columns_to_user_view_dict, interest_colors_dict
+from lib.utils import (
+    columns_to_user_view_dict,
+    interest_colors_dict,
+    gen_auction_code
+)
+
+
+
+_AUCTION_CODE_COMPONENT = st.components.v2.component(
+    "auction_code_digits",
+    html="""
+    <div class="pin-container">
+        <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 1">
+        <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 2">
+        <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 3">
+        <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 4">
+        <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 5">
+        <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 6">
+    </div>
+    """,
+    css="""
+    .pin-container {
+        display: flex;
+        gap: var(--pin-gap);
+        justify-content: var(--pin-alignment);
+        margin-top: 10px;
+    }
+
+    .pin-input {
+        box-sizing: border-box;
+        width: var(--pin-width);
+        height: var(--pin-height);
+        text-align: center;
+        font-size: var(--pin-font-size);
+        font-weight: var(--pin-font-weight);
+        border: 1px solid var(--st-border-color);
+        border-radius: var(--st-button-radius);
+        background: var(--st-secondary-background-color);
+        color: var(--st-text-color);
+        outline: none;
+    }
+
+    .pin-input:focus {
+        border: 2px solid var(--st-primary-color);
+    }
+    """,
+    js="""
+    export default function (component) {
+        const { data, parentElement, setStateValue } = component
+        const container = parentElement.querySelector(".pin-container")
+        const inputs = Array.from(parentElement.querySelectorAll(".pin-input"))
+        if (!container || inputs.length !== 6) return
+
+        container.style.setProperty("--pin-alignment", data.containerAlignment)
+        container.style.setProperty("--pin-gap", `${data.pinGap}px`)
+        container.style.setProperty("--pin-width", `${data.pinWidth}px`)
+        container.style.setProperty("--pin-height", `${data.pinHeight}px`)
+        container.style.setProperty("--pin-font-size", `${data.fontSize}px`)
+        container.style.setProperty("--pin-font-weight", data.fontWeight)
+
+        const value = String(data.value ?? "").replace(/[^0-9]/g, "").slice(0, 6)
+        inputs.forEach((input, index) => {
+            const digit = value[index] ?? ""
+            if (input.value !== digit) input.value = digit
+            input.readOnly = data.readOnly
+            input.tabIndex = data.readOnly ? -1 : 0
+        })
+
+        if (data.readOnly) return
+
+        const updateValue = () => {
+            const code = inputs.map(input => input.value).join("")
+            if (code.length === 6) {
+                setStateValue("value", code)
+            } else if (data.value) {
+                setStateValue("value", null)
+            }
+        }
+
+        inputs.forEach((input, index) => {
+            input.oninput = () => {
+                input.value = input.value.replace(/[^0-9]/g, "").slice(0, 1)
+                if (input.value && index < inputs.length - 1) {
+                    inputs[index + 1].focus()
+                }
+                updateValue()
+            }
+
+            input.onkeydown = event => {
+                if (event.key === "Backspace" && !input.value && index > 0) {
+                    inputs[index - 1].focus()
+                }
+            }
+
+            input.onpaste = event => {
+                event.preventDefault()
+                const pasted = event.clipboardData
+                    .getData("text")
+                    .replace(/[^0-9]/g, "")
+                    .slice(0, inputs.length - index)
+
+                Array.from(pasted).forEach((digit, pastedIndex) => {
+                    inputs[index + pastedIndex].value = digit
+                })
+                inputs[Math.min(index + pasted.length, inputs.length - 1)].focus()
+                updateValue()
+            }
+        })
+    }
+    """,
+)
 
 
 def highlight_interest(interest) -> str:
@@ -160,6 +270,21 @@ def set_page_background(image_path: str | Path):
     )
 
 
+def set_color_background(color_name: str, color: str):
+    """Apply the shared dark background style to keyed card containers."""
+    return st.html(
+        f"""
+        <style>
+        [class*="st-key-{color_name}-card-"] {{
+            background-color: {color};
+            border-radius: 0.75rem;
+            padding: 1rem;
+        }}
+        </style>
+        """
+    )
+
+
 def set_dark_background():
     """Apply the shared dark background style to keyed card containers."""
     return st.html(
@@ -252,3 +377,79 @@ def toast_css_format(background_color="#47BEF1", border_color="#FFFFFF", border_
         </style>
         """
     )
+
+
+def show_code_generated(
+        container_alignment="center",
+        pin_gap=10,
+        pin_width=48,
+        pin_height=55,
+        font_size=28,
+        font_weight=600,
+        empty_code_enabled=False,
+        key="auction_generated_code_widget_key",
+    ) -> str | None:
+    """Display a generated six-digit auction code.
+
+    Returns
+    -------
+    str or None
+        Generated code, or ``None`` when the empty placeholder is shown.
+    """
+    auction_code = None if empty_code_enabled else gen_auction_code()
+    _AUCTION_CODE_COMPONENT(
+        key=key,
+        data={
+            "value": auction_code or "",
+            "readOnly": True,
+            "containerAlignment": container_alignment,
+            "pinGap": pin_gap,
+            "pinWidth": pin_width,
+            "pinHeight": pin_height,
+            "fontSize": font_size,
+            "fontWeight": font_weight,
+        },
+    )
+    return auction_code
+
+
+def show_code_digits(
+        container_alignment="center",
+        pin_gap=10,
+        pin_width=48,
+        pin_height=55,
+        font_size=28,
+        font_weight=600,
+        key="auction_code_input_widget_key",
+    ) -> str | None:
+    """Display six numeric inputs and return a complete auction code.
+
+    Returns
+    -------
+    str or None
+        Six-digit code, or ``None`` until every input has been filled.
+    """
+    component_state = st.session_state.get(key, {})
+    current_value = getattr(component_state, "value", None)
+    if isinstance(component_state, dict):
+        current_value = component_state.get("value")
+
+    result = _AUCTION_CODE_COMPONENT(
+        key=key,
+        data={
+            "value": current_value or "",
+            "readOnly": False,
+            "containerAlignment": container_alignment,
+            "pinGap": pin_gap,
+            "pinWidth": pin_width,
+            "pinHeight": pin_height,
+            "fontSize": font_size,
+            "fontWeight": font_weight,
+        },
+        default={"value": None},
+        on_value_change=lambda: None,
+    )
+    auction_code = result.value
+    if isinstance(auction_code, str) and len(auction_code) == 6:
+        return auction_code
+    return None

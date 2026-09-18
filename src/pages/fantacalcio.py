@@ -11,8 +11,8 @@ from lib.streamlit_api.data_handler import (
     load_dataset,
     load_models,
     get_roles_dict,
-    load_env,
-    store_env,
+    load_persistent_state,
+    store_persistent_state,
     restore_bought_players,
     has_full_team,
     save_bought_players,
@@ -484,9 +484,9 @@ def reset_fanta_manager_boughts(selection_key: str) -> None:
         if str(key).startswith(f"{page_name}_purchase_editor_"):
             del st.session_state[key]
 
-    store_env(
-        data_dict={f"{page_name}_bought_players_df_key": bought_players_df},
-        path=".env",
+    store_persistent_state(
+        st.session_state["user_id_key"],
+        {f"{page_name}_bought_players_df_key": bought_players_df},
     )
     st.session_state[selection_key] = []
     st.session_state[reset_bought_message_key] = "Purchases reset for: {', '.join(selected_managers)}"
@@ -792,14 +792,17 @@ def remove_bought_player(player: dict) -> None:
 # =============================================================================
 
 # Load stored persistent values before initializing Session State defaults
-loaded_env_values = load_env(path=".env")
+loaded_persistent_values = load_persistent_state(
+    st.session_state["user_id_key"],
+    page_names=[page_name, "settings"],
+)
 models_packages_dict = load_models(target_features=features_to_predict_list)
 feature_explanations = load_dataset("data/csv/models_generated/features_explainability.csv")
 
 # Set of keys whom value has to be stored (for next loaded)
 fantacalcio_keys_set = {
     key
-    for key in loaded_env_values
+    for key in loaded_persistent_values
     if key.startswith(f"{page_name}_")
 }
 
@@ -968,9 +971,9 @@ with managers_col:
 fantacalcio_bought_players_df_key = f"{page_name}_bought_players_df_key"
 fantacalcio_keys_set.add(fantacalcio_bought_players_df_key)
 fantacalcio_keys_list = list(fantacalcio_keys_set)
-store_env(
-    data_dict={key: st.session_state[key] for key in fantacalcio_keys_list if key in st.session_state},
-    path=".env",
+store_persistent_state(
+    st.session_state["user_id_key"],
+    {key: st.session_state[key] for key in fantacalcio_keys_list if key in st.session_state},
 )
 
 

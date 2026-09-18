@@ -47,7 +47,7 @@ def save_data():
     st.session_state["user_id_key"] = user["id"]
     st.session_state["auction_id_key"] = user["current_auction_id"]
     st.session_state["settings_my_manager_key"] = user["username"]
-    st.session_state["settings_managers_key"] = user["username"]
+    st.session_state["settings_managers_key"] = [user["username"]]
     st.session_state[saved_key] = True
     return
 

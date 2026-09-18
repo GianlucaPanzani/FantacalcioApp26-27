@@ -21,9 +21,8 @@ afterwards when a clean database is required.
 
 ## Tables
 
-Every entity table has an integer `id`. The `users_auctions` association instead
-uses its two foreign keys as a composite primary key. Usernames, team names and
-CSV IDs are not foreign keys.
+Entity tables have an integer `id`. Association and key/value tables use composite
+primary keys instead. Usernames, team names and CSV IDs are not foreign keys.
 
 | Table | Data and important relationships |
 | --- | --- |
@@ -32,7 +31,7 @@ CSV IDs are not foreign keys.
 | `users_auctions` | Many-to-many membership between users and every auction they have joined. |
 | `players` | Snapshot of the catalog for an auction, including name, team, classic role and Mantra role. `source_id` identifies the original CSV `Id`/`id`; season is inherited from the auction. |
 | `purchases` | Final user, player and positive price. A player has one owner per auction; temporary offers are not persisted. |
-| `settings` | Personal user settings: per-role spending targets, graphical options and filters. `key` stores the setting name; `value_json` preserves its type. |
+| `persistent_state` | Selected persistent state from every page, partitioned by user and page. Transient Streamlit state is not stored. |
 
 ## Table metadata
 
@@ -99,9 +98,9 @@ and timestamps are returned as strings.
   - `price`: `int`
   - `purchased_at`: `str`
 
-- `settings`:
-  - `id`: `int`
+- `persistent_state`:
   - `user_id`: `int`
+  - `page_name`: `str`
   - `key`: `str`
   - `value_json`: `str`
   - `updated_at`: `str`
@@ -169,9 +168,9 @@ user_id = db_api.insert(
 
 # Tables form an explicit consecutive chain through declared foreign keys.
 rows = db_api.join(
-    ["users", "settings"],
+    ["users", "persistent_state"],
     {"users.id": 1},
-    ["users.username", "settings.key", "settings.value_json"],
+    ["users.username", "persistent_state.key", "persistent_state.value_json"],
 )
 ```
 
@@ -181,7 +180,7 @@ ambiguous names such as `id` must use `table.column`. Projected dictionaries kee
 the names supplied in `proj` as their keys.
 
 Values are Python strings, integers, finite floats, bytes, booleans or `None`.
-SQLite stores booleans as `0`/`1`. Serialize personal settings using
+SQLite stores booleans as `0`/`1`. Serialize persistent values using
 `json.dumps(value)` and decode `value_json` with `json.loads()` after reading.
 Invalid identifiers, empty mutation filters, malformed dictionaries and nonfinite
 floats raise `ValueError`. SQLite reports unsupported value types and schema
@@ -235,10 +234,10 @@ is refreshed automatically by `update()` unless explicitly supplied.
 
 Historical references use `ON DELETE RESTRICT`. For example, removing a user
 linked to a purchase raises an integrity error. Removing an otherwise unreferenced
-user also removes personal settings. Purchase undo behavior belongs in the
+user also removes their persistent state. Purchase undo behavior belongs in the
 auction service.
 
-The current schema is version 7 (`PRAGMA user_version`). `create_db()` can initialize
+The current schema is version 8 (`PRAGMA user_version`). `create_db()` can initialize
 it repeatedly, but does not migrate existing columns. Future schema changes need
 an explicit migration. Account and auction-participant lookups are connected to the
 application entry point. Registration writes are implemented; CSV imports and
@@ -247,10 +246,12 @@ auction actions still need their service implementations.
 ## Table-specific modules and Google login
 
 Each active table has a dedicated module: `users_db`, `auctions_db`,
-`users_auctions_db`, `players_db`, `purchases_db` and `settings_db`.
+`users_auctions_db`, `players_db`, `purchases_db` and `persistent_state_db`.
 Every module exposes a singular getter by ID, a plural getter with optional filters,
 a `set_*` insert accepting one data dictionary and an `update_*` accepting the row
-ID plus a data dictionary. The association module is the exception: it exposes
+ID plus a data dictionary. Composite-key modules are exceptions:
+`persistent_state_db` addresses rows with `(user_id, page_name, key)`, while the
+association module exposes
 `get_user_auction(user_id, auction_id, connection)` and
 `set_user_auction(user_id, auction_id, connection)` because its composite primary
 key is the pair of foreign keys.
@@ -259,27 +260,25 @@ Use `users_db.get_users({"auth_issuer": issuer, "auth_subject": subject})` to
 look up an authenticated account. The chosen username and team name are separate
 from the identity returned by Google.
 
-`services.register_to_auction(...)` locates users through their OIDC identity,
-updates their profile when the account already exists, stores the current auction
-in `users.current_auction_id` and inserts the persistent membership in
-`users_auctions` when it is not already present.
+`services.register_user(...)` locates users through their OIDC identity and
+creates or updates their profile. `services.register_to_auction(...)` stores the
+current auction in `users.current_auction_id` and inserts the persistent membership
+in `users_auctions` when it is not already present.
 Identity claims must come from the verified `st.user`, not editable form inputs.
 
-`register_to_auction(...)` checks the invitation and performs all database writes
-in one transaction, so a constraint failure also rolls back account creation or
-renaming.
+`register_to_auction(...)` checks the auction code and performs its database writes
+in one transaction.
 Auctions in `lobby` or `running` accept registrations; completed auctions do not.
 The account is identified by provider and subject, never by a submitted username.
 Repeated submissions reuse the same user record.
 
-The registration page currently stores the authenticated user and team through
-`users_db.set_user()`. The invitation flow can call `register_to_auction(...)`
-when it is connected to the auction lobby. Text fields have widget keys, so the
-callback reads the values just submitted from Session State. Database writes do
-not run on ordinary renders or when the Google login button is clicked. The ZIP
-uploader is visible, but its file is not processed or persisted yet; the
-registration helper's optional `zip_archive` argument is reserved for that later
-implementation.
+The registration page stores the authenticated user and optionally restores the
+uploaded ZIP into `persistent_state` and the user's selected-player CSV. Page
+scripts load persisted values before initializing widget defaults and only update
+rows whose JSON value changed. ZIP archives contain `persistent_state.json`, a
+manifest and the selected-player CSV; application state is no longer read from or
+written to the local `.env` file. Archives produced by the previous `.env`-based
+format are intentionally unsupported.
 
 The local `src/.streamlit/secrets.toml` is ignored by Git. A shareable template is
 provided at `src/.streamlit/secrets.toml.example`. The local file has a generated

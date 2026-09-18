@@ -4,7 +4,7 @@ import pandas as pd
 from lib.streamlit_api.data_handler import (
     load_dataset,
     load_models,
-    store_env
+    store_config
 )
 from lib.xgboost_predictor import (
     build_temporal_player_input,
@@ -117,7 +117,7 @@ def main():
             predicted_fanta_players.at[player_index, f"pred_{feature}"] = float(prediction)
 
     # Store env and dataset
-    store_env(
+    store_config(
         data_dict={"predicted_fanta_players_df_key": predicted_fanta_players},
         path=".env",
     )

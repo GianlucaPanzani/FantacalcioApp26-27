@@ -5,9 +5,9 @@ from lib.streamlit_api.data_handler import (
     sync_filter,
     apply_filters,
     load_dataset,
-    load_env,
+    load_persistent_state,
     load_models,
-    store_env,
+    store_persistent_state,
     get_roles_dict,
 )
 from lib.streamlit_api.design_handler import (
@@ -285,10 +285,13 @@ def create_dataframe(statistics_table, displayed_table):
 # =============================== SCRIPT ======================================
 # =============================================================================
 
-loaded_env_values = load_env(path=".env")
+loaded_persistent_values = load_persistent_state(
+    st.session_state["user_id_key"],
+    page_names=[page_name, "settings"],
+)
 statistics_keys_set = {
     key
-    for key in loaded_env_values
+    for key in loaded_persistent_values
     if key.startswith(f"{page_name}_")
 }
 history_players = load_dataset("data/csv/notebooks_generated/serie_a_players_history.csv")
@@ -393,9 +396,9 @@ for selected_player, col in zip(selected_players, cols):
 #create_dataframe(statistics_table, displayed_table)
 
 statistics_keys_list = list(statistics_keys_set)
-store_env(
-    data_dict={key: st.session_state[key] for key in statistics_keys_list if key in st.session_state},
-    path=".env",
+store_persistent_state(
+    st.session_state["user_id_key"],
+    {key: st.session_state[key] for key in statistics_keys_list if key in st.session_state},
 )
 
 bottom_caption()

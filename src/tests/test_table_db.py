@@ -25,11 +25,11 @@ from src.backend.purchases_db import (
     set_purchase,
     update_purchase,
 )
-from src.backend.settings_db import (
-    get_setting,
-    get_settings,
-    set_setting,
-    update_setting,
+from src.backend.persistent_state_db import (
+    get_persistent_state,
+    get_persistent_states,
+    set_persistent_state,
+    update_persistent_state,
 )
 from src.backend.users_db import set_user, update_user
 from src.backend.users_auctions_db import get_user_auction, set_user_auction
@@ -74,8 +74,9 @@ class TableDatabaseModulesTests(unittest.TestCase):
             "user_id": user["id"],
             "price": 10,
         })
-        setting = set_setting({
+        state = set_persistent_state({
             "user_id": user["id"],
+            "page_name": "settings",
             "key": "example",
             "value_json": "true",
         })
@@ -111,13 +112,18 @@ class TableDatabaseModulesTests(unittest.TestCase):
             15,
         )
 
-        self.assertEqual(get_setting(setting["id"]), setting)
         self.assertEqual(
-            get_settings({"user_id": user["id"]}),
-            [setting],
+            get_persistent_state(user["id"], "settings", "example"),
+            state,
         )
         self.assertEqual(
-            update_setting(setting["id"], {"value_json": "false"})[
+            get_persistent_states({"user_id": user["id"]}),
+            [state],
+        )
+        self.assertEqual(
+            update_persistent_state(
+                user["id"], "settings", "example", {"value_json": "false"}
+            )[
                 "value_json"
             ],
             "false",

@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from lib.data_handler import (
     export_guest_state,
-    restore_guest_state
 )
 from lib.utils import auction_settings, get_current_season, get_current_date
 from lib.streamlit_api.data_handler import (
@@ -10,8 +9,8 @@ from lib.streamlit_api.data_handler import (
     get_roles_dict,
     add_graphical_columns,
     load_dataset,
-    load_env,
-    store_env,
+    load_persistent_state,
+    store_persistent_state,
     restore_personal_backup
 )
 from lib.streamlit_api.design_handler import (
@@ -47,10 +46,13 @@ with cols[1]:
     st.title("Settings")
 st.caption("Configure Fanta Managers, squad limits, budgets, auction rules, bonus and penalty points, and player charts.")
 
-loaded_env_values = load_env(path=".env")
+loaded_persistent_values = load_persistent_state(
+    st.session_state["user_id_key"],
+    page_names=[page_name],
+)
 settings_keys_set = {
     key
-    for key in loaded_env_values
+    for key in loaded_persistent_values
     if key.startswith(f"{page_name}_")
 }
 
@@ -529,7 +531,12 @@ with st.container(border=True, key=f"dark-card-{page_name}_backup_key"):
                 width="stretch",
                 disabled=not restore_confirmed,
                 on_click=restore_personal_backup,
-                args=(backup_upload_key, backup_result_key),
+                args=(
+                    backup_upload_key,
+                    backup_result_key,
+                    st.session_state["user_id_key"],
+                    st.session_state["username_key"],
+                ),
             )
 
             if backup_stored:
@@ -545,7 +552,15 @@ with st.container(border=True, key=f"dark-card-{page_name}_backup_key"):
 
         download_disabled = False
         try:
-            backup_archive = export_guest_state()
+            store_persistent_state(
+                st.session_state["user_id_key"],
+                {
+                    key: st.session_state[key]
+                    for key in settings_keys_set
+                    if key in st.session_state
+                },
+            )
+            backup_archive = export_guest_state(st.session_state["user_id_key"])
         except (ValueError, OSError) as error:
             backup_archive = None
             st.error(f"Unable to create the backup: {error}")
@@ -580,9 +595,9 @@ st.session_state[fantacalcio_bought_players_df_key] = bought_players_df
 
 # Store only persistent Session State values
 settings_keys_list = list(settings_keys_set)
-store_env(
-    data_dict={key: st.session_state[key] for key in settings_keys_list if key in st.session_state},
-    path=".env"
+store_persistent_state(
+    st.session_state["user_id_key"],
+    {key: st.session_state[key] for key in settings_keys_list if key in st.session_state},
 )
 
 bottom_caption()
