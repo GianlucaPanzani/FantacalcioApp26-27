@@ -1166,14 +1166,9 @@ def create_auction_preset_view(page_name: str,):
                 key=create_auction_widget_key,
             )
             if create_auction:
-                auction_code = show_code_generated(
-                    key=generated_code_widget_key,
-                )
+                auction_code = show_code_generated(key=generated_code_widget_key)
             else:
-                show_code_generated(
-                    empty_code_enabled=True,
-                    key=generated_code_widget_key,
-                )
+                show_code_generated(empty_code_enabled=True, key=generated_code_widget_key,)
 
     return
 

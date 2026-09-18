@@ -12,109 +12,150 @@ from lib.utils import (
 
 
 
-_AUCTION_CODE_COMPONENT = st.components.v2.component(
-    "auction_code_digits",
-    html="""
-    <div class="pin-container">
-        <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 1">
-        <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 2">
-        <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 3">
-        <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 4">
-        <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 5">
-        <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 6">
-    </div>
-    """,
-    css="""
-    .pin-container {
-        display: flex;
-        gap: var(--pin-gap);
-        justify-content: var(--pin-alignment);
-        margin-top: 10px;
-    }
-
-    .pin-input {
-        box-sizing: border-box;
-        width: var(--pin-width);
-        height: var(--pin-height);
-        text-align: center;
-        font-size: var(--pin-font-size);
-        font-weight: var(--pin-font-weight);
-        border: 1px solid var(--st-border-color);
-        border-radius: var(--st-button-radius);
-        background: var(--st-secondary-background-color);
-        color: var(--st-text-color);
-        outline: none;
-    }
-
-    .pin-input:focus {
-        border: 2px solid var(--st-primary-color);
-    }
-    """,
-    js="""
-    export default function (component) {
-        const { data, parentElement, setStateValue } = component
-        const container = parentElement.querySelector(".pin-container")
-        const inputs = Array.from(parentElement.querySelectorAll(".pin-input"))
-        if (!container || inputs.length !== 6) return
-
-        container.style.setProperty("--pin-alignment", data.containerAlignment)
-        container.style.setProperty("--pin-gap", `${data.pinGap}px`)
-        container.style.setProperty("--pin-width", `${data.pinWidth}px`)
-        container.style.setProperty("--pin-height", `${data.pinHeight}px`)
-        container.style.setProperty("--pin-font-size", `${data.fontSize}px`)
-        container.style.setProperty("--pin-font-weight", data.fontWeight)
-
-        const value = String(data.value ?? "").replace(/[^0-9]/g, "").slice(0, 6)
-        inputs.forEach((input, index) => {
-            const digit = value[index] ?? ""
-            if (input.value !== digit) input.value = digit
-            input.readOnly = data.readOnly
-            input.tabIndex = data.readOnly ? -1 : 0
-        })
-
-        if (data.readOnly) return
-
-        const updateValue = () => {
-            const code = inputs.map(input => input.value).join("")
-            if (code.length === 6) {
-                setStateValue("value", code)
-            } else if (data.value) {
-                setStateValue("value", null)
-            }
+def get_auction_code_component():
+    return st.components.v2.component(
+        "auction_code_digits",
+        html="""
+        <div class="pin-container">
+            <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 1">
+            <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 2">
+            <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 3">
+            <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 4">
+            <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 5">
+            <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 6">
+            <button class="copy-code-button" type="button" aria-label="Copy auction code">
+                ⧉
+            </button>
+        </div>
+        """,
+        css="""
+        .pin-container {
+            display: flex;
+            gap: var(--pin-gap);
+            justify-content: var(--pin-alignment);
+            margin-top: 10px;
         }
 
-        inputs.forEach((input, index) => {
-            input.oninput = () => {
-                input.value = input.value.replace(/[^0-9]/g, "").slice(0, 1)
-                if (input.value && index < inputs.length - 1) {
-                    inputs[index + 1].focus()
+        .pin-input {
+            box-sizing: border-box;
+            width: var(--pin-width);
+            height: var(--pin-height);
+            text-align: center;
+            font-size: var(--pin-font-size);
+            font-weight: var(--pin-font-weight);
+            border: 1px solid var(--st-border-color);
+            border-radius: var(--st-button-radius);
+            background: var(--st-secondary-background-color);
+            color: var(--st-text-color);
+            outline: none;
+        }
+
+        .pin-input:focus {
+            border: 2px solid var(--st-primary-color);
+        }
+
+        .copy-code-button {
+            box-sizing: border-box;
+            height: var(--pin-height);
+            padding: 0 0.75rem;
+            border: 1px solid var(--st-primary-color);
+            border-radius: var(--st-button-radius);
+            background: var(--st-primary-color);
+            color: white;
+            font-size: var(--pin-font-size);
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .copy-code-button:hover {
+            filter: brightness(1.08);
+        }
+
+        .copy-code-button:focus-visible {
+            outline: 2px solid var(--st-text-color);
+            outline-offset: 2px;
+        }
+        """,
+        js="""
+        export default function (component) {
+            const { data, parentElement, setStateValue } = component
+            const container = parentElement.querySelector(".pin-container")
+            const inputs = Array.from(parentElement.querySelectorAll(".pin-input"))
+            const copyButton = parentElement.querySelector(".copy-code-button")
+            if (!container || inputs.length !== 6 || !copyButton) return
+
+            container.style.setProperty("--pin-alignment", data.containerAlignment)
+            container.style.setProperty("--pin-gap", `${data.pinGap}px`)
+            container.style.setProperty("--pin-width", `${data.pinWidth}px`)
+            container.style.setProperty("--pin-height", `${data.pinHeight}px`)
+            container.style.setProperty("--pin-font-size", `${data.fontSize}px`)
+            container.style.setProperty("--pin-font-weight", data.fontWeight)
+
+            const value = String(data.value ?? "").replace(/[^0-9]/g, "").slice(0, 6)
+            inputs.forEach((input, index) => {
+                const digit = value[index] ?? ""
+                if (input.value !== digit) input.value = digit
+                input.readOnly = data.readOnly
+                input.tabIndex = data.readOnly ? -1 : 0
+            })
+
+            copyButton.hidden = !data.readOnly || value.length !== 6
+            copyButton.textContent = "⧉"
+            copyButton.onclick = async () => {
+                try {
+                    await navigator.clipboard.writeText(value)
+                    copyButton.textContent = "✓"
+                    setTimeout(() => {
+                        copyButton.textContent = "⧉"
+                    }, 3000)
+                } catch {
+                    copyButton.textContent = "Copy failed"
                 }
-                updateValue()
             }
 
-            input.onkeydown = event => {
-                if (event.key === "Backspace" && !input.value && index > 0) {
-                    inputs[index - 1].focus()
+            if (data.readOnly) return
+
+            const updateValue = () => {
+                const code = inputs.map(input => input.value).join("")
+                if (code.length === 6) {
+                    setStateValue("value", code)
+                } else if (data.value) {
+                    setStateValue("value", null)
                 }
             }
 
-            input.onpaste = event => {
-                event.preventDefault()
-                const pasted = event.clipboardData
-                    .getData("text")
-                    .replace(/[^0-9]/g, "")
-                    .slice(0, inputs.length - index)
+            inputs.forEach((input, index) => {
+                input.oninput = () => {
+                    input.value = input.value.replace(/[^0-9]/g, "").slice(0, 1)
+                    if (input.value && index < inputs.length - 1) {
+                        inputs[index + 1].focus()
+                    }
+                    updateValue()
+                }
 
-                Array.from(pasted).forEach((digit, pastedIndex) => {
-                    inputs[index + pastedIndex].value = digit
-                })
-                inputs[Math.min(index + pasted.length, inputs.length - 1)].focus()
-                updateValue()
-            }
-        })
-    }
-    """,
-)
+                input.onkeydown = event => {
+                    if (event.key === "Backspace" && !input.value && index > 0) {
+                        inputs[index - 1].focus()
+                    }
+                }
+
+                input.onpaste = event => {
+                    event.preventDefault()
+                    const pasted = event.clipboardData
+                        .getData("text")
+                        .replace(/[^0-9]/g, "")
+                        .slice(0, inputs.length - index)
+
+                    Array.from(pasted).forEach((digit, pastedIndex) => {
+                        inputs[index + pastedIndex].value = digit
+                    })
+                    inputs[Math.min(index + pasted.length, inputs.length - 1)].focus()
+                    updateValue()
+                }
+            })
+        }
+        """,
+    )
 
 
 def highlight_interest(interest) -> str:
@@ -381,10 +422,10 @@ def toast_css_format(background_color="#47BEF1", border_color="#FFFFFF", border_
 
 def show_code_generated(
         container_alignment="center",
-        pin_gap=10,
-        pin_width=48,
-        pin_height=55,
-        font_size=28,
+        pin_gap=8,
+        pin_width=44,
+        pin_height=50,
+        font_size=22,
         font_weight=600,
         empty_code_enabled=False,
         key="auction_generated_code_widget_key",
@@ -397,7 +438,8 @@ def show_code_generated(
         Generated code, or ``None`` when the empty placeholder is shown.
     """
     auction_code = None if empty_code_enabled else gen_auction_code()
-    _AUCTION_CODE_COMPONENT(
+    auction_code_component = get_auction_code_component()
+    auction_code_component(
         key=key,
         data={
             "value": auction_code or "",
@@ -415,10 +457,10 @@ def show_code_generated(
 
 def show_code_digits(
         container_alignment="center",
-        pin_gap=10,
-        pin_width=48,
-        pin_height=55,
-        font_size=28,
+        pin_gap=8,
+        pin_width=44,
+        pin_height=50,
+        font_size=22,
         font_weight=600,
         key="auction_code_input_widget_key",
     ) -> str | None:
@@ -434,7 +476,8 @@ def show_code_digits(
     if isinstance(component_state, dict):
         current_value = component_state.get("value")
 
-    result = _AUCTION_CODE_COMPONENT(
+    auction_code_component = get_auction_code_component()
+    result = auction_code_component(
         key=key,
         data={
             "value": current_value or "",
