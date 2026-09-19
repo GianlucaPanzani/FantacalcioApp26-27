@@ -237,7 +237,7 @@ linked to a purchase raises an integrity error. Removing an otherwise unreferenc
 user also removes their persistent state. Purchase undo behavior belongs in the
 auction service.
 
-The current schema is version 8 (`PRAGMA user_version`). `create_db()` can initialize
+The current schema is version 9 (`PRAGMA user_version`). `create_db()` can initialize
 it repeatedly, but does not migrate existing columns. Future schema changes need
 an explicit migration. Account and auction-participant lookups are connected to the
 application entry point. Registration writes are implemented; CSV imports and

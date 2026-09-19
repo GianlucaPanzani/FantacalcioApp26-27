@@ -15,10 +15,14 @@ from lib.utils import (
 
 def get_auction_code_component(copy_icon_size=32, copy_margin_left=10):
     copy_icon_url = get_icon("copy").removeprefix("![AI](").removesuffix(")")
+    refresh_icon_url = get_icon("refresh").removeprefix("![AI](").removesuffix(")")
     return st.components.v2.component(
         "auction_code_digits",
         html=f"""
         <div class="pin-container">
+            <button class="refresh-code-button" type="button" aria-label="Generate a new auction code">
+                <img class="refresh-code-icon" src="{refresh_icon_url}" alt="">
+            </button>
             <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 1">
             <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 2">
             <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 3">
@@ -36,12 +40,13 @@ def get_auction_code_component(copy_icon_size=32, copy_margin_left=10):
             display: flex;
             gap: var(--pin-gap);
             justify-content: var(--pin-alignment);
-            margin-top: 10px;
+            margin-top: 8px;
+            margin-bottom: 8px;
         }}
 
         .pin-input {{
             box-sizing: border-box;
-            width: var(--pin-width);
+            width: var(--pin-height);
             height: var(--pin-height);
             text-align: center;
             font-size: var(--pin-font-size);
@@ -57,7 +62,8 @@ def get_auction_code_component(copy_icon_size=32, copy_margin_left=10):
             border: 2px solid var(--st-primary-color);
         }}
 
-        .copy-code-button {{
+        .copy-code-button,
+        .refresh-code-button {{
             box-sizing: border-box;
             flex: 0 0 var(--pin-height);
             width: var(--pin-height);
@@ -66,7 +72,7 @@ def get_auction_code_component(copy_icon_size=32, copy_margin_left=10):
             align-items: center;
             justify-content: center;
             padding: 5px;
-            margin-left: {copy_margin_left}px;
+            margin: 0;
             border: 1px solid var(--st-primary-color);
             border-radius: var(--st-button-radius);
             background: var(--st-primary-color);
@@ -76,11 +82,21 @@ def get_auction_code_component(copy_icon_size=32, copy_margin_left=10):
             cursor: pointer;
         }}
 
-        .copy-code-button[hidden] {{
+        .refresh-code-button {{
+            margin-right: {copy_margin_left}px;
+        }}
+
+        .copy-code-button {{
+            margin-left: {copy_margin_left}px;
+        }}
+
+        .copy-code-button[hidden],
+        .refresh-code-button[hidden] {{
             display: none;
         }}
 
-        .copy-code-icon {{
+        .copy-code-icon,
+        .refresh-code-icon {{
             width: {copy_icon_size}px;
             height: {copy_icon_size}px;
             margin: auto;
@@ -95,24 +111,27 @@ def get_auction_code_component(copy_icon_size=32, copy_margin_left=10):
             display: none;
         }}
 
-        .copy-code-button:hover {{
+        .copy-code-button:hover,
+        .refresh-code-button:hover {{
             filter: brightness(1.08);
         }}
 
-        .copy-code-button:focus-visible {{
+        .copy-code-button:focus-visible,
+        .refresh-code-button:focus-visible {{
             outline: 2px solid var(--st-text-color);
             outline-offset: 2px;
         }}
         """,
         js="""
         export default function (component) {
-            const { data, parentElement, setStateValue } = component
+            const { data, parentElement, setStateValue, setTriggerValue } = component
             const container = parentElement.querySelector(".pin-container")
             const inputs = Array.from(parentElement.querySelectorAll(".pin-input"))
             const copyButton = parentElement.querySelector(".copy-code-button")
             const copyIcon = parentElement.querySelector(".copy-code-icon")
             const copyStatus = parentElement.querySelector(".copy-code-status")
-            if (!container || inputs.length !== 6 || !copyButton || !copyIcon || !copyStatus) return
+            const refreshButton = parentElement.querySelector(".refresh-code-button")
+            if (!container || inputs.length !== 6 || !copyButton || !copyIcon || !copyStatus || !refreshButton) return
 
             container.style.setProperty("--pin-alignment", data.containerAlignment)
             container.style.setProperty("--pin-gap", `${data.pinGap}px`)
@@ -130,6 +149,7 @@ def get_auction_code_component(copy_icon_size=32, copy_margin_left=10):
             })
 
             copyButton.hidden = !data.readOnly || value.length !== 6 || !data.copyEnabled
+            refreshButton.hidden = !data.refreshEnabled
             copyIcon.hidden = false
             copyStatus.hidden = true
             copyButton.onclick = async () => {
@@ -144,6 +164,10 @@ def get_auction_code_component(copy_icon_size=32, copy_margin_left=10):
                 } catch {
                     copyButton.title = "Copy failed"
                 }
+            }
+
+            refreshButton.onclick = () => {
+                setTriggerValue("refresh", true)
             }
 
             if (data.readOnly) return
@@ -448,7 +472,11 @@ def show_code_generated(
         copy_icon_size=32,
         copy_margin_left=10,
         copy_enabled=True,
+        refresh_enabled=False,
         empty_code_enabled=False,
+        auction_code=None,
+        auction_code_hash=None,
+        on_refresh_change=None,
         key="auction_generated_code_widget_key",
     ) -> tuple:
     """Display a generated six-digit auction code.
@@ -458,7 +486,12 @@ def show_code_generated(
     str or None
         Generated code, or ``None`` when the empty placeholder is shown.
     """
-    auction_code, auction_code_hash = generate_unique_auction_code()
+    if empty_code_enabled:
+        auction_code = ""
+        auction_code_hash = ""
+    elif auction_code is None or auction_code_hash is None:
+        auction_code, auction_code_hash = generate_unique_auction_code()
+
     auction_code_component = get_auction_code_component(copy_icon_size, copy_margin_left)
     auction_code_component(
         data={
@@ -471,10 +504,12 @@ def show_code_generated(
             "fontSize": font_size,
             "fontWeight": font_weight,
             "copyEnabled": copy_enabled,
+            "refreshEnabled": refresh_enabled,
         },
         key=key,
+        on_refresh_change=on_refresh_change,
     )
-    return auction_code, auction_code_hash
+    return auction_code or None, auction_code_hash or None
 
 
 def show_code_digits(
@@ -513,6 +548,7 @@ def show_code_digits(
             "fontSize": font_size,
             "fontWeight": font_weight,
             "copyEnabled": copy_enabled,
+            "refreshEnabled": False,
         },
         key=key,
         default={"value": None},

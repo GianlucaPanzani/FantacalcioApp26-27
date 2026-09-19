@@ -123,7 +123,7 @@ class BackendApiTests(unittest.TestCase):
             ("defender_modifier_enabled", 2), ("status", "unknown"),
             ("player_extraction_order", "manual"),
             ("player_extraction_scope", "unknown"),
-            ("role_extraction_order", "alphabetic_order"),
+            ("role_extraction_order", "alphabetic"),
         ):
             with self.subTest(column=column), self.assertRaises(sqlite3.IntegrityError):
                 api.update(

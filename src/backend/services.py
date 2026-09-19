@@ -120,24 +120,56 @@ def register_to_auction(user_id: int, auction_code: str):
         return user
 
 
-def create_auction(user_id: int, auction_code_hash: str | None):
-    if auction_code_hash is None:
-        return
+def create_auction(user_id: int, data: dict) -> dict:
+    """Create an auction and associate it with its host.
 
-    # Check if the user exists
-    user = get_user(
-        user_id=user_id,
-        proj=["id"]
-    )
-    if user is None:
-        raise Exception(f"User ID {user_id} doesn't exist.")
-    
-    # Create the auction associated to that user
-    auction_data = {}
-    # TODO: create data to be inserted in the auctions table
-    auction = set_auction(data=auction_data)
-    set_user_auction(
-        user_id=user_id,
-        auction_id=auction["id"]
-    )
-    return
+    Params
+    ----------
+    user_id : int
+        Identifier of the user creating the auction.
+    data : dict
+        Auction metadata and settings to store.
+
+    Returns
+    -------
+    dict
+        Newly created auction row.
+    """
+    if not isinstance(data, dict):
+        raise ValueError("Auction data must be provided as a dictionary.")
+
+    with db_api.transaction() as connection:
+        user = get_user(
+            user_id=user_id,
+            proj=["id"],
+            connection=connection,
+        )
+        if user is None:
+            raise ValueError(f"User ID {user_id} does not exist.")
+
+        auction_data = dict(data)
+        auction_data["host_user_id"] = user_id
+        auction_data["status"] = "lobby"
+
+        auction_code_hash = auction_data.get("auction_code_hash")
+        if not auction_code_hash:
+            raise ValueError("The auction code hash is required.")
+        if get_auctions(
+            filters={"auction_code_hash": auction_code_hash},
+            proj=["id"],
+            connection=connection,
+        ):
+            raise ValueError("The auction code is already in use.")
+
+        auction = set_auction(data=auction_data, connection=connection)
+        set_user_auction(
+            user_id=user_id,
+            auction_id=auction["id"],
+            connection=connection,
+        )
+        update_user(
+            user_id=user_id,
+            data={"current_auction_id": auction["id"]},
+            connection=connection,
+        )
+        return auction

@@ -90,9 +90,9 @@ class TableDatabaseModulesTests(unittest.TestCase):
         self.assertEqual(
             update_auction(
                 auction["id"],
-                {"player_extraction_order": "alphabetic_order"},
+                {"player_extraction_order": "alphabetic"},
             )["player_extraction_order"],
-            "alphabetic_order",
+            "alphabetic",
         )
 
         self.assertEqual(get_player(player["id"]), player)

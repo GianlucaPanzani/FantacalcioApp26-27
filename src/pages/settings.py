@@ -3,7 +3,7 @@ import pandas as pd
 from lib.data_handler import (
     export_guest_state,
 )
-from lib.utils import auction_settings, get_current_season, get_current_date
+from lib.utils import get_current_season, get_current_date
 from lib.streamlit_api.data_handler import (
     get_fanta_manager_players_dict,
     get_roles_dict,
@@ -311,113 +311,6 @@ with st.container(border=True, key=f"dark-card-{page_name}_budgets_key"):
                     width="stretch",
                 )
                 st.caption(f"Now you're ready to play!")
-
-
-# General auction rules and bonus/malus points
-with st.container(border=True, key=f"dark-card-{page_name}_auction_rules_key"):
-
-    # Initializations for auction widgets
-    extraction_settings = {
-        "player_extraction_type": (
-            "Player extraction type",
-            ["by_role", "on_all_players"],
-            "on_all_players",
-            {
-                "by_role": "By role",
-                "on_all_players": "On all players",
-            },
-        ),
-        "role_extraction_order": (
-            "Role extraction order",
-            ["in_order_P_D_C_A", "random"],
-            "in_order_P_D_C_A",
-            {
-                "in_order_P_D_C_A": "P → D → C → A",
-                "random": "Random",
-            },
-        ),
-        "player_extraction_order": (
-            "Player extraction order",
-            ["random", "alphabetic"],
-            "random",
-            {
-                "random": "Random",
-                "alphabetic": "Alphabetical",
-            },
-        ),
-    }
-    for setting_name, (_, _, default_value, _) in extraction_settings.items():
-        widget_key = f"{page_name}_{setting_name}_widget_key"
-        settings_keys_set.add(widget_key)
-        st.session_state.setdefault(widget_key, default_value)
-    auction_rule_settings = [
-        ("defender_modifier", "Defender modifier"),
-        ("midfielder_modifier", "Midfielder modifier"),
-        ("player_switch", "Player switch"),
-    ]
-    for setting_name, _ in auction_rule_settings:
-        widget_key = f"{page_name}_auction_{setting_name}_widget_key"
-        settings_keys_set.add(widget_key)
-        st.session_state.setdefault(widget_key, False)
-    for setting_name, _, default_points, _, value_type in auction_settings:
-        widget_key = f"{page_name}_points_{setting_name}_widget_key"
-        settings_keys_set.add(widget_key)
-        st.session_state.setdefault(widget_key, default_points)
-        st.session_state[widget_key] = value_type(st.session_state[widget_key])
-
-    cols = st.columns([8,1,8,1,8,1,8,1,8])
-    with cols[0]:
-        col1, col2 = st.columns([1,8])
-        with col1:
-            st.markdown("#### :material/gavel:")
-        with col2:
-            st.markdown("#### **Auction rules and points**")
-
-    # Configure how players and roles are extracted during the auction
-    for i, (setting_name, setting_config) in zip(range(2,8,2), extraction_settings.items()):
-        label, options, _, labels = setting_config
-        widget_key = f"{page_name}_{setting_name}_widget_key"
-
-        with cols[i]:
-            st.segmented_control(
-                label,
-                options=options,
-                required=True,
-                format_func=labels.get,
-                key=widget_key,
-                width="stretch",
-                disabled=(
-                    setting_name == "role_extraction_order"
-                    and
-                    st.session_state[f"{page_name}_player_extraction_type_widget_key"] == "on_all_players"
-                ),
-            )
-
-    # Display bonus and penalty values on separate rows
-    cols = st.columns([8,1,8,1,8,1,8,1,8])
-    for row_start in range(0, len(auction_settings), 4):
-        scoring_settings_chunk = auction_settings[row_start:row_start + 4]
-        for i, (setting_name, label, default_value, help_str, type) in zip(range(2,9,2), scoring_settings_chunk):
-            widget_key = f"{page_name}_points_{setting_name}_widget_key"
-            with cols[i]:
-                st.number_input(
-                    label,
-                    step=1 if type is int else 0.5,
-                    format="%d" if type is int else "%.1f",
-                    help=help_str,
-                    key=widget_key,
-                )
-    
-    # Display each auction rule once in the first row.
-    cols = st.columns([8,1,8,1,8,1,8,1,8])
-    for i, (setting_name, label) in zip(range(2,8,2), auction_rule_settings):
-        widget_key = f"{page_name}_auction_{setting_name}_widget_key"
-
-        with cols[i]:
-            st.toggle(
-                label,
-                key=widget_key,
-            )
 
 # Graphics settings
 with st.container(border=True, key=f"dark-card-{page_name}_graphics_key"):

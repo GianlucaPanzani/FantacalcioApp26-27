@@ -23,7 +23,7 @@ import sqlite3
 
 # Resolve the database relative to this module, regardless of the working folder.
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "db" / "fantacalcio.sqlite3"
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 CONNECTION_TIMEOUT = 5.0
 
 SQLValue = str | int | float | bytes | None
@@ -79,7 +79,7 @@ _TABLES = {
             player_switch_enabled INTEGER NOT NULL DEFAULT 0
                 CHECK (player_switch_enabled IN (0, 1)),
             player_extraction_order TEXT NOT NULL DEFAULT 'random'
-                CHECK (player_extraction_order IN ('random', 'alphabetic_order')),
+                CHECK (player_extraction_order IN ('random', 'alphabetic')),
             player_extraction_scope TEXT NOT NULL DEFAULT 'on_all_players'
                 CHECK (player_extraction_scope IN ('by_role', 'on_all_players')),
             role_extraction_order TEXT NOT NULL DEFAULT 'in_order_P_D_C_A'
@@ -207,7 +207,7 @@ def create_db() -> Path:
     No accounts, auction data or CSV imports are created automatically.
 
     SQLite 3.38+ is required for STRICT tables and built-in JSON validation.
-    This function initializes schema version 8; it is not a migration runner.
+    This function initializes schema version 9; it is not a migration runner.
 
     Returns
     -------

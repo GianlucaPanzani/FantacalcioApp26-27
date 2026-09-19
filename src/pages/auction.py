@@ -4,8 +4,8 @@ from lib.xgboost_predictor import (
     features_to_predict_list
 )
 from lib.utils import (
-    get_current_season,
     interest_colors_dict,
+    get_current_season,
     get_current_year,
 )
 from lib.streamlit_api.data_handler import (
@@ -17,6 +17,7 @@ from lib.streamlit_api.data_handler import (
     restore_bought_players,
     has_full_team,
     save_bought_players,
+    get_auction_data,
 )
 from lib.streamlit_api.design_handler import (
     bottom_caption,
@@ -64,18 +65,6 @@ img_path = get_background_img_path(page_name)
 set_page_background(img_path)
 set_color_background()
 
-columns_to_filter_list = [
-    "player",
-    "team",
-    "fanta_role",
-]
-
-compare_op_for_columns_to_filter_dict = {
-    "player": None,
-    "team": "eq",
-    "fanta_role": "eq",
-}
-
 confirm_auction_code_widget_key = f"{page_name}_confirm_auction_code_widget_key"
 generated_code_hash_key = f"{page_name}_generated_code_hash_key"
 generated_code_key = f"{page_name}_generated_code_key"
@@ -91,6 +80,96 @@ show_ai_plots_key = f"{page_name}_show_ai_plots_key"
 hide_other_fantamanagers_key = f"{page_name}_hide_other_fantamanagers_key"
 
 bought_player_columns = ["id", "player", "team", "role", "mantra_role", "manager", "mln"]
+
+columns_to_filter_list = [
+    "player",
+    "team",
+    "fanta_role",
+]
+
+compare_op_for_columns_to_filter_dict = {
+    "player": None,
+    "team": "eq",
+    "fanta_role": "eq",
+}
+
+# Initializations for auction widgets
+auction_settings = [
+    # (setting_name, label, default_points, help_text, value_type)
+    (
+        "goal_scored", "Goal scored", 3,
+        "Points for a goal excluding penalties; penalties have their own value.", int
+    ),
+    (
+        "assist", "Assist", 1,
+        "Points for an assist.", int
+    ),
+    (
+        "penalty_scored", "Penalty scored", 3,
+        "Total points for a scored penalty, separate from the goal-scored value.", int
+    ),
+    (
+        "penalty_missed", "Penalty missed", -3,
+        "Points for a missed penalty.", int
+    ),
+    (
+        "goalkeeper_goal_conceded", "Goalkeeper goal conceded", -1,
+        "Points for a goal conceded excluding penalties; penalties have their own value.", int
+    ),
+    (
+        "goalkeeper_penalty_conceded", "Goalkeeper penalty goal conceded", -1,
+        "Total points for conceding a penalty goal, not for committing a foul.", int
+    ),
+    (
+        "goalkeeper_penalty_saved", "Goalkeeper penalty saved", 3,
+        "Points for saving a penalty.", int
+    ),
+    (
+        "yellow_card", "Yellow card", -0.5,
+        "Points for a yellow card.", float
+    ),
+    (
+        "red_card", "Red card", -1,
+        "Points for a red card.", int
+    ),
+]
+
+extraction_settings = {
+    # label, options, default_value, view_dict
+    "player_extraction_type": (
+        "Player extraction type",
+        ["by_role", "on_all_players"],
+        "by_role",
+        {
+            "by_role": "By role",
+            "on_all_players": "On all players",
+        },
+    ),
+    "role_extraction_order": (
+        "Role extraction order",
+        ["in_order_P_D_C_A", "random"],
+        "in_order_P_D_C_A",
+        {
+            "in_order_P_D_C_A": "P → D → C → A",
+            "random": "Random",
+        },
+    ),
+    "player_extraction_order": (
+        "Player extraction order",
+        ["random", "alphabetic"],
+        "random",
+        {
+            "random": "Random",
+            "alphabetic": "Alphabetical",
+        },
+    ),
+}
+
+auction_rule_settings = [
+    ("defender_modifier", "Defender modifier"),
+    ("midfielder_modifier", "Midfielder modifier"),
+    ("player_switch", "Player switch"),
+]
 
 
 # =============================================================================
@@ -813,6 +892,75 @@ def remove_bought_player(player: dict) -> None:
         return
 
 
+def show_auction_rules():
+
+    col1, col2 = st.columns([1,34])
+    with col1:
+        st.markdown("## :material/gavel:")
+    with col2:
+        st.markdown("## **Auction rules and points**")
+
+    # Configure how players and roles are extracted during the auction
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
+    with cols[0]:
+        st.markdown("#### **Extraction rules**")
+    for i, (setting_name, setting_config_tuple) in zip(range(2,9,2), extraction_settings.items()):
+        label, options, default_value, labels_view_dict = setting_config_tuple
+        widget_key = f"{page_name}_{setting_name}_widget_key"
+
+        with cols[i]:
+            st.segmented_control(
+                label,
+                options=options,
+                required=True,
+                format_func=labels_view_dict.get,
+                key=widget_key,
+                width="stretch",
+                disabled=(
+                    setting_name == "role_extraction_order"
+                    and
+                    st.session_state[f"{page_name}_player_extraction_type_widget_key"] == "on_all_players"
+                ),
+            )
+    
+    st.space(10)
+
+    # Display bonus and penalty values on separate rows
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
+    with cols[0]:
+        st.markdown("#### **Bonus and malus rules**")
+    step = len(cols)+1
+    for row_start in range(0, len(auction_settings), step):
+        scoring_settings_chunk = auction_settings[row_start:row_start + step]
+        for i, (setting_name, label, default_value, help_str, type) in zip(range(2,9,2), scoring_settings_chunk):
+            widget_key = f"{page_name}_points_{setting_name}_widget_key"
+            with cols[i]:
+                st.number_input(
+                    label,
+                    step=1 if type is int else 0.5,
+                    format="%d" if type is int else "%.1f",
+                    help=help_str,
+                    key=widget_key,
+                )
+    
+    st.space(10)
+
+    # Display each auction rule once in the first row.
+    cols = st.columns([8,1,8,1,8,1,8,1,8])
+    with cols[0]:
+        st.markdown("#### **Extra rules**")
+    for i, (setting_name, label) in zip(range(2,9,2), auction_rule_settings):
+        widget_key = f"{page_name}_auction_{setting_name}_widget_key"
+
+        with cols[i]:
+            st.toggle(
+                label,
+                key=widget_key,
+            )
+    
+    return
+
+
 
 # =============================================================================
 # =============================== SCRIPT ======================================
@@ -831,7 +979,7 @@ auction_keys_set = {
     if key.startswith(f"{page_name}_")
 }
 
-# Initialize auction settings
+# Initialize auction keys
 settings_my_manager_key = "settings_my_manager_key"
 auction_keys_set.add(settings_my_manager_key)
 st.session_state.setdefault(settings_my_manager_key, "Me")
@@ -841,6 +989,19 @@ st.session_state.setdefault(settings_budget_widget_key, 500)
 settings_ai_enabled_key = "settings_ai_enabled_key"
 auction_keys_set.add(settings_ai_enabled_key)
 st.session_state.setdefault(settings_ai_enabled_key, False)
+for setting_name, (_, _, default_value, _) in extraction_settings.items():
+    widget_key = f"{page_name}_{setting_name}_widget_key"
+    auction_keys_set.add(widget_key)
+    st.session_state.setdefault(widget_key, default_value)
+for setting_name, _ in auction_rule_settings:
+    widget_key = f"{page_name}_auction_{setting_name}_widget_key"
+    auction_keys_set.add(widget_key)
+    st.session_state.setdefault(widget_key, False)
+for setting_name, _, default_points, _, value_type in auction_settings:
+    widget_key = f"{page_name}_points_{setting_name}_widget_key"
+    auction_keys_set.add(widget_key)
+    st.session_state.setdefault(widget_key, default_points)
+    st.session_state[widget_key] = value_type(st.session_state[widget_key])
 
 # Initialize fanta managers
 my_fanta_manager = st.session_state[settings_my_manager_key]
@@ -875,19 +1036,37 @@ st.caption(
 
 st.space(30)
 
+# General auction rules and bonus/malus points
+with st.container(border=True, key=f"dark-card-{page_name}_auction_rules_key"):
+    show_auction_rules()
+
+st.space(10)
+
 # Code generation
 if (
         not generated_code_key in st.session_state 
         or not st.session_state[generated_code_key] 
         or st.session_state[generated_code_key] is None
     ):
-    _, col, _ = st.columns([2, 3, 2], vertical_alignment="center")
+    _, col, _ = st.columns([2, 5, 2], vertical_alignment="center")
     with col:
-        with st.container(border=True, width="content", height="content", horizontal_alignment="center", key=f"dark-card-{page_name}_code_generation_key"):
+        with st.container(border=True, width="stretch", height="stretch", horizontal_alignment="center", key=f"dark-card-{page_name}_code_generation_key"):
             resulted_code = show_creation_auction_code(page_name)
 
             if resulted_code is not None:
                 auction_code, auction_code_hash = resulted_code
+                player_extraction_order = st.session_state.get(
+                    f"{page_name}_player_extraction_order_widget_key",
+                    "random",
+                )
+                auction_data = get_auction_data()
+                auction_data.update({
+                    "auction_code_hash": auction_code_hash,
+                    "player_extraction_order": player_extraction_order,
+                    "status": "lobby",
+                })
+            else:
+                auction_data = None
 
             code_confirmed = st.button(
                 "Confirm",
@@ -897,7 +1076,7 @@ if (
                 disabled=True if resulted_code is None else False,
                 key=confirm_auction_code_widget_key,
                 on_click=create_auction,
-                args=(st.session_state["user_id_key"], auction_code_hash if resulted_code is not None else None)
+                args=(st.session_state["user_id_key"], auction_data),
             )
             if code_confirmed:
                 st.session_state[generated_code_key] = auction_code
@@ -908,7 +1087,7 @@ if (
 if st.session_state[generated_code_key] is not None:
     _, col, _ = st.columns([2, 3, 2], vertical_alignment="center")
     with col:
-        create_fanta_managers_lobby(fanta_managers)
+        create_fanta_managers_lobby(fanta_managers, auction_data)
         lobby_deleted = st.button(
             f":material/delete: Delete lobby",
             help="Press the button if you want to delete this lobby.",

@@ -89,46 +89,6 @@ interest_colors_dict = {
     "Buoni low cost": "#84E7A0", # Mint green: good budget pick
 }
 
-auction_settings = [
-    # (setting_name, label, default_points, help_text, value_type)
-    (
-        "goal_scored", "Goal scored", 3,
-        "Points for a goal excluding penalties; penalties have their own value.", int
-    ),
-    (
-        "assist", "Assist", 1,
-        "Points for an assist.", int
-    ),
-    (
-        "penalty_scored", "Penalty scored", 3,
-        "Total points for a scored penalty, separate from the goal-scored value.", int
-    ),
-    (
-        "penalty_missed", "Penalty missed", -3,
-        "Points for a missed penalty.", int
-    ),
-    (
-        "goalkeeper_goal_conceded", "Goalkeeper goal conceded", -1,
-        "Points for a goal conceded excluding penalties; penalties have their own value.", int
-    ),
-    (
-        "goalkeeper_penalty_conceded", "Goalkeeper penalty goal conceded", -1,
-        "Total points for conceding a penalty goal, not for committing a foul.", int
-    ),
-    (
-        "goalkeeper_penalty_saved", "Goalkeeper penalty saved", 3,
-        "Points for saving a penalty.", int
-    ),
-    (
-        "yellow_card", "Yellow card", -0.5,
-        "Points for a yellow card.", float
-    ),
-    (
-        "red_card", "Red card", -1,
-        "Points for a red card.", int
-    ),
-]
-
 def get_role_icon(fanta_role: str):
     """Return the emoji associated with a Fantacalcio role code."""
     role_icons = {

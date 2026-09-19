@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 import time
 
-from lib.utils import columns_to_user_view_dict, join_auction
+from lib.utils import columns_to_user_view_dict, generate_unique_auction_code, join_auction
 from lib.shap_explainability import (
     build_model_explaination_response,
 )
@@ -1116,7 +1116,7 @@ def show_join_auction_code(page_name: str):
     join_auction_code_key = f"{page_name}_join_auction_code_key"
     participate_auction_widget_key = f"{page_name}_participate_auction_widget_key"
     auction_code_input_widget_key = f"{page_name}_auction_code_input_widget_key"
-    
+
     auction_code = show_code_digits(
         container_alignment="left",
         pin_gap=5,
@@ -1148,8 +1148,18 @@ def show_join_auction_code(page_name: str):
 
 
 def show_creation_auction_code(page_name: str):
-    gen_auction_code_widget_key = f"{page_name}_gen_auction_code_widget_key"
     generated_code_widget_key = f"{page_name}_generated_code_widget_key"
+    pending_generated_code_key = f"{page_name}_pending_generated_code_key"
+    pending_generated_code_hash_key = f"{page_name}_pending_generated_code_hash_key"
+
+    st.session_state.setdefault(pending_generated_code_key, None)
+    st.session_state.setdefault(pending_generated_code_hash_key, None)
+
+    def regenerate_auction_code():
+        """Generate and store a new pending auction code and its hash."""
+        auction_code, auction_code_hash = generate_unique_auction_code()
+        st.session_state[pending_generated_code_key] = auction_code
+        st.session_state[pending_generated_code_hash_key] = auction_code_hash
 
     st.markdown("### Create the auction lobby", text_alignment="center")
     st.caption(
@@ -1157,31 +1167,33 @@ def show_creation_auction_code(page_name: str):
         text_alignment="center",
     )
     
-    code_generated = st.button(
-        ":material/vpn_key: Generate auction code",
-        help="Create an auction and generate a code to share.",
-        type="primary",
-        key=gen_auction_code_widget_key,
-
+    auction_code = st.session_state[pending_generated_code_key]
+    auction_code_hash = st.session_state[pending_generated_code_hash_key]
+    show_code_generated(
+        empty_code_enabled=auction_code is None,
+        auction_code=auction_code,
+        auction_code_hash=auction_code_hash,
+        refresh_enabled=True,
+        on_refresh_change=regenerate_auction_code,
+        key=generated_code_widget_key,
     )
-    if code_generated:
-        auction_code, auction_code_hash = show_code_generated(key=generated_code_widget_key)
-        return auction_code, auction_code_hash
-    
-    show_code_generated(empty_code_enabled=True, key=generated_code_widget_key)
-    return None
+
+    if auction_code is None:
+        return None
+    return auction_code, auction_code_hash
 
 
-def create_fanta_managers_lobby(fanta_managers: list[str]):
+def create_fanta_managers_lobby(fanta_managers: list[str], auction_data=None):
 
     my_fanta_manager = st.session_state["settings_my_manager_key"]
     
     # Case of no other managers different by my_fantamanager in the list
-    if not any(manager != my_fanta_manager for manager in fanta_managers):
+    if not any(manager != my_fanta_manager for manager in fanta_managers) and auction_data is not None:
         st.success(f"Auction with code \"{st.session_state['generated_auction_code_key']}\" created correctly")
+        st.marckdown(auction_data)
         st.info("Wait for your friends...")
         st.stop()
 
 
-    
+    st.stop()
     return
