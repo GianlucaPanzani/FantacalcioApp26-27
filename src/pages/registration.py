@@ -1,4 +1,6 @@
 import sqlite3
+from pathlib import Path
+
 import streamlit as st
 
 from backend.services import register_user
@@ -12,11 +14,22 @@ st.set_page_config(
 )
 
 
+def save_profile_image(uploaded_image, username: str) -> None:
+    """Save the optional profile image as ``<username>.png``."""
+    if uploaded_image is None:
+        return
+
+    managers_dir = Path(__file__).resolve().parents[1] / "img" / "managers"
+    managers_dir.mkdir(parents=True, exist_ok=True)
+    (managers_dir / f"{username.lower()}.png").write_bytes(uploaded_image.getvalue())
+    return
+
 
 def save_data():
     """Save the user with the values submitted by the form."""
     # Read widget values here: callbacks run after Streamlit submits the form.
     st.session_state[error_key] = None
+    st.session_state[image_error_key] = None
     st.session_state[saved_key] = False
     try:
         username = st.session_state[username_key].strip()
@@ -43,6 +56,11 @@ def save_data():
         st.session_state[error_key] = "This username or team name is already in use."
         return
 
+    try:
+        save_profile_image(st.session_state.get(profile_image_key), user["username"])
+    except OSError:
+        st.session_state[image_error_key] = "Registration completed, but the profile image could not be saved."
+
     # Save the identifiers of the registered user and auction.
     st.session_state["user_id_key"] = user["id"]
     st.session_state["auction_id_key"] = user["current_auction_id"]
@@ -58,8 +76,10 @@ auction_code_key = f"{page_name}_auction_code_widget_key"
 username_key = f"{page_name}_username_key"
 team_name_key = f"{page_name}_team_name_key"
 zip_key = f"{page_name}_zip_key"
+profile_image_key = f"{page_name}_profile_image_key"
 confirmation_button_key = f"{page_name}_confirmation_button_key"
 error_key = f"{page_name}_error_key"
+image_error_key = f"{page_name}_image_error_key"
 saved_key = f"{page_name}_saved_key"
 
 
@@ -75,6 +95,12 @@ st.title("Complete your registration")
 with st.form(f"{page_name}_form"):
     st.text_input("Username", key=username_key)
     st.text_input("Team name", key=team_name_key)
+    st.file_uploader(
+        "Upload the image of your Fanta Manager profile",
+        type=["png"],
+        key=profile_image_key,
+        help="Optional. The image will be saved as <username>.png.",
+    )
     st.file_uploader(
         "Import zip file to restore the state of your own application",
         type=["zip"],
@@ -94,6 +120,8 @@ if st.session_state.get(error_key):
     st.error(st.session_state[error_key])
 elif st.session_state.get(saved_key):
     st.success("Registration successfully completed")
+    if st.session_state.get(image_error_key):
+        st.warning(st.session_state[image_error_key])
     st.button(
         "Enter the app",
         type="primary",
