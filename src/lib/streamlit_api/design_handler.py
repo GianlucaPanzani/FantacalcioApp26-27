@@ -7,12 +7,13 @@ import streamlit as st
 from lib.utils import (
     columns_to_user_view_dict,
     interest_colors_dict,
-    gen_auction_code
+    generate_unique_auction_code,
+    get_hash_sha256
 )
 
 
 
-def get_auction_code_component():
+def get_auction_code_component(copy_icon_size=32, copy_margin_left=10):
     copy_icon_url = get_icon("copy").removeprefix("![AI](").removesuffix(")")
     return st.components.v2.component(
         "auction_code_digits",
@@ -30,15 +31,15 @@ def get_auction_code_component():
             </button>
         </div>
         """,
-        css="""
-        .pin-container {
+        css=f"""
+        .pin-container {{
             display: flex;
             gap: var(--pin-gap);
             justify-content: var(--pin-alignment);
             margin-top: 10px;
-        }
+        }}
 
-        .pin-input {
+        .pin-input {{
             box-sizing: border-box;
             width: var(--pin-width);
             height: var(--pin-height);
@@ -50,18 +51,22 @@ def get_auction_code_component():
             background: var(--st-secondary-background-color);
             color: var(--st-text-color);
             outline: none;
-        }
+        }}
 
-        .pin-input:focus {
+        .pin-input:focus {{
             border: 2px solid var(--st-primary-color);
-        }
+        }}
 
-        .copy-code-button {
+        .copy-code-button {{
             box-sizing: border-box;
             flex: 0 0 var(--pin-height);
             width: var(--pin-height);
             height: var(--pin-height);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             padding: 5px;
+            margin-left: {copy_margin_left}px;
             border: 1px solid var(--st-primary-color);
             border-radius: var(--st-button-radius);
             background: var(--st-primary-color);
@@ -69,31 +74,35 @@ def get_auction_code_component():
             font-size: var(--pin-font-size);
             font-weight: 600;
             cursor: pointer;
-        }
+        }}
 
-        .copy-code-icon {
-            width: 32px;
-            height: 32px;
+        .copy-code-button[hidden] {{
+            display: none;
+        }}
+
+        .copy-code-icon {{
+            width: {copy_icon_size}px;
+            height: {copy_icon_size}px;
             margin: auto;
-        }
+        }}
 
-        .copy-code-status {
+        .copy-code-status {{
             line-height: 1;
-        }
+        }}
 
         .copy-code-icon[hidden],
-        .copy-code-status[hidden] {
+        .copy-code-status[hidden] {{
             display: none;
-        }
+        }}
 
-        .copy-code-button:hover {
+        .copy-code-button:hover {{
             filter: brightness(1.08);
-        }
+        }}
 
-        .copy-code-button:focus-visible {
+        .copy-code-button:focus-visible {{
             outline: 2px solid var(--st-text-color);
             outline-offset: 2px;
-        }
+        }}
         """,
         js="""
         export default function (component) {
@@ -120,7 +129,7 @@ def get_auction_code_component():
                 input.tabIndex = data.readOnly ? -1 : 0
             })
 
-            copyButton.hidden = !data.readOnly || value.length !== 6
+            copyButton.hidden = !data.readOnly || value.length !== 6 || !data.copyEnabled
             copyIcon.hidden = false
             copyStatus.hidden = true
             copyButton.onclick = async () => {
@@ -144,7 +153,7 @@ def get_auction_code_component():
                 if (code.length === 6) {
                     setStateValue("value", code)
                 } else if (data.value) {
-                    setStateValue("value", null)
+                    setStateValue("value", code)
                 }
             }
 
@@ -335,28 +344,13 @@ def set_page_background(image_path: str | Path):
     )
 
 
-def set_color_background(color_name: str, color: str):
-    """Apply the shared dark background style to keyed card containers."""
+def set_color_background(color_name = "dark", color = "rgba(14, 17, 23, 0.94)"):
+    """By default apply the dark background style to keyed card containers."""
     return st.html(
         f"""
         <style>
         [class*="st-key-{color_name}-card-"] {{
             background-color: {color};
-            border-radius: 0.75rem;
-            padding: 1rem;
-        }}
-        </style>
-        """
-    )
-
-
-def set_dark_background():
-    """Apply the shared dark background style to keyed card containers."""
-    return st.html(
-        f"""
-        <style>
-        [class*="st-key-dark-card-"] {{
-            background-color: rgba(14, 17, 23, 0.94);
             border-radius: 0.75rem;
             padding: 1rem;
         }}
@@ -451,9 +445,12 @@ def show_code_generated(
         pin_height=50,
         font_size=22,
         font_weight=600,
+        copy_icon_size=32,
+        copy_margin_left=10,
+        copy_enabled=True,
         empty_code_enabled=False,
         key="auction_generated_code_widget_key",
-    ) -> str | None:
+    ) -> tuple:
     """Display a generated six-digit auction code.
 
     Returns
@@ -461,10 +458,9 @@ def show_code_generated(
     str or None
         Generated code, or ``None`` when the empty placeholder is shown.
     """
-    auction_code = None if empty_code_enabled else gen_auction_code()
-    auction_code_component = get_auction_code_component()
+    auction_code, auction_code_hash = generate_unique_auction_code()
+    auction_code_component = get_auction_code_component(copy_icon_size, copy_margin_left)
     auction_code_component(
-        key=key,
         data={
             "value": auction_code or "",
             "readOnly": True,
@@ -474,9 +470,11 @@ def show_code_generated(
             "pinHeight": pin_height,
             "fontSize": font_size,
             "fontWeight": font_weight,
+            "copyEnabled": copy_enabled,
         },
+        key=key,
     )
-    return auction_code
+    return auction_code, auction_code_hash
 
 
 def show_code_digits(
@@ -486,8 +484,11 @@ def show_code_digits(
         pin_height=50,
         font_size=22,
         font_weight=600,
+        copy_icon_size=32,
+        copy_margin_left=10,
+        copy_enabled=True,
         key="auction_code_input_widget_key",
-    ) -> str | None:
+    ) -> tuple | None:
     """Display six numeric inputs and return a complete auction code.
 
     Returns
@@ -500,9 +501,8 @@ def show_code_digits(
     if isinstance(component_state, dict):
         current_value = component_state.get("value")
 
-    auction_code_component = get_auction_code_component()
+    auction_code_component = get_auction_code_component(copy_icon_size, copy_margin_left)
     result = auction_code_component(
-        key=key,
         data={
             "value": current_value or "",
             "readOnly": False,
@@ -512,11 +512,13 @@ def show_code_digits(
             "pinHeight": pin_height,
             "fontSize": font_size,
             "fontWeight": font_weight,
+            "copyEnabled": copy_enabled,
         },
+        key=key,
         default={"value": None},
         on_value_change=lambda: None,
     )
     auction_code = result.value
     if isinstance(auction_code, str) and len(auction_code) == 6:
-        return auction_code
+        return auction_code, get_hash_sha256(auction_code)
     return None

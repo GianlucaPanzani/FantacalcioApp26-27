@@ -21,7 +21,7 @@ from lib.streamlit_api.design_handler import (
     get_icon,
     get_user_view_of_column,
     set_page_background,
-    set_dark_background,
+    set_color_background,
 )
 
 
@@ -35,7 +35,7 @@ st.set_page_config(
 
 img_path = get_background_img_path(page_name)
 set_page_background(img_path)
-set_dark_background()
+set_color_background()
 
 
 # Title

@@ -25,7 +25,7 @@ from lib.streamlit_api.design_handler import (
     get_icon,
     highlight_interest,
     set_page_background,
-    set_dark_background,
+    set_color_background,
 )
 from lib.streamlit_api.visualization_handler import (
     highlight_bought_rows,
@@ -33,7 +33,11 @@ from lib.streamlit_api.visualization_handler import (
     create_horizontal_teams,
     create_vertical_teams,
     create_fanta_managers_lobby,
-    create_auction_preset_view,
+    show_creation_auction_code,
+    show_join_auction_code,
+)
+from backend.services import (
+    create_auction
 )
 from backend.auctions_db import (
     get_auction,
@@ -58,7 +62,7 @@ st.set_page_config(
 
 img_path = get_background_img_path(page_name)
 set_page_background(img_path)
-set_dark_background()
+set_color_background()
 
 columns_to_filter_list = [
     "player",
@@ -72,6 +76,9 @@ compare_op_for_columns_to_filter_dict = {
     "fanta_role": "eq",
 }
 
+confirm_auction_code_widget_key = f"{page_name}_confirm_auction_code_widget_key"
+generated_code_hash_key = f"{page_name}_generated_code_hash_key"
+generated_code_key = f"{page_name}_generated_code_key"
 fanta_manager_split_value_widget_key = f"{page_name}_fanta_managers_split_value_widget_key"
 enable_bought_players_stats_key = f"{page_name}_bought_players_stats_key"
 enable_player_preferences_key = f"{page_name}_enable_player_preferences_key"
@@ -849,6 +856,12 @@ users = get_users(
 fanta_managers = [my_fanta_manager] + [user["username"] for user in users if user["username"] != my_fanta_manager]
 st.session_state[fanta_managers_key] = fanta_managers
 
+# Sidebar
+with st.sidebar:
+    st.markdown("#### Join an existing auction")
+    st.caption("Insert the auction code here below.")
+    show_join_auction_code(page_name)
+
 # Title
 cols = st.columns([1,15])
 with cols[0]:
@@ -860,8 +873,53 @@ st.caption(
     "confirm when everyone is ready, and start the auction with the extraction settings you selected."
 )
 
-create_auction_preset_view(page_name)
-create_fanta_managers_lobby(fanta_managers)
+st.space(30)
+
+# Code generation
+if (
+        not generated_code_key in st.session_state 
+        or not st.session_state[generated_code_key] 
+        or st.session_state[generated_code_key] is None
+    ):
+    _, col, _ = st.columns([2, 3, 2], vertical_alignment="center")
+    with col:
+        with st.container(border=True, width="content", height="content", horizontal_alignment="center", key=f"dark-card-{page_name}_code_generation_key"):
+            resulted_code = show_creation_auction_code(page_name)
+
+            if resulted_code is not None:
+                auction_code, auction_code_hash = resulted_code
+
+            code_confirmed = st.button(
+                "Confirm",
+                help="If you have copied the code, press the button to create the lobby waiting for your friends.",
+                type="primary",
+                width="stretch",
+                disabled=True if resulted_code is None else False,
+                key=confirm_auction_code_widget_key,
+                on_click=create_auction,
+                args=(st.session_state["user_id_key"], auction_code_hash if resulted_code is not None else None)
+            )
+            if code_confirmed:
+                st.session_state[generated_code_key] = auction_code
+                st.session_state[generated_code_hash_key] = auction_code_hash
+            st.stop()
+
+# Lobby creation
+if st.session_state[generated_code_key] is not None:
+    _, col, _ = st.columns([2, 3, 2], vertical_alignment="center")
+    with col:
+        create_fanta_managers_lobby(fanta_managers)
+        lobby_deleted = st.button(
+            f":material/delete: Delete lobby",
+            help="Press the button if you want to delete this lobby.",
+            type="primary",
+            width="stretch",
+            key=confirm_auction_code_widget_key,
+        )
+        if lobby_deleted:
+            st.session_state[generated_code_key] = None
+            st.session_state[generated_code_hash_key] = None
+            st.rerun()
 
 # Load data
 models_packages_dict = load_models(target_features=features_to_predict_list)

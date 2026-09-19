@@ -1,8 +1,10 @@
 from datetime import datetime
+import hashlib
 import secrets
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import streamlit as st
+from backend.auctions_db import get_auctions
 
 
 stats_persistent_key_fields = [
@@ -150,9 +152,26 @@ def get_current_season():
     year = get_current_year()
     return f"{year}-{str(year+1)[2:]}"
 
-def gen_auction_code() -> str:
-    """Generate a cryptographically secure six-digit auction code."""
+def get_six_digits_rnd_number():
     return f"{secrets.randbelow(1_000_000):06d}"
+
+def get_hash_sha256(string: str):
+    return hashlib.sha256(string.encode("utf-8")).hexdigest()
+
+def generate_unique_auction_code():
+    """Generate and store an unused auction code and its hash."""
+    for _ in range(10000):
+        # Generate a random 6-digits code
+        auction_code = get_six_digits_rnd_number()
+        auction_code_hash = get_hash_sha256(auction_code)
+
+        if not get_auctions(
+            filters={"auction_code_hash": auction_code_hash},
+            proj=["id"],
+        ):
+            return auction_code, auction_code_hash
+        
+    raise Exception("Auction code not generated correctly")
 
 
 def get_auction_link(auction_code: str) -> str:

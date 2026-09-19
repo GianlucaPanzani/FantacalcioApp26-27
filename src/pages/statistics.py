@@ -17,7 +17,7 @@ from lib.streamlit_api.design_handler import (
     get_icon,
     get_user_view_of_column,
     highlight_player_role,
-    set_dark_background,
+    set_color_background,
     set_page_background,
 )
 from lib.streamlit_api.visualization_handler import (
@@ -38,7 +38,7 @@ st.set_page_config(
 
 img_path = get_background_img_path(page_name)
 set_page_background(img_path)
-set_dark_background()
+set_color_background()
 
 columns_to_filter_list = [
     "fanta_role",

@@ -20,7 +20,7 @@ from lib.streamlit_api.design_handler import (
     get_user_view_of_column,
     highlight_player_role,
     set_page_background,
-    set_dark_background,
+    set_color_background,
 )
 from lib.xgboost_predictor import (
     features_to_predict_list,
@@ -36,7 +36,7 @@ st.set_page_config(
 
 img_path = get_background_img_path(page_name)
 set_page_background(img_path)
-set_dark_background()
+set_color_background()
 
 columns_to_filter_list = [
     "R",

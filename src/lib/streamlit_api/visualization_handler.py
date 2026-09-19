@@ -26,7 +26,6 @@ from lib.streamlit_api.design_handler import (
     get_user_view_of_column,
     set_player_card_background,
     set_color_background,
-    set_dark_background,
     set_text_size,
     show_code_digits,
     show_code_generated,
@@ -1113,64 +1112,64 @@ def create_horizontal_teams(
     return
 
 
-def create_auction_preset_view(page_name: str,):
+def show_join_auction_code(page_name: str):
     join_auction_code_key = f"{page_name}_join_auction_code_key"
-    create_auction_widget_key = f"{page_name}_create_auction_widget_key"
     participate_auction_widget_key = f"{page_name}_participate_auction_widget_key"
     auction_code_input_widget_key = f"{page_name}_auction_code_input_widget_key"
+    
+    auction_code = show_code_digits(
+        container_alignment="left",
+        pin_gap=5,
+        pin_width=32,
+        pin_height=38,
+        font_size=16,
+        font_weight=400,
+        copy_icon_size=22,
+        copy_margin_left=5,
+        copy_enabled=False,
+        key=auction_code_input_widget_key
+    )
+    st.session_state[join_auction_code_key] = auction_code
+
+    participate_auction = st.button(
+        ":material/group_add: Join auction",
+        help="Enter the six-digit code of an existing auction and join it.",
+        width="stretch",
+        type="primary",
+        disabled=auction_code is None or len(auction_code) != 6,
+        key=participate_auction_widget_key,
+        on_click=join_auction,
+        args=(auction_code,)
+    )
+    if participate_auction:
+        st.stop()
+    
+    return
+
+
+def show_creation_auction_code(page_name: str):
+    gen_auction_code_widget_key = f"{page_name}_gen_auction_code_widget_key"
     generated_code_widget_key = f"{page_name}_generated_code_widget_key"
 
-    with st.sidebar:
-        st.markdown("#### Join an existing auction")
-        auction_code = show_code_digits(
-            container_alignment="left",
-            pin_gap=6,
-            pin_width=28,
-            pin_height=32,
-            font_size=14,
-            font_weight=400,
-            key=auction_code_input_widget_key
-        )
-        st.session_state[join_auction_code_key] = auction_code
+    st.markdown("### Create the auction lobby", text_alignment="center")
+    st.caption(
+        "Create a new auction generating a six-digit code and sharing it with your friends.",
+        text_alignment="center",
+    )
+    
+    code_generated = st.button(
+        ":material/vpn_key: Generate auction code",
+        help="Create an auction and generate a code to share.",
+        type="primary",
+        key=gen_auction_code_widget_key,
 
-        participate_auction = st.button(
-            ":material/group_add: Join auction",
-            help="Enter the six-digit code of an existing auction and join it.",
-            width="stretch",
-            disabled=auction_code is None or len(auction_code) != 6,
-            key=participate_auction_widget_key,
-            on_click=join_auction,
-            args=(auction_code,)
-        )
-        if participate_auction:
-            st.stop()
-
-    st.space(30)
-
-    #set_color_background("auction-code", "#1A2E5F")
-    set_dark_background()
-    _, col, _ = st.columns([2, 3, 2], vertical_alignment="center")
-    with col:
-        with st.container(border=True, width="content", height="content", key=f"dark-card-{page_name}_code_generation_key"):
-            st.markdown("### Create the auction lobby", text_alignment="center")
-            st.caption(
-                "Create a new auction generating a six-digit code and sharing it with your friends.",
-                text_alignment="center",
-            )
-            
-            create_auction = st.button(
-                ":material/vpn_key: Generate auction code",
-                help="Create an auction and generate a code to share.",
-                type="primary",
-                width="stretch",
-                key=create_auction_widget_key,
-            )
-            if create_auction:
-                auction_code = show_code_generated(key=generated_code_widget_key)
-            else:
-                show_code_generated(empty_code_enabled=True, key=generated_code_widget_key,)
-
-    return
+    )
+    if code_generated:
+        auction_code, auction_code_hash = show_code_generated(key=generated_code_widget_key)
+        return auction_code, auction_code_hash
+    
+    show_code_generated(empty_code_enabled=True, key=generated_code_widget_key)
+    return None
 
 
 def create_fanta_managers_lobby(fanta_managers: list[str]):
@@ -1179,7 +1178,10 @@ def create_fanta_managers_lobby(fanta_managers: list[str]):
     
     # Case of no other managers different by my_fantamanager in the list
     if not any(manager != my_fanta_manager for manager in fanta_managers):
+        st.success(f"Auction with code \"{st.session_state['generated_auction_code_key']}\" created correctly")
+        st.info("Wait for your friends...")
         st.stop()
+
 
     
     return

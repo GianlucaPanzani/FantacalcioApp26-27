@@ -3,8 +3,8 @@ import hashlib
 
 from backend import db_api
 from lib.data_handler import parse_guest_archive, store_guest_archive
-from .auctions_db import get_auctions
-from .users_db import get_users, set_user, update_user
+from .auctions_db import get_auctions, set_auction
+from .users_db import get_user, get_users, set_user, update_user
 from .users_auctions_db import get_user_auction, set_user_auction
 
 
@@ -118,3 +118,26 @@ def register_to_auction(user_id: int, auction_code: str):
                 connection=connection,
             )
         return user
+
+
+def create_auction(user_id: int, auction_code_hash: str | None):
+    if auction_code_hash is None:
+        return
+
+    # Check if the user exists
+    user = get_user(
+        user_id=user_id,
+        proj=["id"]
+    )
+    if user is None:
+        raise Exception(f"User ID {user_id} doesn't exist.")
+    
+    # Create the auction associated to that user
+    auction_data = {}
+    # TODO: create data to be inserted in the auctions table
+    auction = set_auction(data=auction_data)
+    set_user_auction(
+        user_id=user_id,
+        auction_id=auction["id"]
+    )
+    return
