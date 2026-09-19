@@ -170,6 +170,7 @@ def join_auction(auction_code: str) -> str:
     str
         Public URL displayed by the link button.
     """
+    
     auction_link = get_auction_link(auction_code)
     st.link_button(
         "Open auction",

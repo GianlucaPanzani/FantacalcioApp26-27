@@ -1116,7 +1116,7 @@ def show_join_auction_code(page_name: str):
     participate_auction_widget_key = f"{page_name}_participate_auction_widget_key"
     auction_code_input_widget_key = f"{page_name}_auction_code_input_widget_key"
 
-    auction_code = show_code_digits(
+    auction_code_info = show_code_digits(
         container_alignment="left",
         pin_gap=5,
         pin_width=32,
@@ -1128,6 +1128,10 @@ def show_join_auction_code(page_name: str):
         copy_enabled=False,
         key=auction_code_input_widget_key
     )
+    if auction_code_info is None:
+        auction_code = None
+    else:
+        auction_code, _ = auction_code_info
     st.session_state[join_auction_code_key] = auction_code
 
     participate_auction = st.button(
@@ -1137,12 +1141,11 @@ def show_join_auction_code(page_name: str):
         type="primary",
         disabled=auction_code is None or len(auction_code) != 6,
         key=participate_auction_widget_key,
-        on_click=join_auction,
-        args=(auction_code,)
     )
-    if participate_auction:
+    if participate_auction and auction_code is not None:
+        join_auction(auction_code)
         st.stop()
-    
+
     return
 
 
