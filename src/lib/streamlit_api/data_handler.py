@@ -227,32 +227,32 @@ def get_role_budget_limits() -> dict:
     }
 
 
-def get_auction_data():
+def get_auction_data_from_session_state():
     return {
     "name": f"Auction {get_current_season()}",
     "season": get_current_season(),
     "auction_code_hash": None,
     "player_extraction_order": None,
     "status": "lobby", # running, completed
-    "total_budget": int(st.session_state.get("settings_budget_widget_key", 500)),
-    "goalkeeper_slots": int(st.session_state.get("settings_P_limit_widget_key", 3)),
-    "defender_slots": int(st.session_state.get("settings_D_limit_widget_key", 8)),
-    "midfielder_slots": int(st.session_state.get("settings_C_limit_widget_key", 8)),
-    "forward_slots": int(st.session_state.get("settings_A_limit_widget_key", 6)),
-    "defender_modifier_enabled": int(bool(st.session_state.get("settings_auction_defender_modifier_widget_key", False))),
-    "midfielder_modifier_enabled": int(bool(st.session_state.get("settings_auction_midfielder_modifier_widget_key", False))),
-    "player_switch_enabled": int(bool(st.session_state.get("settings_auction_player_switch_widget_key", False))),
-    "player_extraction_scope": st.session_state.get("settings_player_extraction_type_widget_key", "on_all_players"),
-    "role_extraction_order": st.session_state.get("settings_role_extraction_order_widget_key", "in_order_P_D_C_A"),
-    "points_goal_scored": float(st.session_state.get("settings_points_goal_scored_widget_key", 3)),
-    "points_goalkeeper_goal_conceded": float(st.session_state.get("settings_points_goalkeeper_goal_conceded_widget_key", -1)),
-    "points_assist": float(st.session_state.get("settings_points_assist_widget_key", 1)),
-    "points_penalty_scored": float(st.session_state.get("settings_points_penalty_scored_widget_key", 3)),
-    "points_penalty_missed": float(st.session_state.get("settings_points_penalty_missed_widget_key", -3)),
-    "points_goalkeeper_penalty_conceded": float(st.session_state.get("settings_points_goalkeeper_penalty_conceded_widget_key", -1)),
-    "points_goalkeeper_penalty_saved": float(st.session_state.get("settings_points_goalkeeper_penalty_saved_widget_key", 3)),
-    "points_yellow_card": float(st.session_state.get("settings_points_yellow_card_widget_key", -0.5)),
-    "points_red_card": float(st.session_state.get("settings_points_red_card_widget_key", -1)),
+    "total_budget": int(st.session_state.get(f"auction_budget_widget_key", 500)),
+    "goalkeeper_slots": int(st.session_state.get(f"auction_P_limit_widget_key", 3)),
+    "defender_slots": int(st.session_state.get(f"auction_D_limit_widget_key", 8)),
+    "midfielder_slots": int(st.session_state.get(f"auction_C_limit_widget_key", 8)),
+    "forward_slots": int(st.session_state.get(f"auction_A_limit_widget_key", 6)),
+    "defender_modifier_enabled": int(bool(st.session_state.get(f"auction_auction_defender_modifier_widget_key", False))),
+    "midfielder_modifier_enabled": int(bool(st.session_state.get(f"auction_auction_midfielder_modifier_widget_key", False))),
+    "player_switch_enabled": int(bool(st.session_state.get(f"auction_auction_player_switch_widget_key", False))),
+    "player_extraction_scope": st.session_state.get(f"auction_player_extraction_type_widget_key", "by_role"),
+    "role_extraction_order": st.session_state.get(f"auction_role_extraction_order_widget_key", "in_order_P_D_C_A"),
+    "points_goal_scored": float(st.session_state.get(f"auction_points_goal_scored_widget_key", 3)),
+    "points_goalkeeper_goal_conceded": float(st.session_state.get(f"auction_points_goalkeeper_goal_conceded_widget_key", -1)),
+    "points_assist": float(st.session_state.get(f"auction_points_assist_widget_key", 1)),
+    "points_penalty_scored": float(st.session_state.get(f"auction_points_penalty_scored_widget_key", 3)),
+    "points_penalty_missed": float(st.session_state.get(f"auction_points_penalty_missed_widget_key", -3)),
+    "points_goalkeeper_penalty_conceded": float(st.session_state.get(f"auction_points_goalkeeper_penalty_conceded_widget_key", -1)),
+    "points_goalkeeper_penalty_saved": float(st.session_state.get(f"auction_points_goalkeeper_penalty_saved_widget_key", 3)),
+    "points_yellow_card": float(st.session_state.get(f"auction_points_yellow_card_widget_key", -0.5)),
+    "points_red_card": float(st.session_state.get(f"auction_points_red_card_widget_key", -1)),
 }
 
 

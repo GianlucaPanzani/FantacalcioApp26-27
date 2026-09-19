@@ -23,12 +23,14 @@ def get_auction_code_component(copy_icon_size=32, copy_margin_left=10):
             <button class="refresh-code-button" type="button" aria-label="Generate a new auction code">
                 <img class="refresh-code-icon" src="{refresh_icon_url}" alt="">
             </button>
-            <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 1">
-            <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 2">
-            <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 3">
-            <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 4">
-            <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 5">
-            <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 6">
+            <div class="pin-digits">
+                <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 1">
+                <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 2">
+                <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 3">
+                <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 4">
+                <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 5">
+                <input class="pin-input" maxlength="1" inputmode="numeric" aria-label="Auction code digit 6">
+            </div>
             <button class="copy-code-button" type="button" aria-label="Copy auction code">
                 <img class="copy-code-icon" src="{copy_icon_url}" alt="">
                 <span class="copy-code-status" hidden>✓</span>
@@ -37,17 +39,44 @@ def get_auction_code_component(copy_icon_size=32, copy_margin_left=10):
         """,
         css=f"""
         .pin-container {{
+            --pin-alignment: center;
+            --pin-gap: 8px;
+            --pin-width: 50px;
+            --pin-height: 50px;
+            --pin-font-size: 22px;
+            --pin-font-weight: 600;
             display: flex;
-            gap: var(--pin-gap);
+            flex-direction: row;
+            align-items: center;
+            flex-wrap: nowrap;
             justify-content: var(--pin-alignment);
+            justify-content: safe var(--pin-alignment);
+            width: 100%;
+            overflow-x: auto;
             margin-top: 8px;
             margin-bottom: 8px;
         }}
 
+        .pin-digits {{
+            display: flex;
+            flex-flow: row nowrap;
+            flex: 0 0 auto;
+            align-items: center;
+            gap: var(--pin-gap);
+        }}
+
         .pin-input {{
             box-sizing: border-box;
-            width: var(--pin-height);
+            display: block;
+            flex: 0 0 var(--pin-width);
+            width: var(--pin-width);
+            min-width: var(--pin-width);
+            max-width: var(--pin-width);
             height: var(--pin-height);
+            min-height: var(--pin-height);
+            max-height: var(--pin-height);
+            margin: 0;
+            padding: 0;
             text-align: center;
             font-size: var(--pin-font-size);
             font-weight: var(--pin-font-weight);
@@ -65,9 +94,13 @@ def get_auction_code_component(copy_icon_size=32, copy_margin_left=10):
         .copy-code-button,
         .refresh-code-button {{
             box-sizing: border-box;
-            flex: 0 0 var(--pin-height);
-            width: var(--pin-height);
+            flex: 0 0 var(--pin-width);
+            width: var(--pin-width);
+            min-width: var(--pin-width);
+            max-width: var(--pin-width);
             height: var(--pin-height);
+            min-height: var(--pin-height);
+            max-height: var(--pin-height);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -465,7 +498,7 @@ def toast_css_format(background_color="#47BEF1", border_color="#FFFFFF", border_
 def show_code_generated(
         container_alignment="center",
         pin_gap=8,
-        pin_width=44,
+        pin_width=50,
         pin_height=50,
         font_size=22,
         font_weight=600,

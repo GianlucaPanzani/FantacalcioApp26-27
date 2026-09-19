@@ -17,7 +17,7 @@ from lib.streamlit_api.data_handler import (
     restore_bought_players,
     has_full_team,
     save_bought_players,
-    get_auction_data,
+    get_auction_data_from_session_state,
 )
 from lib.streamlit_api.design_handler import (
     bottom_caption,
@@ -36,6 +36,7 @@ from lib.streamlit_api.visualization_handler import (
     create_fanta_managers_lobby,
     show_creation_auction_code,
     show_join_auction_code,
+    show_auction_settings_table,
 )
 from backend.services import (
     create_auction
@@ -68,6 +69,7 @@ set_color_background()
 confirm_auction_code_widget_key = f"{page_name}_confirm_auction_code_widget_key"
 generated_code_hash_key = f"{page_name}_generated_code_hash_key"
 generated_code_key = f"{page_name}_generated_code_key"
+auction_data_dict_key = f"{page_name}_auction_data_dict_key"
 fanta_manager_split_value_widget_key = f"{page_name}_fanta_managers_split_value_widget_key"
 enable_bought_players_stats_key = f"{page_name}_bought_players_stats_key"
 enable_player_preferences_key = f"{page_name}_enable_player_preferences_key"
@@ -912,6 +914,7 @@ def show_auction_rules():
             st.segmented_control(
                 label,
                 options=options,
+                default=default_value,
                 required=True,
                 format_func=labels_view_dict.get,
                 key=widget_key,
@@ -1002,6 +1005,9 @@ for setting_name, _, default_points, _, value_type in auction_settings:
     auction_keys_set.add(widget_key)
     st.session_state.setdefault(widget_key, default_points)
     st.session_state[widget_key] = value_type(st.session_state[widget_key])
+st.session_state.setdefault(generated_code_hash_key, None)
+st.session_state.setdefault(generated_code_key, None)
+st.session_state.setdefault(auction_data_dict_key, None)
 
 # Initialize fanta managers
 my_fanta_manager = st.session_state[settings_my_manager_key]
@@ -1037,18 +1043,16 @@ st.caption(
 st.space(30)
 
 # General auction rules and bonus/malus points
-with st.container(border=True, key=f"dark-card-{page_name}_auction_rules_key"):
-    show_auction_rules()
+if not (st.session_state.get(generated_code_key) is not None and st.session_state.get(auction_data_dict_key)):
+    with st.container(border=True, key=f"dark-card-{page_name}_auction_rules_key"):
+        show_auction_rules()
 
 st.space(10)
 
 # Code generation
-if (
-        not generated_code_key in st.session_state 
-        or not st.session_state[generated_code_key] 
-        or st.session_state[generated_code_key] is None
-    ):
+if not (st.session_state.get(generated_code_key) is not None and st.session_state.get(auction_data_dict_key)):
     _, col, _ = st.columns([2, 5, 2], vertical_alignment="center")
+
     with col:
         with st.container(border=True, width="stretch", height="stretch", horizontal_alignment="center", key=f"dark-card-{page_name}_code_generation_key"):
             resulted_code = show_creation_auction_code(page_name)
@@ -1059,46 +1063,52 @@ if (
                     f"{page_name}_player_extraction_order_widget_key",
                     "random",
                 )
-                auction_data = get_auction_data()
+                auction_data = get_auction_data_from_session_state()
                 auction_data.update({
                     "auction_code_hash": auction_code_hash,
                     "player_extraction_order": player_extraction_order,
-                    "status": "lobby",
                 })
             else:
                 auction_data = None
 
             code_confirmed = st.button(
-                "Confirm",
-                help="If you have copied the code, press the button to create the lobby waiting for your friends.",
+                "Create lobby",
+                help="Copied the code and share it to your friends before the creation of the lobby.",
                 type="primary",
-                width="stretch",
                 disabled=True if resulted_code is None else False,
                 key=confirm_auction_code_widget_key,
-                on_click=create_auction,
-                args=(st.session_state["user_id_key"], auction_data),
             )
             if code_confirmed:
+                st.session_state[auction_data_dict_key] = create_auction(st.session_state["user_id_key"], auction_data)
                 st.session_state[generated_code_key] = auction_code
                 st.session_state[generated_code_hash_key] = auction_code_hash
+                st.rerun()
             st.stop()
 
 # Lobby creation
-if st.session_state[generated_code_key] is not None:
-    _, col, _ = st.columns([2, 3, 2], vertical_alignment="center")
-    with col:
-        create_fanta_managers_lobby(fanta_managers, auction_data)
-        lobby_deleted = st.button(
-            f":material/delete: Delete lobby",
-            help="Press the button if you want to delete this lobby.",
-            type="primary",
-            width="stretch",
-            key=confirm_auction_code_widget_key,
-        )
-        if lobby_deleted:
-            st.session_state[generated_code_key] = None
-            st.session_state[generated_code_hash_key] = None
-            st.rerun()
+if (st.session_state.get(generated_code_key) is not None and st.session_state.get(auction_data_dict_key)):
+    auction_data = st.session_state[auction_data_dict_key]
+
+    col1, _, col2 = st.columns([15, 1, 4])
+    with col1:
+        with st.container(border=True, vertical_alignment="center", key=f"dark-card-{page_name}_lobby_key"):
+            create_fanta_managers_lobby(fanta_managers, auction_data)
+            lobby_deleted = st.button(
+                f":material/delete: Delete lobby",
+                help="Press the button if you want to delete this lobby.",
+                type="primary",
+                width="stretch",
+                key=confirm_auction_code_widget_key,
+            )
+            if lobby_deleted:
+                st.session_state[generated_code_key] = None
+                st.session_state[generated_code_hash_key] = None
+                st.session_state[auction_data_dict_key] = None
+                st.rerun()
+    with col2:
+        show_auction_settings_table(auction_data)
+
+st.stop()
 
 # Load data
 models_packages_dict = load_models(target_features=features_to_predict_list)

@@ -911,7 +911,6 @@ def create_vertical_teams(
     return
 
 
-
 def create_horizontal_teams(
     fanta_manager_players_dict: dict,
     page_name: str,
@@ -1183,17 +1182,93 @@ def show_creation_auction_code(page_name: str):
     return auction_code, auction_code_hash
 
 
-def create_fanta_managers_lobby(fanta_managers: list[str], auction_data=None):
+def show_fanta_manager_info(fanta_manager):
+    set_text_size(text_size=1.1, class_name="shrinked-team")
+    with st.container(key=f"{fanta_manager}-shrinked-team", height="stretch", width="stretch"):
+        try:
+            st.image(f"img/managers/{fanta_manager.lower()}.png", output_format="PNG")
+        except:
+            st.image("img/managers/unknown.png", output_format="PNG")
+
+
+
+def create_fanta_managers_lobby(fanta_managers: list[str], auction_data: dict):
 
     my_fanta_manager = st.session_state["settings_my_manager_key"]
+    st.markdown(
+        f"### Auction with code :green[{st.session_state.get('auction_generated_code_key')}] "
+        "created correctly"
+    )
+
+    cols = st.columns([9,1,9,1,9,1,9,1,9])
     
     # Case of no other managers different by my_fantamanager in the list
-    if not any(manager != my_fanta_manager for manager in fanta_managers) and auction_data is not None:
-        st.success(f"Auction with code \"{st.session_state['generated_auction_code_key']}\" created correctly")
-        st.marckdown(auction_data)
+    if not any(manager != my_fanta_manager for manager in fanta_managers):
+        with cols[0]:
+            show_fanta_manager_info(my_fanta_manager)
         st.info("Wait for your friends...")
-        st.stop()
+        return
+    
+    for i, fanta_manager in zip(range(0,len(cols),2), fanta_managers):
+        with cols[i]:
+            show_fanta_manager_info(fanta_manager)
 
-
-    st.stop()
     return
+
+
+def show_auction_settings_table(auction_data: dict):
+    """Display the relevant auction configuration as a regular DataFrame."""
+    if not isinstance(auction_data, dict):
+        st.info("Auction settings are not available yet.")
+        return
+
+    fields = (
+        ("name", "Name"),
+        ("season", "Season"),
+        ("total_budget", "Total budget"),
+        ("goalkeeper_slots", "Goalkeeper slots"),
+        ("defender_slots", "Defender slots"),
+        ("midfielder_slots", "Midfielder slots"),
+        ("forward_slots", "Forward slots"),
+        ("player_extraction_scope", "Player extraction"),
+        ("role_extraction_order", "Role extraction order"),
+        ("player_extraction_order", "Player order"),
+        ("defender_modifier_enabled", "Defender modifier"),
+        ("midfielder_modifier_enabled", "Midfielder modifier"),
+        ("player_switch_enabled", "Player switch"),
+    )
+
+    value_labels = {
+        "by_role": "By role",
+        "on_all_players": "On all players",
+        "in_order_P_D_C_A": "P → D → C → A",
+        "random": "Random",
+        "alphabetic": "Alphabetical",
+    }
+    rows = []
+
+    for field, label in fields:
+        if field not in auction_data:
+            continue
+
+        value = auction_data[field]
+        if isinstance(value, bool) or field.endswith("_enabled"):
+            value = "Enabled" if bool(value) else "Disabled"
+        else:
+            value = value_labels.get(str(value), value)
+
+        rows.append({"Field": label, "Value": value})
+
+    if not rows:
+        st.info("Auction settings are not available yet.")
+        return
+
+    st.dataframe(
+        pd.DataFrame(rows),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Field": st.column_config.TextColumn("Field"),
+            "Value": st.column_config.TextColumn("Value"),
+        },
+    )
